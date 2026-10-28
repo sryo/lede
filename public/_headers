@@ -1,4 +1,9 @@
-/weepeople.woff2
-  Cache-Control: public, max-age=31536000, immutable
+# The dashboard is for its owner, not for search engines. The tracker is fetched while pages are drawn,
+# so it is left out.
+/*
+  X-Robots-Tag: noindex
 /t.js
   Cache-Control: public, max-age=3600
+  ! X-Robots-Tag
+/weepeople.woff2
+  Cache-Control: public, max-age=31536000, immutable

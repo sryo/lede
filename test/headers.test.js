@@ -9,6 +9,8 @@ function rules() {
   for (const line of readFileSync(new URL('../public/_headers', import.meta.url), 'utf8').split('\n')) {
     if (!line.trim() || line.trim().startsWith('#')) continue;
     if (!/^\s/.test(line)) { path = line.trim(); out[path] = {}; continue; }
+    // "! Name" takes away a header an earlier rule set.
+    if (line.trim().startsWith('!')) { out[path][line.trim().slice(1).trim().toLowerCase()] = null; continue; }
     const i = line.indexOf(':');
     out[path][line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
   }
@@ -25,4 +27,14 @@ test('browsers keep the tracker for a while, but not forever', () => {
 
 test('the font rule is unchanged', () => {
   assert.equal(rules()['/weepeople.woff2']?.['cache-control'], 'public, max-age=31536000, immutable');
+});
+
+test('search engines are asked to leave the dashboard out, but not the tracker', () => {
+  const r = rules();
+  assert.equal(r['/*']?.['x-robots-tag'], 'noindex');
+  assert.ok('x-robots-tag' in r['/t.js'] && r['/t.js']['x-robots-tag'] === null, 'the tracker takes the noindex away');
+  const robots = readFileSync(new URL('../public/robots.txt', import.meta.url), 'utf8');
+  assert.match(robots, /^User-agent: \*$/m);
+  assert.match(robots, /^Disallow: \/$/m);
+  assert.match(robots, /^Allow: \/t\.js$/m);
 });
