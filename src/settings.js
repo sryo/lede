@@ -16,14 +16,16 @@ import { HttpError } from './errors.js';
 const MEMO_MS = 60_000;
 const memo = new WeakMap();
 
-async function remembered(store, key, read) {
+// The promise is kept, so requests arriving together (a dashboard load sends ten) share one read.
+// fresh reads anyway, and keeps what it read for the others.
+async function remembered(store, key, read, fresh = false) {
   const byKey = memo.get(store) || new Map();
   memo.set(store, byKey);
   const hit = byKey.get(key);
-  if (hit && Date.now() - hit.at < MEMO_MS) return hit.value;
-  const value = await read();
+  if (!fresh && hit && Date.now() - hit.at < MEMO_MS) return hit.value;
+  const value = read();
   byKey.set(key, { value, at: Date.now() });
-  return value;
+  try { return await value; } catch (e) { if (byKey.get(key)?.value === value) byKey.delete(key); throw e; }
 }
 const forget = (store, key) => memo.get(store)?.delete(key);
 
@@ -43,11 +45,10 @@ export function normalizeSite(input) {
   return host.length <= 96 && /^(localhost|([a-z0-9-]+\.)+[a-z0-9-]{2,})$/.test(host) ? host : null;
 }
 
-// fresh skips the per-isolate copy, for the dashboard, which must see a site the moment it is added.
+// fresh reads past the per-isolate copy, for the dashboard, which must see a site the moment it is added.
 export async function getSites(env, { fresh = false } = {}) {
   const store = storeOf(env);
-  const read = async () => JSON.parse(await store.get('sites') || '[]');
-  return fresh ? read() : remembered(store, 'sites', read);
+  return remembered(store, 'sites', async () => JSON.parse(await store.get('sites') || '[]'), fresh);
 }
 
 // One read when the site's settings were saved since they moved to one key, four before that.

@@ -160,18 +160,25 @@ test('goals, funnels and notes share one key per site; the old keys are read unt
   assert.equal(reads, 1, 'the sites come from the isolate\'s copy, and the settings are one read');
 });
 
-test('stats read the sites once a minute per isolate, and again at once for a site just added', async () => {
+test('stats read the sites once a minute per isolate, and again at once for a site just added or when the dashboard asks for them', async () => {
   const STORE = memoryKV({ sites: '["a.example"]' });
   let reads = 0;
   const get = STORE.get;
   STORE.get = k => (k === 'sites' && reads++, get(k));
   const env = { STORE, DEMO: 'true' };
-  for (let i = 0; i < 3; i++) assert.equal((await call(`summary?site=a.example&n=${i}`, env)).status, 200);
+  const together = await Promise.all([0, 1, 2].map(i => call(`summary?site=a.example&n=${i}`, env)));
+  assert.ok(together.every(r => r.status === 200));
+  assert.equal(reads, 1, 'requests arriving together share one read');
+  assert.equal((await call('summary?site=a.example&n=3', env)).status, 200);
   assert.equal(reads, 1);
   STORE.m.set('sites', '["a.example","b.example"]');
   assert.equal((await call('summary?site=b.example', env)).status, 200, 'not in the copy, so read again');
   assert.equal(reads, 2);
   assert.equal((await call('summary?site=c.example', env)).status, 400);
+  reads = 0;
+  await call('sites', env);
+  await call('summary?site=a.example&n=4', env);
+  assert.equal(reads, 1, 'the dashboard\'s own read of the sites is kept for the stats after it');
 });
 
 test('notes on days are saved for everyone, one per day, and each change is one write', async () => {
