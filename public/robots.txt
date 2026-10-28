@@ -1,0 +1,4 @@
+# A Lede dashboard: nothing here to index. The tracker stays open, since search engines fetch it with the pages it's on.
+User-agent: *
+Allow: /t.js
+Disallow: /

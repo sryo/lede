@@ -17,12 +17,17 @@ export const count = n => n < 1e5 ? fmtInt(n) : fmtN(n);
 export const fmtSigned = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + fmtInt(Math.abs(n));
 
 // Hover hints on the charts.
-const visitors = n => `${fmtInt(n)} ${Math.round(n) === 1 ? 'visitor' : 'visitors'}`;
+const many = (n, u = 'visitors') => `${fmtInt(n)} ${Math.round(n) === 1 ? u.slice(0, -1) : u}`;
+const visitors = n => many(n);
 export const dayHint = (day, n, before, days) => `${day}: ${visitors(n)}${before == null ? '' : ` · ${days} days earlier: ${fmtInt(before)}`}`;
 export const ribbonHint = (from, to, n) => `${from} → ${to}: ${visitors(n)}`;
-export const sourceHint = (label, n, prev) => `${label}: ${visitors(n)}, `
+export const sourceHint = (label, n, prev, u = 'visitors') => `${label}: ${many(n, u)}, `
   + (!prev ? 'none before' : n > prev ? `${fmtInt(n - prev)} more than before` : n < prev ? `${fmtInt(prev - n)} fewer than before` : 'the same as before');
 export const pageHint = (label, n) => `${label}: ${visitors(n)} landed here`;
+// A list row read out: what its columns show, in words.
+export const rowLabel = (label, n, prev, total) => `${label}: ${visitors(n)}${total ? `, ${Math.round(n / total * 100)}% of the total` : ''}`
+  + (prev ? `, ${changeWords(n, prev)}` : n ? ', new' : '');
+const changeWords = (n, prev) => { const x = Math.round((n - prev) / prev * 100); return x > 0 ? `up ${x}%` : x < 0 ? `down ${-x}%` : 'the same as before'; };
 export const fmtPct = x => Math.round(x * 100) + '%';
 export const fmtDur = t => { const s = Math.round(t); return `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`; };
 export const fmtDay = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -40,6 +45,10 @@ export const pageName = k => k === '/' ? 'the home page' : k;
 // A path that wraps after an inner slash, never at a hyphen (which would read like a minus at the start of a line).
 export const pathHTML = k => esc(k).replace(/-/g, '\u2011').replace(/(?<=.)\//g, '/<wbr>');
 const pctChange = (c, p) => p ? Math.round((c - p) / p * 100) : null;
+// Lede counts a visitor once a month: the ID starts afresh at each UTC month start, so a period that crosses one
+// counts some people twice. When only one of the two periods crosses one, they are compared on visits instead,
+// unless one of them has no visitors and so there is nothing to compare.
+export const unitOf = ({ split, cur, prev }) => split && cur?.visitors && prev?.visitors && !split.cur !== !split.prev ? 'visits' : 'visitors';
 export const readers = label => label === 'Direct' ? 'direct visitors' : `${label} readers`;
 
 /* ---------- the story ---------- */
@@ -57,13 +66,14 @@ export function findSpike(vals, start) {
 // Works out the facts behind the summary sentence: which sources moved the total, whether a spike
 // or a landing page explains it, and who is growing fastest. Only what the sentence ends up naming
 // gets the story colour.
+// unit: what the totals and sources are compared on (see unitOf); diff, value, prev and change are in it.
 export function readStory({ totals, ser, pages, refs, flows, notes }) {
-  const c = totals.cur, p = totals.prev, diff = c.visitors - p.visitors;
-  const sources = refs.rows.map(r => ({ key: r.key, label: labelOf('referrer', r.key), channel: r.channel, value: r.visitors, prev: r.prev?.visitors || 0,
-    change: r.visitors - (r.prev?.visitors || 0), bounce: r.bounce, prevBounce: r.prev?.bounce, visits: r.visits, prevVisits: r.prev?.visits || 0 }));
+  const u = unitOf(totals), c = totals.cur, p = totals.prev, diff = c[u] - p[u];
+  const sources = refs.rows.map(r => ({ key: r.key, label: labelOf('referrer', r.key), channel: r.channel, value: r[u], prev: r.prev?.[u] || 0,
+    change: r[u] - (r.prev?.[u] || 0), bounce: r.bounce, prevBounce: r.prev?.bounce, visits: r.visits, prevVisits: r.prev?.visits || 0 }));
   // Changes within normal noise are not explained.
-  const flat = !p.visitors || Math.abs(diff) < Math.max(p.visitors * .03, 2 * Math.sqrt(p.visitors));
-  const S = { c, p, diff, flat, sources, lead: null, second: null, counter: null, page: null, spike: -1, prevSpike: -1, fast: null, fresh: null };
+  const flat = !p[u] || Math.abs(diff) < Math.max(p[u] * .03, 2 * Math.sqrt(p[u]));
+  const S = { c, p, diff, flat, sources, unit: u, lead: null, second: null, counter: null, page: null, spike: -1, prevSpike: -1, fast: null, fresh: null };
   if (!flat) {
     const sign = Math.sign(diff), same = sources.filter(s => Math.sign(s.change) === sign).sort(byMove);
     S.lead = same[0] || null;
@@ -91,7 +101,7 @@ export function readStory({ totals, ser, pages, refs, flows, notes }) {
   }
   if (diff < 0 && !flat) S.prevSpike = findSpike(ser.prev.visitors, ser.start - ser.days * 86400);
   const named = new Set([lead, S.second, S.counter].filter(Boolean));
-  const share = s => s.value >= c.visitors * .01;
+  const share = s => s.value >= c[u] * .01;
   S.fast = sources.filter(s => !named.has(s) && share(s) && s.prev >= 20 && s.change >= Math.max(10, 2 * Math.sqrt(s.prev)) && s.value >= s.prev * 1.05)
     .sort((a, b) => b.value / b.prev - a.value / a.prev)[0] || null;
   if (!S.fast) S.fresh = sources.filter(s => !named.has(s) && !s.prev && s.value >= 20 && share(s)).sort((a, b) => b.value - a.value)[0] || null;
@@ -106,25 +116,27 @@ export function tellStory(S, ser, days, span = { now: `in the last ${days} days`
   const told = new Set();
   const src = s => { told.add(s.key); return `<button type="button" class="link told" data-f="referrer" data-k="${esc(s.key)}">${esc(s.label)}</button>`; };
   const page = k => `<button type="button" class="link told" data-f="path" data-k="${esc(k)}">${k === '/' ? 'the home page' : pathHTML(k)}</button>`;
-  const { c, p, diff, lead, second, counter } = S, parts = [];
+  const { c, p, diff, lead, second, counter } = S, u = S.unit || 'visitors', parts = [];
   if (!c.visitors && !p.visitors) return { html: `No visitors ${span.now}.`, told, page: null };
+  // Nobody at all after a period with visitors is more likely the tracker gone missing than readers.
+  if (!c.visitors) return { html: `No visitors ${span.now}, down from ${fmtInt(p.visitors)} in ${span.before}. Check that Lede’s line is still on every page.`, told, page: null };
   if (!p.visitors) return { html: `There were no visitors in ${span.before}, so there’s nothing to compare with yet.`, told, page: null };
   const n = v => fmtInt(Math.abs(v));
-  if (S.flat || !lead) parts.push(`About as many visitors as ${span.before} (${fmtSigned(diff)}).`);
+  if (S.flat || !lead) parts.push(`About as many ${u} as ${span.before} (${fmtSigned(diff)}).`);
   else if (diff > 0) {
     // Where the lead's visitors landed goes right after the lead, so it is never read as the other source's.
     const to = S.page ? `, mostly to ${S.page.isNew ? 'the new page ' : ''}${page(S.page.key)}` : '';
-    if (second) parts.push(`${src(lead)} (${fmtSigned(lead.change)}) and ${src(second)} (${fmtSigned(second.change)}) sent the most extra visitors.`);
-    else if (lead.change > diff) parts.push(`${src(lead)} sent ${n(lead.change)} more visitors${to}` + (counter ? `, while ${src(counter)} sent ${n(counter.change)} fewer.` : '.'));
-    else if (lead.change >= diff * .95) parts.push(`${src(lead)} sent ${lead.change === diff ? 'all' : 'nearly all'} of the ${n(diff)} extra visitors${to}.`);
-    else if (lead.change >= diff * .25) parts.push(`${src(lead)} sent ${n(lead.change)} of the ${n(diff)} extra visitors${to}.`);
-    else parts.push(`The rise was spread across sources; ${src(lead)} sent ${n(lead.change)} more visitors${to}, the most of any.`);
+    if (second) parts.push(`${src(lead)} (${fmtSigned(lead.change)}) and ${src(second)} (${fmtSigned(second.change)}) sent the most extra ${u}.`);
+    else if (lead.change > diff) parts.push(`${src(lead)} sent ${n(lead.change)} more ${u}${to}` + (counter ? `, while ${src(counter)} sent ${n(counter.change)} fewer.` : '.'));
+    else if (lead.change >= diff * .95) parts.push(`${src(lead)} sent ${lead.change === diff ? 'all' : 'nearly all'} of the ${n(diff)} extra ${u}${to}.`);
+    else if (lead.change >= diff * .25) parts.push(`${src(lead)} sent ${n(lead.change)} of the ${n(diff)} extra ${u}${to}.`);
+    else parts.push(`The rise was spread across sources; ${src(lead)} sent ${n(lead.change)} more ${u}${to}, the most of any.`);
   } else {
-    if (second) parts.push(`The biggest falls were in visitors from ${src(lead)} (${fmtSigned(lead.change)}) and ${src(second)} (${fmtSigned(second.change)}).`);
-    else if (-lead.change > -diff) parts.push(`${src(lead)} sent ${n(lead.change)} fewer visitors` + (counter ? `, while ${src(counter)} sent ${n(counter.change)} more.` : '.'));
-    else if (lead.change <= diff * .95) parts.push(`${src(lead)} sent ${n(lead.change)} fewer visitors, ${lead.change === diff ? 'all' : 'nearly all'} of the drop.`);
-    else if (-lead.change >= -diff * .25) parts.push(`${src(lead)} sent ${n(lead.change)} fewer visitors, out of ${n(diff)} fewer in all.`);
-    else parts.push(`The drop was spread across sources; ${src(lead)} sent ${n(lead.change)} fewer visitors, the most of any.`);
+    if (second) parts.push(`The biggest falls were in ${u} from ${src(lead)} (${fmtSigned(lead.change)}) and ${src(second)} (${fmtSigned(second.change)}).`);
+    else if (-lead.change > -diff) parts.push(`${src(lead)} sent ${n(lead.change)} fewer ${u}` + (counter ? `, while ${src(counter)} sent ${n(counter.change)} more.` : '.'));
+    else if (lead.change <= diff * .95) parts.push(`${src(lead)} sent ${n(lead.change)} fewer ${u}, ${lead.change === diff ? 'all' : 'nearly all'} of the drop.`);
+    else if (-lead.change >= -diff * .25) parts.push(`${src(lead)} sent ${n(lead.change)} fewer ${u}, out of ${n(diff)} fewer in all.`);
+    else parts.push(`The drop was spread across sources; ${src(lead)} sent ${n(lead.change)} fewer ${u}, the most of any.`);
     if (S.prevSpike >= 0) parts.push(`${span.before[0].toUpperCase()}${span.before.slice(1)} had a big day on ${fmtDate(dayDate(ser.start - ser.days * 86400, S.prevSpike))}.`);
   }
   // The second claim is what the owner did, when the change came right after it; otherwise whichever
@@ -234,22 +246,22 @@ const moved = (change, prev) => prev >= 30 && Math.abs(change) >= Math.max(30, 2
 // total's direction, or either way when the total is flat), channel (a channel's share of visitors, spread over several sources).
 // before names the earlier stretch: "the 7 days before".
 export function findings(S, told, before = 'the days before') {
-  const { c, p, diff } = S, out = [];
+  const { c, p, diff } = S, u = S.unit || 'visitors', out = [];
   if (!p.visitors) return out;
   const free = s => !told.has(s.key);
   if (S.fast && free(S.fast)) {
     const f = S.fast, x = f.value / f.prev;
     out.push({ kind: 'fast', key: f.key, impact: f.change, html: (x >= 3
-      ? `${srcLink(f)} went from ${fmtInt(f.prev)} to ${fmtInt(f.value)} visitors`
-      : `${srcLink(f)} sent ${fmtInt((x - 1) * 100)}% more visitors than before`) + ', the fastest rise of any source.' });
+      ? `${srcLink(f)} went from ${fmtInt(f.prev)} to ${fmtInt(f.value)} ${u}`
+      : `${srcLink(f)} sent ${fmtInt((x - 1) * 100)}% more ${u} than before`) + ', the fastest rise of any source.' });
   }
-  if (S.fresh && free(S.fresh)) out.push({ kind: 'fresh', key: S.fresh.key, impact: S.fresh.value, html: `${srcLink(S.fresh)} sent ${fmtInt(S.fresh.value)} visitors, none in ${before}.` });
+  if (S.fresh && free(S.fresh)) out.push({ kind: 'fresh', key: S.fresh.key, impact: S.fresh.value, html: `${srcLink(S.fresh)} sent ${fmtInt(S.fresh.value)} ${u}, none in ${before}.` });
   for (const s of S.sources) {
     if (!free(s) || s === S.fast) continue;
     if (s.prev >= 30 && s.value <= s.prev * .1) out.push({ kind: 'vanished', key: s.key, impact: s.prev - s.value,
-      html: `${srcLink(s)} sent ${s.value ? `only ${visitors(s.value)}` : 'no visitors'}, down from ${fmtInt(s.prev)}.` });
+      html: `${srcLink(s)} sent ${s.value ? `only ${many(s.value, u)}` : `no ${u}`}, down from ${fmtInt(s.prev)}.` });
     else if (moved(s.change, s.prev) && (S.flat || Math.sign(s.change) !== Math.sign(diff))) out.push({ kind: s.change < 0 ? 'drop' : 'rise', key: s.key, impact: Math.abs(s.change),
-      html: `${srcLink(s)} sent ${fmtInt(Math.abs(s.change))} ${s.change < 0 ? 'fewer' : 'more'} visitors (${signedPct(s.value, s.prev)}).` });
+      html: `${srcLink(s)} sent ${fmtInt(Math.abs(s.change))} ${s.change < 0 ? 'fewer' : 'more'} ${u} (${signedPct(s.value, s.prev)}).` });
   }
   const byChannel = new Map();
   for (const s of S.sources) {
@@ -259,13 +271,13 @@ export function findings(S, told, before = 'the days before') {
     byChannel.set(s.channel, g);
   }
   for (const [ch, g] of byChannel) {
-    const a = g.prev / p.visitors, b = g.cur / c.visitors;
+    const a = g.prev / p[u], b = g.cur / c[u];
     // One source is a source, not a channel. The channel itself must have moved, the same way as its share,
     // so a share that only shifted because another source moved doesn't count; nor does one a named source made.
     if (g.n < 2 || Math.abs(b - a) < .02 || !moved(g.change, g.prev) || Math.sign(g.change) !== Math.sign(b - a)
       || Math.abs(g.named) >= Math.abs(g.change) * .5) continue;
     out.push({ kind: 'channel', key: ch, impact: Math.abs(b - a) * c.visitors,
-      html: `<button type="button" class="link told" data-f="channel" data-k="${esc(ch)}">${esc(labelOf('channel', ch))}</button> went from ${fmtPct(a)} to ${fmtPct(b)} of all visitors.` });
+      html: `<button type="button" class="link told" data-f="channel" data-k="${esc(ch)}">${esc(labelOf('channel', ch))}</button> went from ${fmtPct(a)} to ${fmtPct(b)} of all ${u}.` });
   }
   return out.sort((x, y) => y.impact - x.impact);
 }
@@ -303,6 +315,31 @@ export function todayPace(hourly, nowSec) {
   const pct = Math.round((today - usual) / usual * 100);
   const html = `Today so far: ${Math.abs(pct) < 10 ? 'about as busy as' : `<b>${Math.abs(pct)}%</b> ${pct > 0 ? 'busier' : 'quieter'} than`} a usual ${name}`;
   return { today, usual, pct, html };
+}
+
+/* ---------- what the counts can't say ---------- */
+
+// Under the home sentence, when the numbers come with a catch: Cloudflare kept only some of the views, or only
+// one of the two periods crosses the start of a month (see unitOf).
+export function countNotes(totals, days) {
+  const out = [], cur = totals.sampled, prev = totals.prevSampled;
+  if (cur || prev) out.push(`${cur && prev ? `These ${days} days and the ${days} before were` : cur ? `These ${days} days were` : `The ${days} days before were`} busy enough that Cloudflare kept only some of the views, so visitor counts may run a little low.`);
+  if (unitOf(totals) === 'visits') out.push(`Lede counts each visitor once a month, and ${totals.split.cur ? `these ${days} days cross` : `the ${days} days before cross`} the start of one, so the two are compared on visits instead of visitors.`);
+  return out;
+}
+
+// Runs of days far quieter than usual (under 35% of a usual day), today left out since it isn't over.
+// A usual day is the period's median, or the period before's when most of this one had no visitors at all.
+export function quietRuns(cur, prev = []) {
+  const n = cur.length, usual = median(cur) || median(prev), out = [];
+  if (usual < 20) return out;
+  for (let i = 0; i < n - 1; i++) {
+    if (cur[i] >= usual * .35) continue;
+    const last = out.at(-1);
+    if (last && last.end === i - 1) { last.end = i; last.visitors += cur[i]; }
+    else out.push({ start: i, end: i, visitors: cur[i], usual });
+  }
+  return out;
 }
 
 /* ---------- daily bars ---------- */
@@ -345,21 +382,22 @@ export function waterfall(S, told) {
 
 // `key` is the source the caption names (`ch:ai` for the AI assistants step), or null when it names none.
 export function waterfallCaption(W, S) {
+  const u = S.unit || 'visitors';
   const say = (html, step = null) => ({ html, key: step ? (step.channel ? `ch:${step.channel}` : step.key) : null });
   if (!W) return say('Nothing to compare with yet');
-  if (S.flat) return say(`About as many visitors as before (${fmtSigned(S.diff)})`);
+  if (S.flat) return say(`About as many ${u} as before (${fmtSigned(S.diff)})`);
   const parts = W.steps.filter(s => s.kind === 'named' || s.kind === 'mover');
   const word = ['one source', 'two sources', 'three sources'][parts.length - 1];
   const along = parts.filter(s => Math.sign(s.value) === Math.sign(W.total));
   const covered = sum(along.map(s => s.value)) / W.total;
   if (W.total > 0) {
-    if (word && along.length === parts.length && covered >= .8) return say(`The extra <b>${fmtInt(W.total)}</b> visitors came from ${word}`);
-    if (along.length) return say(`<b>${esc(along[0].label)}</b> sent ${fmtInt(along[0].value)} of the ${fmtInt(W.total)} extra visitors`, along[0]);
-    return say(`<b>${fmtInt(W.total)}</b> more visitors, spread across sources`);
+    if (word && along.length === parts.length && covered >= .8) return say(`The extra <b>${fmtInt(W.total)}</b> ${u} came from ${word}`);
+    if (along.length) return say(`<b>${esc(along[0].label)}</b> sent ${fmtInt(along[0].value)} of the ${fmtInt(W.total)} extra ${u}`, along[0]);
+    return say(`<b>${fmtInt(W.total)}</b> more ${u}, spread across sources`);
   }
-  if (word && along.length === parts.length && covered >= .8) return say(`The <b>${fmtInt(-W.total)}</b> fewer visitors were from ${word}`);
-  if (along.length) return say(`<b>${esc(along[0].label)}</b> sent ${fmtInt(-along[0].value)} fewer visitors, out of ${fmtInt(-W.total)} fewer in all`, along[0]);
-  return say(`<b>${fmtInt(-W.total)}</b> fewer visitors, spread across sources`);
+  if (word && along.length === parts.length && covered >= .8) return say(`The <b>${fmtInt(-W.total)}</b> fewer ${u} were from ${word}`);
+  if (along.length) return say(`<b>${esc(along[0].label)}</b> sent ${fmtInt(-along[0].value)} fewer ${u}, out of ${fmtInt(-W.total)} fewer in all`, along[0]);
+  return say(`<b>${fmtInt(-W.total)}</b> fewer ${u}, spread across sources`);
 }
 
 /* ---------- bounce: who visited vs how they behaved ---------- */
@@ -499,23 +537,25 @@ const shareWords = x => x >= .9 ? 'Nearly all' : x >= .6 ? 'Most' : x >= .5 ? 'O
 
 // "6,482 visitors from Hacker News, up 82%. Almost half came on Fri, Oct 16–17. 60% of their visits bounced."
 // The burst is the spike day plus the days right after it that stayed well above a usual day.
+// The burst is weighed against the days added up, never against the period's visitors: someone who came on
+// two days is one visitor but counts on both days.
 export function sourceStory(totals, ser, label, days) {
-  const c = totals.cur, p = totals.prev, cur = ser.cur.visitors, parts = [];
-  const pct = pctChange(c.visitors, p.visitors);
+  const c = totals.cur, p = totals.prev, cur = ser.cur.visitors, u = unitOf(totals), parts = [];
+  const pct = pctChange(c[u], p[u]), daily = sum(cur);
   let first = `<b>${fmtInt(c.visitors)}</b> visitors from ${esc(label)}`;
-  if (pct != null) first += pct ? `, <b>${pct > 0 ? 'up' : 'down'} ${Math.abs(pct)}%</b>` : ', about the same as before';
+  if (pct != null) first += pct ? `, <b>${u === 'visits' ? 'visits ' : ''}${pct > 0 ? 'up' : 'down'} ${Math.abs(pct)}%</b>` : ', about the same as before';
   let without = null, burstHTML = null;
   const spike = findSpike(cur, ser.start);
   if (spike >= 0) {
     const usual = median(cur);
     let end = spike;
     while (end + 1 < cur.length && cur[end + 1] > usual * 2) end++;
-    const burst = sum(cur.slice(spike, end + 1)), words = shareWords(burst / c.visitors);
+    const burst = sum(cur.slice(spike, end + 1)), words = shareWords(burst / daily);
     const a = dayDate(ser.start, spike), b = dayDate(ser.start, end);
     const when = end === spike ? fmtDate(a) : `${fmtWeekday(a)}, ${fmtDay(a)}–${b.getMonth() === a.getMonth() ? b.getDate() : fmtDay(b)}`;
     if (words) {
       burstHTML = `${words} came on <b class="told time">${when}</b>`;
-      const k = end - spike + 1, rest = pctChange(c.visitors - burst, p.visitors);
+      const k = end - spike + 1, rest = pctChange(daily - burst, sum(ser.prev?.visitors || []));
       if (rest != null) without = `Without ${k === 1 ? 'that day' : k === 2 ? 'those two days' : `those ${k} days`}, ${label} sent `
         + (rest ? `${Math.abs(rest)}% ${rest > 0 ? 'more' : 'fewer'} visitors than` : 'about as many visitors as') + ` the ${days} days before.`;
     }
@@ -561,9 +601,9 @@ export const audienceNote = ({ partial: p }, days) => p ? `Lede began recording 
 // "2,985 visitors on /blog/new, none in the 30 days before. 6 in 10 of those who landed here came from Hacker News."
 // flows: the visits that landed on this page, by source.
 export function pageStory(totals, flows, path, days) {
-  const c = totals.cur.visitors, p = totals.prev.visitors, pct = pctChange(c, p);
+  const u = unitOf(totals), c = totals.cur.visitors, pct = pctChange(totals.cur[u], totals.prev[u]);
   let s = `<b>${fmtInt(c)}</b> visitors on ${path === '/' ? 'the home page' : pathHTML(path)}`;
-  s += pct == null ? `, none in the ${days} days before` : pct ? `, <b>${pct > 0 ? 'up' : 'down'} ${Math.abs(pct)}%</b>` : ', about the same as before';
+  s += pct == null ? `, none in the ${days} days before` : pct ? `, <b>${u === 'visits' ? 'visits ' : ''}${pct > 0 ? 'up' : 'down'} ${Math.abs(pct)}%</b>` : ', about the same as before';
   s += '.';
   const into = sum(flows.map(f => f.visitors));
   if (into >= 20) {
@@ -797,4 +837,47 @@ export function parseSteps(text) {
   if (bad) return { error: `Each page starts with a slash: /${bad}, not ${bad}.` };
   if (new Set(steps).size < steps.length) return { error: 'A page can only be in a funnel once.' };
   return { steps };
+}
+
+/* ---------- speed ---------- */
+
+// Web Vitals at the 75th percentile, against Google's thresholds: good up to the first, poor past the second.
+// lcp (loading) and inp (answering a tap or click) are in ms; cls (how much the layout moves) is the score itself.
+export const VITALS = { lcp: [2500, 4000], inp: [200, 500], cls: [.1, .25] };
+// Below this many measures a 75th percentile is a handful of people.
+const VITALS_MIN = 30;
+// The views that measured k: lcpN, inpN, clsN when the row has them, else all its views. INP comes only from
+// views with a tap or click, far fewer than all of them, so without its own count it is never enough.
+const measured = (r, k) => r[`${k}N`] ?? (k === 'inp' ? 0 : r.views || 0);
+export const vitalRating = (k, v) => v == null ? null : v <= VITALS[k][0] ? 'good' : v > VITALS[k][1] ? 'poor' : 'needs work';
+export const fmtVital = (k, v) => k === 'cls' ? v.toFixed(2) : v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`;
+const VITAL_WORDS = { lcp: v => `loaded within ${v}`, inp: v => `answered a tap or click within ${v}`, cls: v => `moved their layout by ${v} or less` };
+const listed = a => a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a.at(-1)}` : a[0];
+
+// One page's speed, from an engagement row: "Of the views measured, 3 in 4 loaded within 2.1 s (good) and …".
+// Each measure needs VITALS_MIN views of its own. Null with no measures.
+export function vitalsLine(r) {
+  const have = Object.keys(VITALS).filter(k => r?.[k] != null);
+  if (!have.length) return null;
+  const enough = have.filter(k => measured(r, k) >= VITALS_MIN);
+  if (!enough.length) return { html: 'Too few views yet to say how fast this page is.', ratings: {} };
+  const ratings = Object.fromEntries(enough.map(k => [k, vitalRating(k, r[k])]));
+  return { ratings, html: `Of the views measured, 3 in 4 ${listed(enough.map(k => `${VITAL_WORDS[k](`<b>${fmtVital(k, r[k])}</b>`)} (${ratings[k]})`))}.` };
+}
+export const VITALS_HINT = 'Good is within 2.5 s to load, 200 ms to answer and 0.1 of layout movement; poor is over 4 s, 500 ms and 0.25.';
+
+// The busiest page that is slow for many of its readers: poor loading or answering, at least 50 visitors and
+// 5% of all of them. rows: engagement rows; pageRows: { key, value } with visitors.
+export function vitalsFinding(rows, pageRows, total) {
+  const seen = new Map(pageRows.map(r => [r.key, r.value]));
+  const poor = (r, k) => vitalRating(k, r[k]) === 'poor' && measured(r, k) >= VITALS_MIN;
+  const slow = rows.map(r => ({ r, v: seen.get(r.key) || 0, load: poor(r, 'lcp'), answer: poor(r, 'inp') }))
+    .filter(x => (x.load || x.answer) && x.v >= 50 && x.v >= total * .05)
+    .sort((a, b) => b.v - a.v)[0];
+  if (!slow) return null;
+  const { r, v } = slow, parts = [];
+  if (slow.load) parts.push(`1 in 4 took ${fmtVital('lcp', r.lcp)} or longer to load`);
+  if (slow.answer) parts.push(`1 in 4 waited ${fmtVital('inp', r.inp)} or longer for a tap or click to answer`);
+  const page = `<button type="button" class="link told" data-f="path" data-k="${esc(r.key)}">${r.key === '/' ? 'The home page' : pathHTML(r.key)}</button>`;
+  return { key: r.key, html: `${page} is slow for many of its ${fmtInt(v)} visitors: of the views measured, ${parts.join(', and ')}.` };
 }

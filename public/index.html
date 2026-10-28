@@ -24,7 +24,8 @@
   --ink:#1A1D2E; --muted:#5F6275;
   /* a page with no picture yet: light, as most pages are, so the shade over it shows in both themes */
   --paper:#EEEBE4;
-  --time:#2F5BEA; --src:#FFAA00; --page:#8B5CF6; --bnc:#D7263D; --live:#12974A;
+  /* violet is a shade darker than it might be, so white names on a solid block read at AA */
+  --time:#2F5BEA; --src:#FFAA00; --page:#8452F2; --bnc:#D7263D; --live:#12974A;
   /* text on a solid subject colour */
   --on-time:#FFFFFF; --on-src:#1A1D2E; --on-page:#FFFFFF; --on-bnc:#FFFFFF; --on-live:#FFFFFF;
   /* how opaque "the rest" and "empty" are; small marks (glyphs, thin bars, figures) get the stronger pair */
@@ -464,7 +465,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, spikeSegment, waterfall, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard } from '/story.js';
+  dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, VITALS_HINT } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
 
@@ -473,8 +474,10 @@ const motion=matchMedia('(prefers-reduced-motion: reduce)');
 const TZ=new Date().getTimezoneOffset(),TZNAME=Intl.DateTimeFormat().resolvedOptions().timeZone||'';
 const store={get(k){try{return localStorage.getItem(k)}catch{return null}},set(k,v){try{localStorage.setItem(k,v)}catch{}}};
 let SITE='',SITES=[],DEMO=false,DAYS=30;
-// What the home screen worked out, for the views that open from it.
-let HOME=null;
+// What the home screen worked out, for the views that open from it. homeDrawn settles when the latest home
+// draw has: views fetch their own data first and wait for it only to read HOME.
+let HOME=null,homeDrawn=Promise.resolve(false);
+const home=()=>HOME&&!HOME.empty?HOME:null;
 
 /* ---------- API ---------- */
 // Answers are reused for five minutes, so a tab left open still moves on to new data.
@@ -608,7 +611,15 @@ const shorten=(s,max=22)=>s.length<=max?s:s.slice(0,Math.ceil(max/2)-1)+'…'+s.
 
 /* ---------- drawing ---------- */
 const ro=new ResizeObserver(es=>es.forEach(e=>e.target._draw&&e.target._draw()));
-function observe(el,fn){el._draw=fn;fn();ro.observe(el)}
+// A redraw replaces a chart's buttons; the one that had focus gets it back, found by its data-key.
+function observe(el,fn){
+  el._draw=()=>{
+    const a=document.activeElement,k=a!==el&&el.contains(a)?a.dataset.key:undefined;
+    fn();
+    if(k!=null&&!el.contains(document.activeElement))[...el.querySelectorAll('[data-key]')].find(b=>b.dataset.key===k)?.focus({preventScroll:true});
+  };
+  el._draw();ro.observe(el);
+}
 // Stops watching charts inside root before it is replaced, so detached charts can be freed.
 function release(root){for(const el of root.querySelectorAll('*'))if(el._draw){ro.unobserve(el);el._draw=null}}
 function nice(mx){
@@ -672,8 +683,8 @@ function treemap(el,items,{gap=4}={}){
       else if(w>44&&h>22)b.innerHTML=`<b>${name}</b>`;
       else if(w>20&&h>72){b.classList.add('tall');b.innerHTML=`<b>${esc(shorten(it.label,Math.floor((h-14)/6.6)))}</b>`}
       else if(w>28&&h>18&&it.short)b.innerHTML=`<b>${esc(it.short)}</b>`;
-      b.title=`${it.label}: ${fmtInt(it.value)} visitors`;
-      if(it.onClick){b.setAttribute('aria-label',`${it.label}, ${fmtInt(it.value)} visitors. Open`);b.onclick=e=>{e.stopPropagation();it.onClick(b)}}
+      b.title=`${it.label}: ${fmtInt(it.value)} visitors`;b.dataset.key=it.label;
+      if(it.onClick){b.setAttribute('aria-label',`${it.label}, ${fmtInt(it.value)} visitors${it.sub?`, ${it.sub}`:''}. Open`);b.onclick=e=>{e.stopPropagation();it.onClick(b)}}
       return b;
     }));
   });
@@ -720,13 +731,15 @@ function dayBars(el,o){
   });
 }
 
-// A line per day against the previous period (dashed), with the peak labelled.
+// A line per day against the previous period (dashed), with the peak labelled. A null day has no value: the line
+// breaks there, and a day alone between two gaps is a dot.
 function lines(el,{cur,prev,fmt,axis,start,peak}){
-  const day=i=>fmtDay(dayDate(start,i));
+  const day=i=>fmtDay(dayDate(start,i)),vals=[...cur,...(prev||[])].filter(v=>v!=null);
+  if(!vals.length){el.innerHTML='<div class="empty">No visits yet</div>';return}
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
     const padL=8,padR=40,padB=22,padT=peak?44:10,n=cur.length;
-    const lo=Math.min(...cur,...(prev||[])),hi=Math.max(...cur,...(prev||[]));
+    const lo=Math.min(...vals),hi=Math.max(...vals);
     // Widen the step until no two gridlines get the same label (36%, 36%, 37% on a flat month).
     // A flat line (a period with no visits) starts from a step of a point, not a millionth, so the loop below doesn't
     // count ten million gridlines; and a line flat at 0 gets one step of room above it, not the whole 0–100%.
@@ -738,12 +751,13 @@ function lines(el,{cur,prev,fmt,axis,start,peak}){
       step*=2;
     }
     const X=i=>padL+i*(W-padL-padR)/Math.max(1,n-1),Y=v=>padT+(H-padT-padB)*(1-(v-min)/((max-min)||1));
-    const path=a=>a.map((v,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+    const path=a=>a.map((v,i)=>v==null?'':`${a[i-1]!=null?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('');
+    const alone=(a,color)=>a.map((v,i)=>v!=null&&a[i-1]==null&&a[i+1]==null?`<circle cx="${X(i)}" cy="${Y(v)}" r="2" fill="${color}"/>`:'').join('');
     let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(peak?.aria||'This period compared with the previous one')}">`;
     for(let v=min;v<=max+1e-9;v+=step){const y=Y(v);s+=`<line class="grid-l" x1="${padL}" x2="${W-padR}" y1="${y}" y2="${y}"/><text x="${W}" y="${y+4}" text-anchor="end">${axis(v)}</text>`}
     s+=`<text x="${X(0)}" y="${H-5}">${day(0)}</text><text x="${X(n-1)}" y="${H-5}" text-anchor="end">${day(n-1)}</text>`;
-    if(prev)s+=`<path d="${path(prev)}" fill="none" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="3 3"/>`;
-    s+=`<path d="${path(cur)}" fill="none" stroke="var(--bnc)" stroke-width="2.2" stroke-linejoin="round"/>`;
+    if(prev)s+=`<path d="${path(prev)}" fill="none" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="3 3"/>${alone(prev,'var(--rule)')}`;
+    s+=`<path d="${path(cur)}" fill="none" stroke="var(--bnc)" stroke-width="2.2" stroke-linejoin="round"/>${alone(cur,'var(--bnc)')}`;
     if(peak)s+=`<circle cx="${X(peak.i)}" cy="${Y(cur[peak.i])}" r="5" fill="var(--bnc)"/>`;
     s+=`<g class="guide" opacity="0"><line y1="${padT}" y2="${H-padB}" stroke="var(--muted)" stroke-width="1"/><circle r="4" fill="var(--bnc)"/></g>`;
     let html=s+'</svg><div class="tip" hidden></div>';
@@ -753,10 +767,11 @@ function lines(el,{cur,prev,fmt,axis,start,peak}){
     el.onpointermove=e=>{
       const i=Math.round((e.clientX-el.getBoundingClientRect().left-padL)/((W-padL-padR)/Math.max(1,n-1)));
       if(i<0||i>=n){el.onpointerleave();return}
+      const v=cur[i],at=v??(prev?.[i]??lo),said=x=>x==null?'no visits':fmt(x);
       g.setAttribute('opacity',1);g.querySelector('line').setAttribute('x1',X(i));g.querySelector('line').setAttribute('x2',X(i));
-      const c=g.querySelector('circle');c.setAttribute('cx',X(i));c.setAttribute('cy',Y(cur[i]));
-      t.hidden=false;t.innerHTML=`${day(i)}: <b>${fmt(cur[i])}</b>${prev?`<br><span class="muted">${DAYS} days earlier: ${fmt(prev[i])}</span>`:''}`;
-      t.style.left=Math.min(W-t.offsetWidth/2,Math.max(t.offsetWidth/2,X(i)))+'px';t.style.top=Y(cur[i])+'px';
+      const c=g.querySelector('circle');c.setAttribute('cx',X(i));c.setAttribute('cy',Y(at));c.setAttribute('opacity',v==null?0:1);
+      t.hidden=false;t.innerHTML=`${day(i)}: <b>${said(v)}</b>${prev?`<br><span class="muted">${DAYS} days earlier: ${said(prev[i])}</span>`:''}`;
+      t.style.left=Math.min(W-t.offsetWidth/2,Math.max(t.offsetWidth/2,X(i)))+'px';t.style.top=Y(at)+'px';
     };
     el.onpointerleave=()=>{g.setAttribute('opacity',0);t.hidden=true};
   });
@@ -794,7 +809,7 @@ function drawSteps(el,steps,{fmt,aria,colorOf,openOf=()=>null}){
     geo.forEach((g,i)=>{
       const st=steps[i],open=openOf(st);if(!open)return;
       const top=Math.max(0,Math.min(Y(g.a),Y(g.b))-26),b=document.createElement('button');
-      b.type='button';b.className='step';b.title=`${st.label}: ${fmt(st.value,st.kind==='total')}`;
+      b.type='button';b.className='step';b.dataset.key=st.key??st.channel??st.label;b.title=`${st.label}: ${fmt(st.value,st.kind==='total')}`;
       Object.assign(b.style,{left:x(i)-4+'px',top:top+'px',width:bw+8+'px',height:H-top+'px'});
       b.setAttribute('aria-label',`${b.title}. Open`);
       b.onclick=e=>{e.stopPropagation();open(b)};
@@ -826,7 +841,7 @@ function drawSquares(el,rows){
     const size=Math.max(6,Math.min(22,Math.floor((W-text-(under?0:12))/12.1),Math.floor((H-(n-1)*8)/n)-line)),gap=Math.max(2,Math.round(size*.23));
     box.style.gap=Math.min(20,Math.max(6,(H-n*(size+line))/(n+1)))+'px';
     box.replaceChildren(...rows.map(r=>{
-      const b=document.createElement('button');b.type='button';b.className='sqrow'+(under?' under':stack?' stack':'');
+      const b=document.createElement('button');b.type='button';b.className='sqrow'+(under?' under':stack?' stack':'');b.dataset.key=r.label;
       b.innerHTML=`<span class="sq-num"${under?'':` style="width:${text}px"`}><b${r.story?' class="told"':''}>${r.pct==null?'–':fmtPct(r.pct)}</b><span class="sq-label">${esc(r.label)}</span></span>${squaresSVG(r.pct||0,size,gap,r.fill||'var(--bnc)')}`;
       b.setAttribute('aria-label',r.aria);
       b.onclick=e=>{e.stopPropagation();r.open(b)};
@@ -889,6 +904,8 @@ function zoom(src,{title,render,chip,vw=null,instant=false,fromHistory=false}){
   // Wait briefly for the content, so the window takes its final height before the zoom starts
   // instead of jumping once the animation has ended.
   Promise.race([ready,new Promise(r=>setTimeout(r,300))]).then(()=>{
+    // Closed before it showed (a site with no visits yet, opened at a view's address).
+    if(!layer.isConnected){animating=false;return}
     layer.style.visibility='';
     const h0=win.offsetHeight;
     grow(true);
@@ -1027,7 +1044,7 @@ function rowsInto(group,rows,{fmt=fmtInt,total,inverse=false,onClick,subj='time'
       <span class="bar"><i style="width:${(r.value/max*100).toFixed(1)}%;background:var(--${subj})"></i></span>
       <span class="num">${fmt(r.value)}</span><span class="pct">${total?Math.round(r.value/total*100):0}%</span>
       ${delta(r.value,r.prev,inverse)}${onClick?CHEV:'<span></span>'}`;
-    if(onClick){el.setAttribute('aria-label',`${r.label}, ${fmt(r.value)}. Open`);el.onclick=()=>onClick(r,el)}
+    if(onClick){el.setAttribute('aria-label',`${rowLabel(r.label,r.value,r.prev,total)}. Open`);el.onclick=()=>onClick(r,el)}
     return flagged(el);
   }));
 }
@@ -1057,7 +1074,7 @@ function viewOptions(vw){
     case 'bounce':return {title:'Bounce',render:b=>view(b,renderBounce)};
     case 'online':return {title:'Online',chip:'Live',render:b=>view(b,renderOnline)};
     case 'sources':case 'pages':return {title:vw.v[0].toUpperCase()+vw.v.slice(1),render:b=>view(b,x=>renderDim(x,vw.v))};
-    case 'events':return HOME?.events?{title:'What happened',render:x=>renderEvents(x,vw.pick?HOME.events.filter(vw.pick):HOME.events,HOME.ser)}:null;
+    case 'events':return {title:'What happened',render:b=>view(b,async x=>{await homeDrawn;const H=home();if(H)renderEvents(x,vw.pick?H.events.filter(vw.pick):H.events,H.ser);else x.innerHTML=''})};
     case 'filter':{
       const f=vw.f,source=(f.referrer!=null)!==(f.channel!=null)&&f.path==null;
       const title=vw.label||(f.path!=null?f.path:f.channel!=null?labelOf('channel',f.channel):labelOf('referrer',f.referrer));
@@ -1104,9 +1121,9 @@ function dimSection(sec,group,f,compact,boldKeys=null){
     const go=r=>el=>openFilter({...f,[FILTER_OF[r.dim]]:r.key},r.label,el);
     b.innerHTML='<div></div>';
     // Only the overview repeats home's sentence, so only its lists bold what that sentence names.
-    const overview=compact&&f.path==null&&f.referrer==null&&f.channel==null&&HOME&&!HOME.empty;
+    const H=home(),overview=compact&&f.path==null&&f.referrer==null&&f.channel==null&&H;
     const named=new Set(boldKeys?rows.filter(r=>boldKeys.has(r.dim==='channel'?'ch:'+r.key:r.key)).map(r=>r.key)
-      :overview?rows.filter(r=>r.dim==='channel'?HOME.T.told.has('ch:'+r.key):r.dim==='referrer'?HOME.T.told.has(r.key):r.key===HOME.T.page).map(r=>r.key):[]);
+      :overview?rows.filter(r=>r.dim==='channel'?H.T.told.has('ch:'+r.key):r.dim==='referrer'?H.T.told.has(r.key):r.key===H.T.page).map(r=>r.key):[]);
     rowsInto(b.firstChild,compact?rows.slice(0,8):rows,{total,subj:group==='pages'?'page':'src',goalable:group==='pages',named,onClick:(r,el)=>go(r)(el)});
     if(compact&&rows.length>8){
       const more=document.createElement('button');more.type='button';more.className='more-link';more.innerHTML=`<span>All ${rows.length} ${group}</span>${CHEV}`;
@@ -1119,9 +1136,10 @@ function dimSection(sec,group,f,compact,boldKeys=null){
 }
 
 // The top of every slice: one big number, then the rest, straight on the page.
-// With nothing before to compare with, the count stands alone rather than reading "visitors new".
-const heroSub=(c,pr)=>`visitors${pr.visitors?` <b>${changeWord(c.visitors,pr.visitors)}</b>`:''}`;
-const heroHTML=(c,pr)=>`<div class="nums"><div class="hero"><span class="big">${fmtInt(c.visitors)}</span><span>${heroSub(c,pr)}</span></div>${numsHTML(c,pr)}</div>`;
+// With nothing before to compare with, the count stands alone rather than reading "visitors new"; so it does when
+// only one period crosses a month start (unitOf), and the visits beside it carry the change.
+const heroSub=t=>`visitors${t.prev.visitors&&unitOf(t)==='visitors'?` <b>${changeWord(t.cur.visitors,t.prev.visitors)}</b>`:''}`;
+const heroHTML=t=>`<div class="nums"><div class="hero"><span class="big">${fmtInt(t.cur.visitors)}</span><span>${heroSub(t)}</span></div>${numsHTML(t.cur,t.prev)}</div>`;
 // Links in a generated sentence open the slice they name.
 function bindLinks(root){
   root.querySelectorAll('.link').forEach(b=>{
@@ -1135,17 +1153,19 @@ function bindLinks(root){
 // The overview, a page, or a channel: the sentence, the numbers, visitors per day, then what's inside.
 async function renderFilter(body,f){
   const gen=body._gen,p=filterParams(f),overview=f.path==null&&f.referrer==null&&f.channel==null;
-  const [totals,ser,hourly,flows,all]=await Promise.all([api('summary',p),api('series',p),overview?api('hourly'):null,f.path!=null?api('flows'):null,f.channel!=null?api('summary'):null]);
+  // The hours are one card of many, so the overview draws without them.
+  const [totals,ser,hourly,flows,all]=await Promise.all([api('summary',p),api('series',p),overview?api('hourly').catch(()=>null):null,f.path!=null?api('flows'):null,f.channel!=null?api('summary'):null,homeDrawn]);
   if(stale(body,gen))return;
+  const H=home();
   const c=totals.cur,pr=totals.prev;
   const into=flows?flows.flows.filter(x=>x.page===f.path):[];
   // A single page's chart marks the events about that page, the way the overview marks all of them.
-  const pick=e=>e.kind==='page'&&e.key===f.path,own=HOME&&f.path!=null&&f.referrer==null&&f.channel==null?HOME.events.filter(pick):[];
-  const say=overview?(HOME?.T.html||''):f.path!=null?pageStory(totals,into,f.path,DAYS)
+  const pick=e=>e.kind==='page'&&e.key===f.path,own=H&&f.path!=null&&f.referrer==null&&f.channel==null?H.events.filter(pick):[];
+  const say=overview?(H?.T.html||''):f.path!=null?pageStory(totals,into,f.path,DAYS)
     :sourceStory(totals,ser,labelOf('channel',f.channel),DAYS).html+(all?' '+(channelShare(totals,all,labelOf('channel',f.channel))||''):'');
-  body.innerHTML=`<p class="say">${say}</p>${heroHTML(c,pr)}
-    <section class="card"><div class="card-head"><div class="card-title">Visitors per day${pr.visitors?`, against the ${DAYS} days before`:''}</div>${overview&&HOME?'<span class="tile-key">Pick a day to note what you did</span>':''}</div><div class="chart"></div>${overview&&HOME?'<div class="marks"></div>':own.length?'<div class="marks own"></div>':''}</section>
-    ${overview&&HOME?`<section class="card"><div class="card-title">What happened</div>${HOME.events.length?'<div class="events-list"></div>':`<p class="muted" style="margin:0">Nothing unusual in the last ${DAYS} days.</p>`}</section>`:''}
+  body.innerHTML=`<p class="say">${say}</p>${heroHTML(totals)}
+    <section class="card"><div class="card-head"><div class="card-title">Visitors per day${pr.visitors?`, against the ${DAYS} days before`:''}</div>${overview&&H?'<span class="tile-key">Pick a day to note what you did</span>':''}</div><div class="chart"></div>${overview&&H?'<div class="marks"></div>':own.length?'<div class="marks own"></div>':''}</section>
+    ${overview&&H?`<section class="card"><div class="card-title">What happened</div>${H.events.length?'<div class="events-list"></div>':`<p class="muted" style="margin:0">Nothing unusual in the last ${DAYS} days.</p>`}</section>`:''}
     ${overview?'<section class="card"><div class="card-title heat-title">By weekday and hour</div><div class="chart"></div></section><section class="card funnels-card" hidden></section>':''}
     ${f.path!=null?'<section class="card"><div class="card-title">Where readers came from, and where they went next</div><p class="cross-say"></p><div class="cross-k" aria-hidden="true"><span>visitors</span><span></span></div><div class="landed cross"></div><p class="say-sub landed-note"></p></section>':''}
     ${f.path!=null?'<section class="card goal-card" hidden></section>':''}
@@ -1156,23 +1176,23 @@ async function renderFilter(body,f){
   const cur=ser.cur.visitors,busiest=cur.indexOf(maxOf(cur));
   // On the overview the markers row carries the dates, as on home.
   const marks=body.querySelector('.marks:not(.own)'),ownMarks=body.querySelector('.marks.own');
-  if(marks){drawDays(body.querySelector('.chart'),HOME.S,HOME.ser,{scale:true});noteDays(body.querySelector('.chart'),HOME.ser)}
+  if(marks){drawDays(body.querySelector('.chart'),H.S,H.ser,{scale:true});noteDays(body.querySelector('.chart'),H.ser)}
   else{
     const spike=findSpike(cur,ser.start),usual=median(cur);
     const label=spike>=0?{i:spike,title:`${fmtDate(dayDate(ser.start,spike))} · ${fmtInt(cur[spike])}`,sub:`${Math.round(cur[spike]/(usual||1))}× a usual day`}:null;
     dayBars(body.querySelector('.chart'),{cur,prev:pr.visitors?ser.prev.visitors:null,start:ser.start,axis:!ownMarks,scale:true,label,subj:f.path!=null?'page':f.channel!=null?'src':'time',
       aria:`Visitors per day. Busiest: ${fmtDate(dayDate(ser.start,busiest))} with ${fmtInt(cur[busiest])}.`});
   }
-  if(ownMarks)drawMarks(ownMarks,own,HOME.ser,pick);
-  if(overview&&HOME){
+  if(ownMarks)drawMarks(ownMarks,own,H.ser,pick);
+  if(overview&&H){
     const charts=body.querySelectorAll('.chart');
-    if(drawHeat(charts[1],HOME.S,HOME.ser,hourly)&&HOME.S.spike>=0)
-      body.querySelector('.heat-title').innerHTML+=` · <span class="ring"></span> hours when most visitors came on ${fmtDate(dayDate(HOME.ser.start,HOME.S.spike))}`;
+    if(drawHeat(charts[1],H.S,H.ser,hourly)&&H.S.spike>=0)
+      body.querySelector('.heat-title').innerHTML+=` · <span class="ring"></span> hours when most visitors came on ${fmtDate(dayDate(H.ser.start,H.S.spike))}`;
   }
   if(overview)drawFunnels(body,gen);
   if(marks){
-    drawMarks(marks,HOME.events,HOME.ser);
-    body.querySelector('.events-list')?.replaceChildren(...HOME.events.map(e=>eventButton(e,HOME.ser,true)));
+    drawMarks(marks,H.events,H.ser);
+    body.querySelector('.events-list')?.replaceChildren(...H.events.map(e=>eventButton(e,H.ser,true)));
   }
   if(f.path!=null){
     const card=body.querySelector('.goal-card');card.dataset.path=f.path;drawGoalCard(card,f.path);
@@ -1202,10 +1222,14 @@ async function renderFilter(body,f){
     const r=e.rows.find(x=>x.key===f.path);
     if(stale(body,gen)||!r?.views)return;
     const n=(k,v,sub,tip)=>`<div class="num" title="${tip}"><span class="k">${k}</span><span class="v">${v}</span><span class="delta">${sub}</span></div>`;
+    // The middle view, when the answer has it: a few tabs left open for hours pull an average far from most readers.
+    const mid=r.median!=null,time=x=>!x?null:mid?(x.median!=null?x.median/1000:null):x.time,t=time(r),was=time(r.prev);
     body.querySelector('.nums').insertAdjacentHTML('beforeend',
-      n('Time on page',fmtDur(r.time),r.prev?changeWord(r.time,r.prev.time):'new','Average time people had this page open and in view')
+      n('Time on page',fmtDur(t),!r.prev?'new':was==null?'':changeWord(t,was),mid?'Half the views had this page open and in view for longer than this':'Average time people had this page open and in view')
       +n('How far down',fmtPct(r.scroll),r.prev?pts(r.scroll,r.prev.scroll):'new','How far down the page people got, on average'));
     drawReach(body,r,f.path);
+    const V=vitalsLine(r);
+    if(V)body.querySelector('.nums').insertAdjacentHTML('afterend',`<p class="say-sub vitals" title="${esc(VITALS_HINT)}">${V.html}</p>`);
   },()=>{});
   if(overview)api('audience').then(A=>{if(!stale(body,gen))drawAudience(body.querySelector('.aud'),A)},()=>{});
   if(overview)api('keywords').then(K=>{if(!stale(body,gen))drawKeywords(body.querySelector('.kw'),K)},()=>{});
@@ -1305,14 +1329,23 @@ function drawKeywords(sec,K){
   draw(k0);
 }
 
-// Sources open with where the change came from; pages with the page that moved most.
-function renderDim(body,group){
-  const W=group==='sources'&&HOME?waterfall(HOME.S,HOME.T.told):null;
-  body.innerHTML=`<p class="say"></p>${W?`<section class="card"><div class="card-title">Change in visitors, against the ${DAYS} days before</div><div class="steps"></div></section>`:''}<section></section>`;
+// Sources open with where the change came from; pages with the page that moved most, and one slow for many readers.
+async function renderDim(body,group){
+  const gen=body._gen,speed=group==='pages'?api('engagement').catch(()=>null):null;
+  await homeDrawn;
+  if(stale(body,gen))return;
+  const H=home(),W=group==='sources'&&H?waterfall(H.S,H.T.told):null;
+  body.innerHTML=`<div><p class="say"></p><p class="say-sub" hidden></p></div>${W?`<section class="card"><div class="card-title">Change in ${H.S.unit}, against the ${DAYS} days before</div><div class="steps"></div></section>`:''}<section></section>`;
   const say=body.querySelector('.say');
-  const cap=W?waterfallCaption(W,HOME.S):group==='pages'&&HOME?.pageRows?pagesFinding(HOME.pageRows,HOME.T.page)??pagesCaption(HOME.pageRows.slice(0,6)):null;
+  const cap=W?waterfallCaption(W,H.S):group==='pages'&&H?pagesFinding(H.pageRows,H.T.page)??pagesCaption(H.pageRows.slice(0,6)):null;
   if(cap?.html)say.innerHTML=cap.html+'.';else say.remove();
   if(W)drawGrowth(body.querySelector('.steps'),W);
+  // Speed is one query more, so it comes in after the rest, and only here.
+  if(speed&&H)speed.then(e=>{
+    const V=e&&!stale(body,gen)&&vitalsFinding(e.rows,H.pageRows,H.S.c.visitors),el=body.querySelector('.say-sub');
+    if(!V)return;
+    el.innerHTML=V.html;el.title=VITALS_HINT;el.hidden=false;bindLinks(el);
+  });
   // The list bolds whatever this page's sentence names.
   return dimSection(body.lastElementChild,group,{},false,new Set(cap?.key!=null?[cap.key]:[]));
 }
@@ -1376,7 +1409,7 @@ function drawFunnel(el,f,drop){
     el.innerHTML=s+'</svg>';
     // Each step opens its page, as the steps in the other waterfalls open what they name.
     steps.forEach((k,i)=>{
-      const b=document.createElement('button'),t=Math.max(0,top(i&&i-1)-26);b.type='button';b.className='step';b.title=stepHint(f,i);
+      const b=document.createElement('button'),t=Math.max(0,top(i&&i-1)-26);b.type='button';b.className='step';b.dataset.key=k;b.title=stepHint(f,i);
       Object.assign(b.style,{left:x(i)-4+'px',top:t+'px',width:bw+8+'px',height:H-t+'px'});
       b.setAttribute('aria-label',`${b.title}. Open`);
       b.onclick=e=>{e.stopPropagation();openFilter({path:k},k,b)};
@@ -1388,7 +1421,7 @@ function drawFunnel(el,f,drop){
 // The link to the bounce page says what bounce did overall, not what it did for this slice.
 // A rate's change in percentage points: +2 pts.
 const pts=(c,p)=>{const d=Math.round((c-p)*100);return d?`${d>0?'+':'−'}${Math.abs(d)} ${Math.abs(d)===1?'point':'points'}`:'same'};
-const bounceLink=()=>{const d=HOME?Math.round((HOME.S.c.bounce-HOME.S.p.bounce)*100):0;return `<span>${d>0?'Why bounce rose':d<0?'Why bounce fell':'Bounce by source'}</span>${CHEV}`};
+const bounceLink=()=>{const H=home(),d=H?Math.round((H.S.c.bounce-H.S.p.bounce)*100):0;return `<span>${d>0?'Why bounce rose':d<0?'Why bounce fell':'Bounce by source'}</span>${CHEV}`};
 const numsHTML=(c,pr,{story=false}={})=>{
   const n=(k,v,sub,told)=>`<div class="num"><span class="k">${k}</span><span class="v${told?' told':''}">${v}</span><span class="delta">${sub}</span></div>`;
   // With no visits there is no rate or time to show; a 0% bounce and its change would be made up.
@@ -1402,8 +1435,9 @@ const numsHTML=(c,pr,{story=false}={})=>{
 async function renderSource(body,f){
   const gen=body._gen,channel=f.channel!=null,key=channel?f.channel:f.referrer,label=labelOf(channel?'channel':'referrer',key);
   const [totals,ser,all,flows,pages,members,entries]=await Promise.all([api('summary',f),api('series',f),api('summary'),
-    api('flows'),api('breakdown',{...f,dim:'path'}),channel?api('breakdown',{...f,dim:'referrer'}):null,api('breakdown',{...f,dim:'entry'})]);
+    api('flows'),api('breakdown',{...f,dim:'path'}),channel?api('breakdown',{...f,dim:'referrer'}):null,api('breakdown',{...f,dim:'entry'}),homeDrawn]);
   if(stale(body,gen))return;
+  const H=home();
   // The referrers this page covers: the one source, or every source in the channel.
   const keys=new Set(channel?members.rows.map(r=>r.key):[key]),inside=k=>keys.has(k);
   const c=totals.cur,pr=totals.prev;
@@ -1417,9 +1451,9 @@ async function renderSource(body,f){
   }).catch(()=>{});
   const share=channel?channelShare(totals,all,label):'';
   // Events about these sources (a new one appearing) are marked under the chart, as on the overview.
-  const pick=e=>e.kind==='source'&&inside(e.key),own=HOME?HOME.events.filter(pick):[];
+  const pick=e=>e.kind==='source'&&inside(e.key),own=H?H.events.filter(pick):[];
   body.innerHTML=`<div><p class="say">${st.html}${share?' '+share:''}</p>${st.without?`<p class="say-sub">${esc(st.without)}</p>`:''}</div>
-    <div class="nums"><div class="hero"><span class="big">${fmtInt(c.visitors)}</span><span>${heroSub(c,pr)}</span></div>${numsHTML(c,pr,{story:bouncy})}</div>
+    <div class="nums"><div class="hero"><span class="big">${fmtInt(c.visitors)}</span><span>${heroSub(totals)}</span></div>${numsHTML(c,pr,{story:bouncy})}</div>
     <section class="card"><div class="card-title">Visitors per day${pr.visitors?`, against the ${DAYS} days before`:''}</div><div class="chart"></div>${own.length?'<div class="marks"></div>':''}</section>
     <div class="two">
       <section class="card"><div class="card-title">Where they landed</div><div class="landed"></div></section>
@@ -1436,7 +1470,7 @@ async function renderSource(body,f){
   }
   dayBars(body.querySelector('.chart'),{cur,prev:pr.visitors?ser.prev.visitors:null,start:ser.start,axis:!own.length,scale:true,label:label2,subj:'src',
     hot:spike>=0?new Set([spike]):null,aria:`Visitors per day from ${label}.${label2?` ${label2.title}.`:''}`});
-  if(own.length)drawMarks(body.querySelector('.marks'),own,HOME.ser,pick);
+  if(own.length)drawMarks(body.querySelector('.marks'),own,H.ser,pick);
   drawLanded(body.querySelector('.landed'),flows.flows.filter(x=>inside(x.source)),null,pages.rows);
   drawSquares(body.querySelector('.sq-box'),[
     {pct:c.visits?c.bounce:null,label,story:bouncy,aria:`${label}: ${c.visits?`${fmtPct(c.bounce)} bounce`:'no visits'}`,open:openBounce},
@@ -1511,7 +1545,7 @@ function drawCrossing(el,left,right,{edge=false,shares=false,bar='page'}={}){
     side(right,tr,xr,cx+6,false);
     el.innerHTML=s+`<rect x="${cx}" y="${y0}" width="6" height="${hc}" fill="var(--${bar})"/></svg>`;
     for(const [it,y,isLeft] of labels){
-      const b=document.createElement('button');b.type='button';b.className=isLeft?'lbl l':'lbl';
+      const b=document.createElement('button');b.type='button';b.className=isLeft?'lbl l':'lbl';b.dataset.key=`${isLeft?'l':'r'}:${it.key??it.label}`;
       b.style.left=(isLeft?xl-8:xr+14)+'px';b.style.top=(it.story||narrow?Math.max(y,20):y)+'px';
       const v=isLeft?fmtInt(it.value):share(it);
       b.innerHTML=it.story?`<b>${esc(it.label)}</b><br><span>${v}${it.sub?` · ${it.sub}`:''}</span>`:`${esc(it.label)}${narrow?'<br>':' '}<span>${v}</span>`;
@@ -1526,9 +1560,9 @@ function drawCrossing(el,left,right,{edge=false,shares=false,bar='page'}={}){
 async function renderBounce(body){
   const gen=body._gen;
   const [totals,ser,entry,refs,pages,flows]=await Promise.all([api('summary'),api('series'),api('breakdown',{dim:'entry'}),
-    api('breakdown',{dim:'referrer'}),api('breakdown',{dim:'path'}),api('flows')]);
+    api('breakdown',{dim:'referrer'}),api('breakdown',{dim:'path'}),api('flows'),homeDrawn]);
   if(stale(body,gen))return;
-  const S=readStory({totals,ser,pages,refs,flows}),B=bounceSplit(S),told=HOME?.T.told||new Set();
+  const H=home(),S=readStory({totals,ser,pages,refs,flows}),B=bounceSplit(S),told=H?.T.told||new Set();
   const c=totals.cur.bounce,p=totals.prev.bounce;
   let say;
   if(!totals.cur.visits)say=`No visits in the last ${DAYS} days.`;
@@ -1555,10 +1589,12 @@ async function renderBounce(body){
       aria:`Bounce ${B.total>0?'rose':'fell'} ${pts(Math.abs(B.total),true)}: ${steps.slice(0,-1).map(s=>`${s.label} ${pts(s.value)}`).join(', ')}.`,
       openOf:s=>s.key!=null?b=>openFilter({referrer:s.key},labelOf('referrer',s.key),b):null});
   }
+  // A day with no visits has no bounce rate, so the line leaves a gap there rather than dropping to 0%.
+  const rates=side=>side.bounce.map((b,i)=>side.visits&&!side.visits[i]?null:b);
   // The highest day is labelled only when it stands out: 5 points or more above a usual day.
-  const cur=ser.cur.bounce,peakI=cur.indexOf(Math.max(...cur)),spikeDay=HOME&&HOME.S.spike===peakI,standsOut=cur[peakI]-median(cur)>=.05;
-  const spikeSrc=spikeDay?labelOf('referrer',HOME.ser.top[peakI]):null;
-  lines(body.querySelector('.chart'),{cur,prev:totals.prev.visits?ser.prev.bounce:null,fmt:fmtPct,axis:fmtPct,start:ser.start,
+  const cur=rates(ser.cur),known=cur.filter(v=>v!=null),peakI=cur.indexOf(Math.max(...known)),spikeDay=H&&peakI>=0&&H.S.spike===peakI,standsOut=known.length&&cur[peakI]-median(known)>=.05;
+  const spikeSrc=spikeDay?labelOf('referrer',H.ser.top[peakI]):null;
+  lines(body.querySelector('.chart'),{cur,prev:totals.prev.visits?rates(ser.prev):null,fmt:fmtPct,axis:fmtPct,start:ser.start,
     peak:standsOut&&{i:peakI,title:`${fmtDate(dayDate(ser.start,peakI))} · ${fmtPct(cur[peakI])}`,sub:spikeSrc?`the ${spikeSrc} day`:'',story:spikeDay,
       aria:`Bounce rate per day. Highest on ${fmtDate(dayDate(ser.start,peakI))} at ${fmtPct(cur[peakI])}.`}});
   for(const [dim,data] of [['referrer',refs],['entry',entry]]){
@@ -1581,9 +1617,9 @@ const crowdAria=(live,told)=>{
 
 // Who is here now, grouped by the page they are on.
 async function renderOnline(body){
-  const gen=body._gen,live=await api('live',{},true);
+  const gen=body._gen,[live]=await Promise.all([api('live',{},true),homeDrawn]);
   if(stale(body,gen))return;
-  const told=HOME?.T.told||new Set(),page=HOME?.T.page;
+  const H=home(),told=H?.T.told||new Set(),page=H?.T.page;
   const C=crowdLine(live,told,50);
   // One row per page, its people grouped as figures; inside the row each person gets a line, with their
   // source, country and time on site in columns of their own. Here now first, then earlier, muted.
@@ -1621,17 +1657,18 @@ async function redrawOnline(body){
 }
 
 /* ---------- home tiles ---------- */
+// The headline counts what the sentence compares: visitors, or visits when only one period crosses a month start.
 function renderStory(S,T,live){
-  const {c,p,diff}=S,el=$('#story');
-  const pct=p.visitors?Math.round(Math.abs(diff)/p.visitors*100):0;
-  const sub=p.visitors
-    ?`visitors <b>${diff>=0?'+':'−'}${pct}%</b><span class="sr">, ${fmtInt(Math.abs(diff))} ${diff>=0?'more':'fewer'} than the ${DAYS} days before</span>`
-    :`visitors in the last ${DAYS} days`;
-  el.innerHTML=`<button type="button" class="headline"><b>${fmtInt(c.visitors)}</b><span>${sub}</span></button>
+  const {c,p,diff}=S,u=S.unit||'visitors',el=$('#story');
+  const pct=p[u]?Math.round(Math.abs(diff)/p[u]*100):0;
+  const sub=p[u]
+    ?`${u} <b>${diff>=0?'+':'−'}${pct}%</b><span class="sr">, ${fmtInt(Math.abs(diff))} ${diff>=0?'more':'fewer'} than the ${DAYS} days before</span>`
+    :`${u} in the last ${DAYS} days`;
+  el.innerHTML=`<button type="button" class="headline"><b>${fmtInt(c[u])}</b><span>${sub}</span></button>
     <div class="say-col"><p class="sentence">${T.html}</p><p class="goal-line" id="goal-line" hidden></p></div>
     <button type="button" class="now" id="now"></button>`;
   const head=el.querySelector('.headline');
-  head.setAttribute('aria-label',`${fmtInt(c.visitors)} ${head.querySelector('span').textContent}. Open`);
+  head.setAttribute('aria-label',`${fmtInt(c[u])} ${head.querySelector('span').textContent}. Open`);
   head.onclick=()=>openOverview(head);
   bindLinks(el.querySelector('.sentence'));
   const now=$('#now');
@@ -1728,9 +1765,9 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
     if(side==='left')b.innerHTML=`<span>${told?`<b>${esc(name)}</b>`:esc(name)} <span class="chg">${n.prev?fmtSigned(n.change):'new'}</span></span>`;
     else if(n.key==null)b.innerHTML=`<span class="muted">${esc(name)}</span>`;
     else b.innerHTML=told?`<span><b>${pathHTML(name)}</b></span>${n.isNew?'<span class="chg">new</span>':''}`:`<span>${esc(name)}</span>`;
-    b.title=side==='left'?sourceHint(n.label,n.value,n.prev):pageHint(n.label,n.value);
+    b.title=side==='left'?sourceHint(n.label,n.value,n.prev,S.unit):pageHint(n.label,n.value);
     b.setAttribute('aria-label',side==='left'
-      ?`${n.label}, ${n.change>=0?'up':'down'} ${fmtInt(Math.abs(n.change))}, ${fmtInt(n.value)} visitors. Open`
+      ?`${n.label}, ${n.change>=0?'up':'down'} ${fmtInt(Math.abs(n.change))}, ${fmtInt(n.value)} ${S.unit}. Open`
       :`${n.label}, ${fmtInt(n.value)} first visits landed here. Open`);
     b.onclick=e=>{e.stopPropagation();n.key==null?openView({v:side==='left'?'sources':'pages'},b)
       :openFilter({[side==='left'?'referrer':'path']:n.key},n.label,b)};
@@ -1751,7 +1788,7 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
 
 function drawGrowth(el,W){
   if(!W){el.innerHTML='<div class="empty">Nothing to compare with yet</div>';return}
-  const aria=`Change in visitors, against the ${DAYS} days before: `+W.steps.map(s=>`${s.label} ${fmtSigned(s.value)}`).join(', ')+'.';
+  const aria=`Change in ${HOME?.S?.unit||'visitors'}, against the ${DAYS} days before: `+W.steps.map(s=>`${s.label} ${fmtSigned(s.value)}`).join(', ')+'.';
   drawSteps(el,W.steps,{fmt:v=>fmtSigned(v),aria,colorOf:s=>s.kind==='total'?'var(--ink)':'var(--src)',
     openOf:s=>s.kind==='total'?openOverview:s.channel?b=>openFilter({channel:s.channel},s.label,b):s.key!==null&&s.kind!=='else'?b=>openFilter({referrer:s.key},s.label,b):null});
 }
@@ -1811,10 +1848,15 @@ function findEvents(S,T,ser,firsts,pageRows){
       detail:from||`a usual day has ${fmtInt(usual)}`,
       open:src!=null?b=>openFilter({referrer:src},labelOf('referrer',src),b):openOverview});
   }
-  if(usual>=20)cur.forEach((v,i)=>{
-    if(i<n-1&&v<usual*.35)ev.push({day:i,kind:'quiet',told:false,name:'Quiet day',title:`Quiet day: ${fmtInt(v)} visitors`,tag:'quiet',
-      short:`${fmtInt(v)} visitors, far fewer than usual. Check that Lede’s line is still on every page.`,detail:`a usual day has ${fmtInt(usual)}. Check that Lede’s line is still on every page.`,open:openOverview});
-  });
+  // Quiet days in a row are one event, at the first of them: one thing happened, not one a day.
+  const check='Check that Lede’s line is still on every page.';
+  for(const q of quietRuns(cur,ser.prev.visitors)){
+    const k=q.end-q.start+1,until=fmtDay(dayDate(ser.start,q.end));
+    ev.push(k===1?{day:q.start,kind:'quiet',told:false,name:'Quiet day',title:`Quiet day: ${fmtInt(q.visitors)} visitors`,tag:'quiet',
+      short:`${fmtInt(q.visitors)} visitors, far fewer than usual. ${check}`,detail:`a usual day has ${fmtInt(q.usual)}. ${check}`,open:openOverview}
+      :{day:q.start,kind:'quiet',told:false,name:'Quiet days',title:`Quiet days: ${fmtInt(q.visitors)} visitors in ${k} days, to ${until}`,tag:'quiet',
+      short:`${k} days far quieter than usual, to ${until}. ${check}`,detail:`a usual day has ${fmtInt(q.usual)}. ${check}`,open:openOverview});
+  }
   const enough=v=>v>=Math.max(20,S.c.visitors*.005);
   for(const f of firsts.pages){
     const row=pageRows.find(r=>r.key===f.key);
@@ -1970,6 +2012,7 @@ function renderEvents(body,events,ser){
 }
 
 function drawHeat(el,S,ser,hourly){
+  if(!hourly){el.innerHTML='<div class="empty">Couldn’t load the hours. Check your connection, then reopen the overview.</div>';return false}
   const cells=Array.from({length:7},()=>Array(24).fill(0)),spikeHours=Array(24).fill(0);
   const spikeDay=S.spike>=0?dayDate(ser.start,S.spike).toDateString():null;
   // Hours are placed by their real local time, so days on the other side of a DST change line up.
@@ -2079,7 +2122,8 @@ function showSkeleton(){
 }
 
 let homeRender=0;
-async function renderHome(message){
+function renderHome(message){return homeDrawn=drawHome(message)}
+async function drawHome(message){
   const gen=++homeRender;
   stack[0].title=displayHost(SITE);
   const grid=$('#grid'),home=$('#home');
@@ -2097,13 +2141,16 @@ async function renderHome(message){
   // A newer render (another period or site) started while this one was loading.
   if(gen!==homeRender)return false;
   done();release(grid);
-  if(sumR.cur.views===0&&sumR.prev.views===0){HOME={empty:true};showOnboarding();return true}
+  // The card that says how to start is for a site that has never had a visit (ever, from the last 90 days; an
+  // answer without it is read as never). A site gone quiet gets its home, which says so.
+  if(sumR.cur.views===0&&sumR.prev.views===0&&!sumR.ever){HOME={empty:true};showOnboarding();return true}
   $('#period').hidden=false;
   const S=readStory({totals:sumR,ser,pages,refs,flows,notes:NOTES}),T=tellStory(S,ser,DAYS);
+  if(!S.c.visitors&&!S.p.visitors)T.html+=' Check that Lede’s line is still on every page.';
   HOME={S,T,ser,pace:todayPace(hourly,Date.now()/1000)};
   renderStory(S,T,live);
   // At very high volume Analytics Engine keeps only some of the views; views are scaled back up, visitors aren't.
-  if(sumR.sampled)$('#story .say-col').insertAdjacentHTML('beforeend',`<p class="sampled">These ${DAYS} days were busy enough that Cloudflare kept only some of the views, so visitor counts may run a little low.</p>`);
+  for(const note of countNotes(sumR,DAYS))$('#story .say-col').insertAdjacentHTML('beforeend',`<p class="sampled">${note}</p>`);
   const pageRows=pages.rows.map(r=>({key:r.key,label:labelOf('path',r.key),value:r.visitors,prev:r.prev?.visitors}));
   const openDim=g=>t=>openView({v:g},t);
   const B=bounceSplit(S),events=findEvents(S,T,ser,firsts,pageRows);
@@ -2136,7 +2183,7 @@ async function refreshOnline(){
   if(stack.length>1){const top=stack[stack.length-1];if(top.vw?.v==='online'&&!animating)redrawOnline(top.el.querySelector('.layer-body'));return}
   // Still waiting for the first visit: ask only whether one came, and leave the card (and its Copy button) alone till then.
   if(HOME.empty){
-    try{const s=await api('summary',{},true);if(s.cur.views||s.prev.views){memo.clear();renderHome()}}catch{}
+    try{const s=await api('summary',{},true);if(s.cur.views||s.prev.views||s.ever){memo.clear();renderHome()}}catch{}
     return;
   }
   try{
@@ -2166,10 +2213,24 @@ async function boot(){
   document.title=`${displayHost(SITE)} · Lede`;
   renderTopbar();
   loadGoals();
-  await renderHome();
-  await goalsReady;
+  const drawn=renderHome();
   history.replaceState({depth:0},'',urlFor(null));
-  if(route.view&&HOME&&!HOME.empty)openView(route.view,$('#home'),{instant:true});
+  // A view in the address opens at once and fetches its own numbers alongside home's.
+  if(route.view)openView(route.view,$('#home'),{instant:true});
+  await drawn;
+  // A site with no visits yet has only the card that says how to start.
+  if(HOME?.empty&&stack.length>1){
+    while(stack.length>1){const s=stack.pop();release(s.el);s.el.remove()}
+    stack[0].el.style.visibility='';stack[0].el.inert=false;grow(false);
+    history.replaceState({depth:0},'',urlFor(null));
+  }
+  startPolling();
+}
+// Signing in again runs boot again; the poller and the listener are set up only the first time.
+let polling=false;
+function startPolling(){
+  if(polling)return;
+  polling=true;
   setInterval(refreshOnline,60000);
   // Back on the tab: who is here now, without waiting for the next minute.
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshOnline()});
