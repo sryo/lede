@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Lede</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preload" href="/weepeople.woff2" as="font" type="font/woff2" crossorigin>
 <style>
 /* Layout: one rounded app window on a quiet canvas. The home screen tells the period's story in reading order:
@@ -238,6 +240,7 @@ button.tile-title:hover{color:var(--ink)}
 .state.error,.onboard{grid-column:1/-1;grid-row:1/-1;align-self:center;justify-self:center;max-width:460px;text-align:center;align-items:center;gap:8px;padding:40px 28px}
 .state.error b,.onboard b{color:var(--ink);font-size:var(--fs-m);font-weight:650}
 .onboard{color:var(--muted);font-size:var(--fs-s)}
+.onboard .logo{width:56px;height:56px;margin-bottom:8px}
 .onboard code{font:12px var(--mono);background:var(--line);color:var(--ink);padding:4px 8px;border-radius:8px;overflow-wrap:anywhere}
 .add{display:flex;gap:8px;margin-top:8px;width:100%;max-width:340px}
 .add input{flex:1;min-width:0;height:32px;box-sizing:border-box;border:0;border-radius:999px;padding:0 16px;background:var(--tile);box-shadow:inset 0 0 0 1px var(--line);color:var(--ink);font:inherit;font-size:var(--fs-s)}
@@ -2009,7 +2012,7 @@ function showOnboarding(){
   const tag=`<script defer src="${location.origin}/t.js"><\/script>`;
   $('#period').hidden=true;
   $('#story').innerHTML='';
-  $('#grid').innerHTML=`<section class="card onboard"><b>No visits yet</b>
+  $('#grid').innerHTML=`<section class="card onboard"><img class="logo" src="/icon.svg" alt=""><b>No visits yet</b>
     <span>Add this line to every page of ${esc(displayHost(SITE))}. The first visit shows up here within a couple of minutes.</span>
     <code>${esc(tag)}</code><button type="button" class="retry">Copy</button><span class="err" role="alert"></span></section>`;
   const btn=$('#grid .retry');
@@ -2027,7 +2030,7 @@ function showSignIn(){
   $('#site').textContent='';$('#hint').textContent='';
   $('#period').hidden=true;
   $('#story').innerHTML='';
-  $('#grid').innerHTML=`<form class="card onboard signin" novalidate><b>Enter your password</b>
+  $('#grid').innerHTML=`<form class="card onboard signin" novalidate><img class="logo" src="/icon.svg" alt=""><b>Enter your password</b>
     <div class="add"><input name="password" type="password" autocomplete="current-password" aria-label="Password"><button class="retry">Sign in</button></div>
     <span class="err" role="alert"></span><span class="muted">Forgot it? Run npx wrangler secret put DASHBOARD_PASSWORD.</span></form>`;
   const form=$('#grid form'),input=form.password,err=form.querySelector('.err');
@@ -2049,7 +2052,7 @@ function showSignIn(){
 function askForSite(){
   $('#period').hidden=true;
   $('#story').innerHTML='';
-  $('#grid').innerHTML=`<form class="card onboard" novalidate><b>What’s your site’s address?</b>
+  $('#grid').innerHTML=`<form class="card onboard" novalidate><img class="logo" src="/icon.svg" alt=""><b>What’s your site’s address?</b>
     <span>Lede counts visits to this site and ignores the rest.</span>
     <div class="add"><input name="site" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="example.com" aria-label="Your site’s address"><button class="retry">Add</button></div>
     <span class="err" role="alert"></span></form>`;

@@ -1,4 +1,7 @@
-# Lede
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+  <img src="docs/logo.svg" height="56" alt="Lede">
+</picture>
 
 Your site's stats, told as a story.
 
