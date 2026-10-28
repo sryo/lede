@@ -4,6 +4,8 @@
 export const FIELDS = [
   'site', 'path', 'url', 'referrer', 'channel', 'visitor', 'visit', 'type',
   'country', 'utmSource', 'utmMedium', 'utmCampaign', 'target',
+  // Kind of device (phone, tablet, computer) and browser family, then the ad keyword (utm_term).
+  'device', 'browser', 'utmTerm',
 ];
 // Engagement figures go in doubles: milliseconds the page was read, and how far down it was scrolled (%).
 export const NUMBERS = ['engaged', 'scroll'];

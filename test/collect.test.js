@@ -155,7 +155,7 @@ test('link clicks keep only the host and path of the link', () => {
   assert.equal(ev('outbound', 'https://a.test/' + 'x'.repeat(3000)), null);
 });
 
-test('collect writes engagement as doubles and the link in the last blob, hashed like a page view', async () => {
+test('collect writes engagement as doubles and the link in its own blob, hashed like a page view', async () => {
   const points = [];
   const kv = new Map([['sites', '["example.com"]'], ['salt', 's']]);
   const env = { STORE: { get: async k => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v), delete: async k => kv.delete(k) }, EVENTS: { writeDataPoint: p => points.push(p) } };
@@ -167,7 +167,7 @@ test('collect writes engagement as doubles and the link in the last blob, hashed
   await send({ t: 'download', o: 'https://example.com/files/guide.pdf' });
   assert.equal(points.length, 3);
   const rows = points.map(p => Object.fromEntries(FIELDS.map((f, i) => [f, p.blobs[i]])));
-  assert.equal(FIELDS.at(-1), 'target', 'new fields go at the end, so stored rows keep their layout');
+  assert.deepEqual(FIELDS.slice(12), ['target', 'device', 'browser', 'utmTerm'], 'new fields go at the end, so stored rows keep their layout');
   assert.deepEqual(rows.map(r => r.type), ['pageview', 'engagement', 'download']);
   assert.deepEqual(points.map(p => p.doubles), [[0, 0], [12000, 80], [0, 0]]);
   assert.deepEqual(rows.map(r => r.target), ['', '', 'example.com/files/guide.pdf']);
