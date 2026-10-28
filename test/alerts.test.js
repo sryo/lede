@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import worker from '../src/index.js';
-import { runAlerts, webhookRequest, plain, WEEKLY, SPIKES } from '../src/alerts.js';
+import { runAlerts, webhookRequest, plain, splitText, fitsIn, WEEKLY, SPIKES, SUBREQUESTS } from '../src/alerts.js';
 
 crypto.subtle.timingSafeEqual ??= (a, b) => Buffer.from(a).equals(Buffer.from(b));
 
@@ -52,15 +52,16 @@ function weekRows(sql) {
 }
 
 // Who is here now: `here` people seen in the last 5 minutes (n on /blog/x, most from Hacker News), plus a few earlier.
-function liveRows(nowSec, here, onPage = here) {
+function liveRows(nowSec, here, onPage = here, src = 'news.ycombinator.com') {
   return [
-    ...Array.from({ length: here }, (_, i) => ({ visitor: `v${i}`, path: i < onPage ? '/blog/x' : `/p${i % 3}`, referrer: i % 4 === 3 ? 'google.com' : 'news.ycombinator.com', country: 'US', first: String(nowSec - 200), last: String(nowSec - 10 - i) })),
+    ...Array.from({ length: here }, (_, i) => ({ visitor: `v${i}`, path: i < onPage ? '/blog/x' : `/p${i % 3}`, referrer: i % 4 === 3 ? 'google.com' : src, country: 'US', first: String(nowSec - 200), last: String(nowSec - 10 - i) })),
     ...Array.from({ length: 3 }, (_, i) => ({ visitor: `old${i}`, path: '/', referrer: '', country: 'US', first: String(nowSec - 1500), last: String(nowSec - 900) })),
   ];
 }
 
-// The SQL API and the webhook, faked. `usual` is visitors per day in the same 5 minutes over the last 14 days.
-function fakes({ rows = weekRows, here = 0, onPage, usual = [], hook = 200 } = {}) {
+// The SQL API and the webhook, faked. `usual` is visitors per day in the same 5 minutes over the last 14 days,
+// `since` how long ago the site's first event was (in days), `seen` whether the crowd's source sent anyone before.
+function fakes({ rows = weekRows, here = 0, onPage, src, usual = [], since = 30, seen = false, hook = 200 } = {}) {
   const sent = [], sql = [];
   const fetchImpl = async (url, init = {}) => {
     const u = String(url);
@@ -68,9 +69,11 @@ function fakes({ rows = weekRows, here = 0, onPage, usual = [], hook = 200 } = {
       const body = String(init.body);
       sql.push(body);
       const nowSec = Math.floor(fetchImpl.now / 1000);
-      const data = body.includes('argMax(blob2') ? liveRows(nowSec, here, onPage)
+      const data = body.includes('argMax(blob2') ? liveRows(nowSec, here, onPage, src)
         : body.includes('* 86400 < 300') ? usual.map((v, d) => ({ d: String(d), visitors: String(v) }))
-          : rows(body);
+          : body.includes('min(timestamp)) AS first') ? [{ first: String(nowSec - since * DAY) }]
+            : body.includes('count() AS n FROM') ? [{ n: seen ? '3' : '0' }]
+              : rows(body);
       return new Response(JSON.stringify({ meta: [], data, rows: data.length }), { status: 200 });
     }
     if (typeof hook === 'function') return hook(u, init);
@@ -82,7 +85,7 @@ function fakes({ rows = weekRows, here = 0, onPage, usual = [], hook = 200 } = {
 
 const env = (extra = {}) => ({
   ACCOUNT_ID: 'acc', ANALYTICS_TOKEN: 'tok', ALERT_WEBHOOK: 'https://ntfy.sh/my-lede',
-  STORE: memoryKV({ sites: '["example.com"]', origin: 'https://lede.example.workers.dev' }), ...extra,
+  STORE: memoryKV({ sites: '["example.com"]', origin: 'https://lede.example.workers.dev', 'added:example.com': String(Date.UTC(2026, 6, 1) / 1000) }), ...extra,
 });
 
 async function run(cron, e, f, nowMs) {
@@ -104,6 +107,40 @@ test('Slack gets {text}, Discord gets {content}, anything else (ntfy) gets the p
   const ntfy = webhookRequest('https://ntfy.sh/my-lede', 'Plain words');
   assert.equal(ntfy.body, 'Plain words');
   assert.match(ntfy.headers['Content-Type'], /^text\/plain/);
+});
+
+test('a long message goes as a few that each fit, cut between sites, then lines, then anywhere', () => {
+  const short = s => s.length <= 20;
+  assert.deepEqual(splitText('one\ntwo\n\nthree', short), ['one\ntwo\n\nthree']);
+  assert.deepEqual(splitText('a.org week\nline\n\nb.org week\nline', short), ['a.org week\nline', 'b.org week\nline']);
+  assert.deepEqual(splitText('a.org, the week of Oct 19\nNo visitors.', short), ['a.org, the week of O', 'ct 19', 'No visitors.']);
+  assert.ok(fitsIn('https://discord.com/api/webhooks/1/a')('x'.repeat(2000)));
+  assert.ok(!fitsIn('https://discord.com/api/webhooks/1/a')('x'.repeat(2001)));
+  assert.ok(!fitsIn('https://ntfy.sh/t')('é'.repeat(2049)), 'ntfy counts bytes, and é is two');
+  assert.ok(fitsIn('https://hooks.slack.com/services/T/B/x')('x'.repeat(40_000)));
+});
+
+test('a story longer than Discord takes goes as several messages, all of it, in order', async () => {
+  const sites = Array.from({ length: 7 }, (_, i) => `site${i}.example.com`);
+  const long = '/about/' + 'owls-'.repeat(60);
+  const f = fakes({ rows: sql => weekRows(sql).map(r => (r.key === '/about' ? { ...r, key: long } : r)) });
+  await run(WEEKLY, env({ ALERT_WEBHOOK: 'https://discord.com/api/webhooks/1/abc', STORE: memoryKV({ sites: JSON.stringify(sites) }) }), f, MONDAY);
+  const parts = f.sent.map(s => JSON.parse(s.body).content);
+  assert.ok(parts.length > 1);
+  assert.ok(parts.every(p => p.length <= 2000));
+  assert.deepEqual(parts.join('\n\n').match(/^site\d/gm), sites.map(s => s.slice(0, 5)), 'every site, each whole, in order');
+});
+
+test('the week’s story stops before a Free schedule runs out of requests, and names the sites left out', async () => {
+  const sites = Array.from({ length: 10 }, (_, i) => `s${i}.org`);
+  const f = fakes();
+  await run(WEEKLY, env({ STORE: memoryKV({ sites: JSON.stringify(sites) }) }), f, MONDAY);
+  assert.ok(f.sql.length <= SUBREQUESTS, `${f.sql.length} queries`);
+  assert.ok(f.sql.length + f.sent.length <= 50, 'Cloudflare’s 50, with the message');
+  const body = f.sent.map(s => s.body).join('\n\n');
+  assert.match(body, /^s6\.org, the week of/m);
+  assert.ok(!/^s7\.org, the week/m.test(body));
+  assert.match(body, /\n\nToo many sites for one message, so s7\.org, s8\.org and s9\.org aren’t in it\. Their week is on the dashboard\.$/);
 });
 
 test('sentences lose their links and keep their words', () => {
@@ -238,6 +275,35 @@ test('at most two spike messages a day per site, hours apart, and the count star
   await run(SPIKES, e, f, Date.UTC(2026, 9, 29, 1));
   assert.equal(f.sent.length, 3);
   assert.equal(e.STORE.writes, 3, 'one KV write per message sent');
+});
+
+test('a new site gets no spike message for its first 3 days, then a usual from the days it had', async () => {
+  const STORE = memoryKV({ sites: '["example.com"]' });
+  const young = fakes({ here: 40, since: 2.5 });
+  await run(SPIKES, env({ STORE }), young, WED);
+  assert.equal(young.sent.length, 0, 'two days isn’t enough to know the usual');
+  assert.equal(STORE.map.get('added:example.com'), String(WED / 1000 - 2.5 * DAY), 'the first event is kept');
+  assert.equal(young.sql.length, 2, 'who is here now, then when the site began');
+  const later = fakes({ here: 40, usual: [10, 10, 10, 10] });
+  const now = WED + 2 * DAY * 1000;
+  await run(SPIKES, env({ STORE }), later, now);
+  assert.equal(later.sql.length, 2, 'when it began is asked once, then read from KV');
+  assert.ok(later.sql[1].includes(`toDateTime(${now / 1000 - 4 * DAY - 300})`), 'the usual over the 4 days it had');
+  assert.match(later.sent[0].body, /Usually about 10 at this time of day\./, 'not 40 over 14 days');
+});
+
+test('a spike names a source people know, or one that sent visitors before; never an unknown host', async () => {
+  const unknown = fakes({ here: 40, src: 'secret-plans.example' });
+  await run(SPIKES, env(), unknown, WED);
+  assert.match(unknown.sent[0].body, /^40 people are on \/blog\/x of example\.com right now, most from a site that sent nobody in the 2 weeks before\./);
+  assert.ok(!unknown.sent[0].body.includes('secret-plans'));
+  assert.ok(unknown.sql[2].includes("hex(blob4) = '"), 'asked whether it sent anyone before');
+  const seen = fakes({ here: 40, src: 'owl-forum.example', seen: true });
+  await run(SPIKES, env(), seen, WED);
+  assert.match(seen.sent[0].body, /most from owl-forum\.example\./);
+  const known = fakes({ here: 40 });
+  await run(SPIKES, env(), known, WED);
+  assert.equal(known.sql.length, 2, 'Hacker News is known, so nothing more is asked');
 });
 
 test('a crowd bigger than the live list can show says so', async () => {
