@@ -111,3 +111,20 @@ Days run from local midnight to local midnight in `tzName`, so the day the clock
 - Each comparison (summary, days, breakdowns, flows, engagement, link clicks) is one SQL query covering both periods, with each row labelled by period. Lists keep each period's top rows (100 for breakdowns, 200 for engagement and links); SQL here has no `LIMIT BY`, so the query asks for more (ten times as many for breakdowns and those lists, twice as many for flows) and Lede trims each period. When one period fills that whole answer, as after a tenfold change in traffic on a site with hundreds of pages, the other period is asked for on its own.
 - Stats answers are kept for 60 s (15 s for live) in each Worker instance and, on a custom domain, in Cloudflare's edge cache too (Cloudflare documents the Cache API for custom domains, not `workers.dev`).
 - Filter values reach SQL hex-encoded (`hex(blob2) = '…'`), because the SQL API documents no string escaping.
+
+## Measuring changes
+
+Every change is measured before it goes in. Performance work must improve the numbers; any other change must keep them.
+
+```sh
+npm run bench            # this working copy against the commit in bench/baseline.json
+npm run bench:compare    # judges it; exits 1 on a regression
+```
+
+`scripts/bench.mjs` runs both versions without Cloudflare: the Worker in Node with stand-ins for Analytics Engine and KV that count every query and write (`bench/fakes.mjs`, `bench/server.mjs`), and the dashboard and tracker in headless Chrome Canary with the CPU slowed 4x. It records:
+
+- **Bytes**: `t.js` as sites receive it, and everything the dashboard can load, raw, gzip and brotli. Any increase is a regression.
+- **Counts**: Analytics Engine queries and `/api` calls per dashboard page, and requests, writes and KV use per visit. These are what the free limits count, they don't vary between runs, and any increase is a regression. The judge also prints how much a day they leave room for.
+- **Timings**: the Worker per visit and per stats answer, what `t.js` adds to a page, and how long the dashboard home takes to draw and how long it blocks. The two versions run in turn, rep after rep, and the judge looks at the ratio of each pair. A timing is worse when the bootstrap 95% range of the median ratio sits wholly above the threshold for that metric (in `bench/noise.json`, twice what unchanged code swings, at least 5%) and the medians differ by more than 0.05 ms. A range that crosses the threshold is inconclusive: rerun before believing it. A Worker answer over 5 ms fails on its own, to stay well under the 10 ms of CPU free Workers get.
+
+Put the before and after numbers that changed in the commit message. When a change makes Lede smaller, cheaper or faster, record the new baseline in the same commit with `node scripts/bench.mjs --save-baseline`. After a Chrome Canary update or a move to another machine, measure the noise again: `node scripts/bench.mjs --aa` then `node scripts/compare.mjs --noise bench/runs/aa.json`. Runs land in `bench/runs/`, which git ignores.

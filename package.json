@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "wrangler dev --var DEMO:true",
     "deploy": "wrangler deploy",
-    "test": "node --test"
+    "test": "node --test",
+    "bench": "node scripts/bench.mjs",
+    "bench:compare": "node scripts/compare.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.153.0"
