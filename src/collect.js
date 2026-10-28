@@ -2,6 +2,7 @@ import { unwanted, isSpam } from './bots.js';
 import { channelFor, referrerHost, sourceTag } from './channels.js';
 import { deviceOf, browserOf } from './devices.js';
 import { toDataPoint } from './schema.js';
+import { SEARCH_PARAMS } from './queries.js';
 import { keyword, searchWord } from './shape.js';
 import { getSites, getSalt } from './settings.js';
 
@@ -22,10 +23,12 @@ const vital = (v, max) => typeof v === 'number' && v >= 0 && v <= max ? Math.rou
 // Parts of a link's path that can name a person or unlock something: an email address, 7 or more digits
 // that aren't a date (20261005), a UUID, 16 or more hex characters, or a long token mixing upper and
 // lower case with digits. Each is kept as *, with the file's extension, so downloads of one kind of file
-// stay together.
+// stay together. An email's domain ends in letters that aren't a file's extension, so logo@2x.png and
+// lodash@4.17.21 are names, not addresses.
 const DATE = /^(19|20)\d\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/;
+const EMAIL = /[^@\s]@[^@\s]+\.(?!(?:png|jpe?g|gif|webp|avif|svg|ico|m?js|css|map|json|wasm|html?|xml|pdf|txt|csv|zip|t?gz)(?![\da-z]))[a-z]{2,}(?![\da-z])/i;
 function secret(s) {
-  return /[^@]@[^@]+\./.test(s) || /[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}/i.test(s) || /[\da-f]{16}/i.test(s)
+  return EMAIL.test(s) || /[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}/i.test(s) || /[\da-f]{16}/i.test(s)
     || (s.match(/\d{7,}/g) || []).some(d => !DATE.test(d))
     || (s.match(/[A-Za-z\d]{20,}/g) || []).some(t => /[a-z]/.test(t) && /[A-Z]/.test(t) && /\d/.test(t));
 }
@@ -88,8 +91,10 @@ export function parseEvent(body, sites) {
   if (!extra) return null;
   const path = trimPath(page.pathname);
   // Of the page's query only what was searched for is kept, cleaned as search words are, since the rest
-  // can hold a reset token, an email address or a session ID.
-  const word = searchWord(page.search);
+  // can hold a reset token, an email address or a session ID. A magic link can put its token in s or k,
+  // so a word that looks like one is dropped too; that's checked before lowercasing hides mixed case.
+  const raw = SEARCH_PARAMS.map(p => page.searchParams.get(p)).find(Boolean);
+  const word = raw && !secret(raw) ? searchWord(page.search) : '';
 
   return {
     site,

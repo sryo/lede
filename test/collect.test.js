@@ -29,6 +29,9 @@ test('a page address keeps only the word searched for, cleaned as search words a
   assert.equal(url('/reset?token=9f8e7d6c5b4a&email=a%40b.co'), '/reset', 'a reset link keeps nothing of its query');
   assert.equal(url('/search?q=call+me+on+0612345678'), '/search', 'a word that could name someone is dropped');
   assert.equal(url('/search?q=a@b.co'), '/search');
+  assert.equal(url('/verify?s=f3a9bc0de1f2a3b4c5d6e7f8a9b0c1d2'), '/verify', 'a token in a search parameter is dropped');
+  assert.equal(url('/login?k=Xk9mQ2pL7vR4tY8wZ3bNaQ'), '/login', 'mixed case is checked before it is lowercased');
+  assert.equal(url('/search?s=Release+Notes+2026'), '/search?q=release+notes+2026');
 });
 
 test('ignores self-referrals and strips www from referrers', () => {
@@ -293,6 +296,9 @@ test('a link\'s path loses what could name a person or unlock something, and kee
   assert.equal(scrubPath('/getting-started-with-the-new-api'), '/getting-started-with-the-new-api');
   assert.equal(scrubPath('/Release-Notes-2026-October-Edition'), '/Release-Notes-2026-October-Edition', 'words with capitals and a year are a title');
   assert.equal(scrubPath('/%E0%A4%A'), '/%E0%A4%A', 'a broken escape is kept as it was');
+  assert.equal(scrubPath('/img/logo@2x.png'), '/img/logo@2x.png', 'a retina image is not an email');
+  assert.equal(scrubPath('/lodash@4.17.21/lodash.min.js'), '/lodash@4.17.21/lodash.min.js', 'nor is a package version');
+  assert.equal(scrubPath('/u/jane@mail.co.uk.pdf'), '/u/*.pdf');
 });
 
 test('collect writes engagement as doubles and the link in its own blob, hashed like a page view', async () => {
