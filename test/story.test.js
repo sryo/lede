@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readStory, tellStory, bounceSplit, bounceCaption, waterfall, waterfallCaption, spikeSegment, daysCaption,
+import { readStory, tellStory, bounceSplit, bounceCaption, waterfall, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore } from '../src/demo.js';
@@ -168,7 +168,6 @@ test('spike segment is the top source\'s visitors on the spike day', () => {
   const { S } = story({ rows, ser });
   assert.equal(S.spike, 18);
   assert.deepEqual(spikeSegment(S, ser), { day: 18, total: 3000, top: 2700, source: 'news.ycombinator.com' });
-  assert.equal(strip(daysCaption(S, ser, 28)), 'A steady month, except one Friday');
 });
 
 test('a busy day made by a source the sentence does not lead with still shows that source on its bar', () => {
@@ -179,13 +178,12 @@ test('a busy day made by a source the sentence does not lead with still shows th
   assert.deepEqual(spikeSegment(S, ser, START), { day: 18, total: 1400, top: 1150, source: 'facebook.com' });
 });
 
-test('no spike: no coral segment and a plain caption', () => {
+test('no spike: no coral segment', () => {
   const rows = [ref('news.ycombinator.com', 1200, 1000), ref('google.com', 6000, 6000)];
   const ser = series(260, { 3: 300 });
   const { S } = story({ rows, ser });
   assert.equal(S.spike, -1);
   assert.equal(spikeSegment(S, ser), null);
-  assert.equal(strip(daysCaption(S, ser, 28)), 'Busiest day: Thu, Oct 1 · 300');
 });
 
 /* ---------- sankey caption ---------- */

@@ -35,7 +35,6 @@ export const pageName = k => k === '/' ? 'the home page' : k;
 // A path that wraps after an inner slash, never at a hyphen (which would read like a minus at the start of a line).
 export const pathHTML = k => esc(k).replace(/-/g, '\u2011').replace(/(?<=.)\//g, '/<wbr>');
 const pctChange = (c, p) => p ? Math.round((c - p) / p * 100) : null;
-const periodWord = days => days >= 28 ? 'month' : days === 7 ? 'week' : `${days} days`;
 const readers = label => label === 'Direct' ? 'direct visitors' : `${label} readers`;
 
 /* ---------- the story ---------- */
@@ -224,18 +223,6 @@ export function spikeSegment(S, ser) {
   if (ser.top[i] == null) return null;
   const total = ser.cur.visitors[i];
   return { day: i, total, top: Math.min(total, ser.topVisitors[i]), source: ser.top[i] };
-}
-
-export function daysCaption(S, ser, days) {
-  const cur = ser.cur.visitors;
-  if (S.spike >= 0) {
-    const d = dayDate(ser.start, S.spike), others = cur.filter((_, j) => j !== S.spike), m = sum(others) / others.length;
-    const sd = Math.sqrt(sum(others.map(v => (v - m) ** 2)) / others.length);
-    return sd <= m * .35 ? `A steady ${periodWord(days)}, except <b>one ${fmtWeekday(d, 'long')}</b>` : `<b>${fmtDate(d)}</b> stood out`;
-  }
-  if (!sum(cur)) return 'No visitors yet';
-  const i = cur.indexOf(maxOf(cur));
-  return `Busiest day: <b>${fmtDate(dayDate(ser.start, i))}</b> · ${fmtInt(cur[i])}`;
 }
 
 /* ---------- where the change came from ---------- */
