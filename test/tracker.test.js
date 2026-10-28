@@ -16,7 +16,8 @@ const test = (name, fn) => {
 
 // Runs the tracker against a stand-in page and returns what it sent, plus handles to navigate.
 // sent holds the page views; events holds everything else (engagement, outbound links, downloads).
-function page(href, { referrer = '', prerendering = false, hidden = false, ignore = false, engagement, height = 2000, now = Date.parse('2026-10-05T10:50:00Z'), noFetch = false } = {}) {
+// marked gives the elements an endless page marks with data-lede-page: path → [top, height] in the document.
+function page(href, { referrer = '', prerendering = false, hidden = false, ignore = false, engagement, height = 2000, marked = {}, now = Date.parse('2026-10-05T10:50:00Z'), noFetch = false } = {}) {
   const sent = [], events = [], beacons = [], requests = [], listeners = {}, docListeners = {}, storage = new Map(), timers = [];
   let focused = true;
   const clock = { now };
@@ -28,6 +29,10 @@ function page(href, { referrer = '', prerendering = false, hidden = false, ignor
       currentScript: { src: 'https://lede.test/t.js', getAttribute: k => (k === 'data-engagement' ? engagement ?? null : null) },
       referrer, prerendering, visibilityState: hidden ? 'hidden' : 'visible',
       hasFocus: () => focused, documentElement: { scrollHeight: height },
+      querySelector: selector => {
+        const box = marked[selector.match(/^\[data-lede-page="(.*)"\]$/)?.[1]];
+        return box ? { getBoundingClientRect: () => ({ top: box[0] - window.scrollY, height: box[1] }) } : null;
+      },
       addEventListener: on(docListeners),
       removeEventListener: (type, fn) => { docListeners[type] = (docListeners[type] || []).filter(f => f !== fn); },
     },
@@ -297,6 +302,38 @@ test('tracker: a page that fits on screen is read to the end, even when a single
   p.resize(5000);
   p.push('/next');
   assert.equal(p.events[0].s, 100);
+});
+
+test('tracker: an endless page that marks each page is measured within it, not the whole document', () => {
+  // Two 3000px chapters in a 9000px document, with a third already added below.
+  const marked = { '/chapter-1': [0, 3000], '/chapter-2': [3000, 3000] };
+  const p = page('https://example.com/chapter-1', { height: 9000, marked });
+  p.wait(3000); p.scroll(1600);
+  p.leave();
+  assert.equal(p.events[0].s, 80, 'the bottom of the window is 2400px into a 3000px chapter, not 27% of the document');
+});
+
+test('tracker: a chapter scrolled past into the next one was read to the end, and the next starts at its own top', () => {
+  const marked = { '/chapter-1': [0, 3000], '/chapter-2': [3000, 3000] };
+  const p = page('https://example.com/chapter-1', { height: 9000, marked });
+  p.wait(3000); p.scroll(2900);
+  p.replace('/chapter-2');
+  p.wait(5000);
+  assert.equal(p.events[0].s, 100);
+  p.scroll(3700); p.wait(2000);
+  p.leave();
+  assert.equal(p.events[1].s, 50, 'half of the second chapter, not 50% of the document from its top');
+});
+
+test('tracker: scrolling up into the chapter before leaves the one being read where it got to', () => {
+  // The chapter before was added above, so the one the reader landed on now starts 3000px down.
+  const marked = { '/chapter-1': [0, 3000], '/chapter-2': [3000, 3000] };
+  const p = page('https://example.com/chapter-2', { height: 6000, marked });
+  p.scroll(3700); p.wait(3000);
+  p.scroll(2000);
+  p.replace('/chapter-1');
+  p.wait(5000);
+  assert.equal(p.events[0].s, 50);
 });
 
 test('tracker: clicks on links to other sites and on files are sent, without the query', () => {

@@ -59,9 +59,12 @@
   // How far down the page the bottom of the window has been, in percent. It's measured on scroll, a
   // second after the view starts and when the tab is hidden or closed, not at the very start, so a
   // page that grows as it loads isn't counted as read to the end.
+  // An endless page holds several pages in one document, so it can mark each with its path
+  // (data-lede-page="/chapter-2"); a view with a marked element is measured within it, and the
+  // pages added above and below don't count toward its height.
   function scrolled() {
-    var height = document.documentElement.scrollHeight;
-    if (view && height) view.depth = Math.max(view.depth, Math.min(100, Math.round((scrollY + innerHeight) / height * 100)));
+    var box = view && (view.box ? view.box.getBoundingClientRect() : { top: -scrollY, height: document.documentElement.scrollHeight });
+    if (box && box.height) view.depth = Math.max(view.depth, Math.min(100, Math.round((innerHeight - box.top) / box.height * 100)));
   }
   // Sent once per page view, when it ends: the tab is hidden or closed, or a single-page app moves on.
   // Less than a second is a glance, so the view stays open in case they come back to it.
@@ -98,7 +101,7 @@
     last = page;
     if (engage) end(true);
     var src = source(), shown;
-    shown = view = { u: location.href, r: src.r, l: src.l, h: visitHour(), ms: 0, since: 0, depth: 0 };
+    shown = view = { u: location.href, r: src.r, l: src.l, h: visitHour(), ms: 0, since: 0, depth: 0, box: document.querySelector('[data-lede-page="' + location.pathname + '"]') };
     post({ u: view.u, r: view.r, l: view.l, h: view.h });
     seen = Date.now();
     keep();

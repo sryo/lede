@@ -39,8 +39,8 @@
     if (view && !view.since && !view.done && document.visibilityState === 'visible' && document.hasFocus()) view.since = Date.now();
   }
   function scrolled() {
-    var height = document.documentElement.scrollHeight;
-    if (view && height) view.depth = Math.max(view.depth, Math.min(100, Math.round((scrollY + innerHeight) / height * 100)));
+    var box = view && (view.box ? view.box.getBoundingClientRect() : { top: -scrollY, height: document.documentElement.scrollHeight });
+    if (box && box.height) view.depth = Math.max(view.depth, Math.min(100, Math.round((innerHeight - box.top) / box.height * 100)));
   }
   function end(moving) {
     pause();
@@ -67,7 +67,7 @@
     last = page;
     if (engage) end(true);
     var src = source(), shown;
-    shown = view = { u: location.href, r: src.r, l: src.l, h: visitHour(), ms: 0, since: 0, depth: 0 };
+    shown = view = { u: location.href, r: src.r, l: src.l, h: visitHour(), ms: 0, since: 0, depth: 0, box: document.querySelector('[data-lede-page="' + location.pathname + '"]') };
     post({ u: view.u, r: view.r, l: view.l, h: view.h });
     seen = Date.now();
     keep();
