@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { parseQuery, sqlStore, handleApi, runSql } from '../src/api.js';
 import { ranges, where, hexOf, breakdownSql, flowSql, hourlySql, firstSeenSql, conversionsSql, engagementSql, linksSql, liveSql, summarySql, seriesSql, topSourceSql, DAY } from '../src/queries.js';
 import { demoStore } from '../src/demo.js';
+import { onEachWeekday } from './weekdays.js';
 import { mergeRows, shapeLive } from '../src/shape.js';
 
 const SITES = ['example.com'];
@@ -204,14 +205,26 @@ test('a failed stats query says so in plain words, without the raw upstream repl
   } finally { console.error = realError; }
 });
 
-test('demo: the sample has one busy day, led by facebook.com, and one quiet day', async () => {
+async function busyAndQuiet(store, label) {
   const q = parseQuery(url('series?days=30'), SITES);
-  const ser = await demoStore.series(q);
+  const ser = await store.series(q);
   const v = ser.cur.visitors, sorted = v.slice().sort((a, b) => a - b), usual = sorted[15];
   const busy = v.indexOf(Math.max(...v)), quiet = v.indexOf(Math.min(...v));
-  assert.ok(v[busy] >= usual * 1.5, 'the busy day stands out');
-  assert.equal(ser.top[busy], 'facebook.com');
-  assert.ok(v[quiet] <= usual * .4, 'the quiet day looks like an outage');
+  assert.ok(v[busy] >= usual * 1.5, `the busy day stands out (${label})`);
+  assert.equal(ser.top[busy], 'facebook.com', label);
+  assert.ok(v[quiet] <= usual * .4, `the quiet day looks like an outage (${label})`);
+  return { busy, quiet };
+}
+
+test('demo: the sample has one busy day, led by facebook.com, and one quiet day', async () => {
+  await busyAndQuiet(demoStore, 'today');
+});
+
+// The sample is built back from today, so weekends fall on different days of it depending on the date.
+test('demo: the busy and quiet days stand out on whatever day of the week it is, always on the same days of the period', async () => {
+  const spots = new Set();
+  await onEachWeekday(async (store, day) => spots.add(JSON.stringify(await busyAndQuiet(store, day))));
+  assert.equal(spots.size, 1, 'the busy and quiet days sit at the same place in the period every day');
 });
 
 test('changes are refused when another site sends them with the saved password', async () => {

@@ -88,9 +88,19 @@ function data() {
   if (matrix) return matrix;
   const r = rng(11);
   const today = new Date();
-  matrix = Array.from({ length: N }, (_, d) => {
+  // Weekends are quieter, on the real weekends of the dates shown. Which days of the sample they fall on
+  // depends on today, so the sample is made the same whatever the date:
+  // - a 30-day period holds 8 to 10 weekend days, so each 30 days is scaled back to the same total,
+  //   and the change against the 30 days before doesn't swing with the calendar;
+  // - the busy and quiet days are set against a weekday, or a busy Saturday would sink into the weekend.
+  const weekly = Array.from({ length: N }, (_, d) => {
+    if (d === BUSY || d === QUIET) return 1;
     const dow = new Date(today.getTime() - (N - 1 - d) * 864e5).getDay();
-    let total = 2150 * (dow === 6 ? .62 : dow === 0 ? .58 : 1) * (1 + d * .0025) * (.9 + r() * .2);
+    return dow === 6 ? .62 : dow === 0 ? .58 : 1;
+  });
+  const block = d => weekly.slice(d - d % 30, d - d % 30 + 30);
+  matrix = Array.from({ length: N }, (_, d) => {
+    let total = 2150 * weekly[d] / (block(d).reduce((a, b) => a + b) / 30) * (1 + d * .0025) * (.9 + r() * .2);
     if (d === BUSY) total *= 1.95;
     if (d === QUIET) total *= .3;
     if (d >= N - 7) total *= 1.12;
@@ -99,7 +109,7 @@ function data() {
       let w = s.w * (.85 + r() * .3) * live(s.key);
       if (s.ch === 'ai') w *= .4 + d / N * 1.2;
       if (s.ch === 'search') w *= 1 + Math.max(0, d - (N - 30)) / 30 * .25;
-      if (s.key === 'facebook.com' && d === BUSY) w *= 24;
+      if (s.key === 'facebook.com' && d === BUSY) w *= 10;
       return w;
     });
     const swSum = sw.reduce((a, b) => a + b);

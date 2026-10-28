@@ -4,6 +4,7 @@ import { readStory, tellStory, bounceSplit, bounceCaption, waterfall, waterfallC
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore } from '../src/demo.js';
+import { onEachWeekday } from './weekdays.js';
 import { channelFor } from '../src/channels.js';
 
 const DAY = 86400;
@@ -75,17 +76,25 @@ test('sources new this period count toward everyone else, so the split still sum
   close(B.mix + (B.top?.pts ?? 0) + B.rest, B.total);
 });
 
-test('the demo data: search brought most of the growth, mostly to /migration, and bounce barely moved', async () => {
+async function demoStory(store, day) {
   const q = parseQuery(new URL('https://w.test/api/x?days=30&tz=0'), ['example.com']);
-  const [totals, ser, pages, refs, flows] = await Promise.all([demoStore.summary(q), demoStore.series(q),
-    demoStore.breakdown(q, 'path'), demoStore.breakdown(q, 'referrer'), demoStore.flows(q)]);
+  const [totals, ser, pages, refs, flows] = await Promise.all([store.summary(q), store.series(q),
+    store.breakdown(q, 'path'), store.breakdown(q, 'referrer'), store.flows(q)]);
   const S = readStory({ totals, ser, pages, refs, flows });
   const T = tellStory(S, ser, 30);
-  assert.equal(S.lead.key, 'google.com');
-  assert.match(T.html, /mostly to .*\/migration/);
+  assert.equal(S.lead.key, 'google.com', day);
+  assert.match(T.html, /mostly to .*\/migration/, day);
   const B = bounceSplit(S);
-  assert.ok(Math.abs(B.total) < .005);
+  assert.ok(Math.abs(B.total) < .005, day);
   close(B.mix + B.top.pts + B.rest, B.total);
+}
+
+test('the demo data: search brought most of the growth, mostly to /migration, and bounce barely moved', async () => {
+  await demoStory(demoStore, 'today');
+});
+
+test('the demo data tells the same story on whatever day of the week it is', async () => {
+  await onEachWeekday(demoStory);
 });
 
 test('no previous period: no bounce split', () => {
