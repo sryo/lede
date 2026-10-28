@@ -145,6 +145,71 @@ test('shot: a busy browser (429, 5xx or no answer) is asked again a minute later
   assert.deepEqual(await ask(env(), thrown), { og: 'https://example.com/img/share.png', why: 'busy' }, 'a relative share picture is read against the page');
 });
 
+const putsOf = e => {
+  const puts = [], put = e.STORE.put;
+  e.STORE.put = async (k, v, o) => { puts.push({ k, o }); return put(k, v, o); };
+  return puts;
+};
+const answer = (status, ms) => async u => (String(u).endsWith('/screenshot')
+  ? new Response('no', { status, headers: ms ? { 'X-Browser-Ms-Used': String(ms) } : {} }) : html(''));
+
+test('shot: an answer that spent browser time stays in the day’s budget, and isn’t asked again that day', async () => {
+  const e = env(), puts = putsOf(e);
+  let shots = 0;
+  const slow = async u => (String(u).endsWith('/screenshot') ? (shots++, answer(504, 20_000)(u)) : html(''));
+  assert.deepEqual(await ask(e, slow), { og: null, why: 'failed' });
+  const marker = puts.find(p => p.k.startsWith('shot:'));
+  assert.equal(marker.o.expirationTtl, 86400, 'kept all day, so its 20 s are still counted');
+  assert.equal(marker.o.metadata.ms, 20_000);
+  assert.equal((await ask(e, slow, '/owls', T0 + 120e3)).why, 'failed');
+  assert.equal(shots, 1, 'not asked again a minute later');
+});
+
+test('shot: a 429 that comes again a minute later means the account’s browser time is spent for the day', async () => {
+  const count = counters(), e = env({ STORE: memoryKV(count, { sites: '["example.com"]' }) }), puts = putsOf(e);
+  let shots = 0;
+  const full = async u => (String(u).endsWith('/screenshot') ? (shots++, answer(429)(u)) : html(''));
+  assert.equal((await ask(e, full, '/a')).why, 'busy');
+  assert.equal((await ask(e, full, '/b', T0 + 10e3)).why, 'busy', 'two at once are only too many at once');
+  assert.equal((await ask(e, full, '/c', T0 + 61e3)).why, 'budget');
+  const day = puts.find(p => p.k === 'shot:2026-10-28:');
+  assert.equal(day.o.metadata.ms, BUDGET_MS, 'every instance now sees the day’s time as used');
+  assert.equal(day.o.expirationTtl, 86400);
+  const lists = count.kvLists;
+  assert.equal((await ask(e, full, '/d', T0 + 300e3)).why, 'budget');
+  assert.equal(shots, 3, 'no more calls today');
+  assert.equal(count.kvLists, lists, 'and no more KV lists');
+  assert.ok((await ask(e, cloudflare(), '/d', T0 + DAY)).jpeg, 'tomorrow it starts again');
+});
+
+test('shot: a picture between two 429s shows the account still has browser time', async () => {
+  const e = env();
+  let n = 0;
+  const f = async u => {
+    if (!String(u).endsWith('/screenshot')) return html('');
+    return ++n === 2 ? new Response(JPEG, { headers: { 'Content-Type': 'image/jpeg', 'X-Browser-Ms-Used': '3000' } }) : answer(429)(u);
+  };
+  assert.equal((await ask(e, f, '/a')).why, 'busy');
+  assert.ok((await ask(e, f, '/b', T0 + 30e3)).jpeg);
+  assert.equal((await ask(e, f, '/c', T0 + 120e3)).why, 'busy');
+});
+
+test('shot: a token that can’t tell which account to use isn’t asked again every minute', async () => {
+  const e = env({ ACCOUNT_ID: undefined }), puts = putsOf(e);
+  let lookups = 0;
+  const two = async u => {
+    if (String(u).endsWith('/client/v4/accounts')) return lookups++, new Response(JSON.stringify({ result: [{ id: 'a' }, { id: 'b' }] }));
+    if (String(u).endsWith('/screenshot')) throw new Error('unexpected');
+    return html('');
+  };
+  assert.deepEqual(await ask(e, two), { og: null, why: 'failed' });
+  assert.equal(puts.find(p => p.k.startsWith('shot:')).o.expirationTtl, 86400);
+  await ask(e, two, '/owls', T0 + 120e3);
+  assert.equal(lookups, 1);
+  const offline = async u => { if (String(u).endsWith('/client/v4/accounts')) throw new Error('offline'); return html(''); };
+  assert.equal((await ask(env({ ACCOUNT_ID: undefined }), offline)).why, 'busy', 'no answer at all is only busy');
+});
+
 test('shot: a failure never takes the place of a picture kept meanwhile', async () => {
   const e = env();
   const f = async u => {
