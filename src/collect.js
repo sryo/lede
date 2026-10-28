@@ -166,6 +166,7 @@ export function visitSalt(env, started, now, current) {
 // address and user agent, on one site) is never reached by a reader, while a loop firing many a second
 // is cut within the minute. An office or a phone network puts many readers behind one address, so the
 // address alone gets a looser cap, which still stops a script that changes its user agent each time.
+// BEACON_LIMIT counts the address, as anything can be put in a user agent.
 export const SENDER_LIMIT = 60;
 export const ADDRESS_LIMIT = 400;
 export const SENDER_WINDOW = 60e3;
@@ -234,12 +235,12 @@ export async function collect(req, env) {
   const now = new Date();
   const salt = await getSalt(env, now);
   const ip = req.headers.get('CF-Connecting-IP') || '';
-  // The sender is a hash, so no address is kept in memory. BEACON_LIMIT is Cloudflare's rate limiter,
+  // Senders are hashes, so no address is kept in memory. BEACON_LIMIT is Cloudflare's rate limiter,
   // used when it's bound in wrangler.jsonc (see docs/how-it-works.md, Limits); it counts across this
-  // location's Worker instances, which the in-memory cap can't.
-  const sender = senderKey(`${salt}|${ip}|${ua}|${ev.site}`);
-  if (!underCap(sender, now.getTime()) || !underAddressCap(senderKey(`${salt}|${ip}`), now.getTime())
-    || (env.BEACON_LIMIT && !(await env.BEACON_LIMIT.limit({ key: sender })).success)) {
+  // location's Worker instances, which the in-memory caps can't.
+  const address = senderKey(`${salt}|${ip}`);
+  if (!underCap(senderKey(`${salt}|${ip}|${ua}|${ev.site}`), now.getTime()) || !underAddressCap(address, now.getTime())
+    || (env.BEACON_LIMIT && !(await env.BEACON_LIMIT.limit({ key: address })).success)) {
     return new Response(null, { status: 204, headers: CORS });
   }
   const started = visitHour(body.h, now);

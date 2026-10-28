@@ -409,6 +409,10 @@ test('collect also asks the Workers rate limiter when one is bound', async () =>
   assert.match(keys[0], /^[0-9a-f]{8,14}$/, 'the key is a hash, not the address');
   assert.ok(!keys[0].includes('198.51'));
   assert.equal(keys[0], keys[1]);
+  await collect(new Request('https://worker.test/lede', {
+    method: 'POST', headers: { ...BEACON, 'User-Agent': SAFARI.replace('18.6', '18.5'), 'CF-Connecting-IP': '198.51.100.7' }, body: JSON.stringify({ u: 'https://example.com/' }),
+  }), env);
+  assert.equal(keys[2], keys[0], 'it counts the address, so changing the user agent doesn\'t get past it');
 });
 
 test('collect stores the device and browser family in the blobs reserved for them, and nothing new in the visitor hash', async () => {
