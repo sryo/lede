@@ -133,10 +133,12 @@ const METRICS = 'count(DISTINCT visitor) AS visitors, count() AS visits, sum(w) 
 // (a bounce, if one view is left), so visits and bounces run low. Page views carry step: 1 for a visit's
 // first view, 2 for its second, 3 after, 0 from trackers older than step. Each sampled row stands for
 // _sample_interval rows like it, so the weighted count of step 1 is the visits and of step 2 the visits
-// that didn't bounce, whatever was left out. v1 and v2 count that way for visits whose views carry a
-// step, and exactly for the rest; shape.js uses them only when the period was sampled.
+// that didn't bounce, whatever was left out. v1 and v2 count that way only for sampled visits whose views
+// carry a step, and exactly for the rest: a visit kept whole is one visit even when it has two step-1
+// views, as when a second tab joins it or the tracker can't keep its count.
 const STEPS = `, sumIf(_sample_interval, ${COL.step} = 1) AS k1, sumIf(_sample_interval, ${COL.step} = 2) AS k2, countIf(${COL.step} = 0) AS k0`;
-const FLAT = 'countIf(w > n) AS sampled, countIf(k0 > 0) + sumIf(k1, k0 = 0) AS v1, countIf(k0 > 0 AND n > 1) + sumIf(k2, k0 = 0) AS v2';
+const FLAT = 'countIf(w > n) AS sampled, countIf(k0 > 0 OR w = n) + sumIf(k1, k0 = 0 AND w > n) AS v1, '
+  + 'countIf((k0 > 0 OR w = n) AND n > 1) + sumIf(k2, k0 = 0 AND w > n) AS v2';
 
 // sampled: visits with any sampled view (each such row stands for more than one, so w > n).
 export const summarySql = (ds, q) =>
@@ -157,10 +159,11 @@ const nextMonth = t => { const d = new Date(t * 1000); return Date.UTC(d.getUTCF
 export const monthSplit = q => ({ cur: nextMonth(q.start) < q.end, prev: nextMonth(q.prevStart) < q.prevEnd });
 
 // Each day's source with the most visitors: one row per day, so a busy day's sources can't crowd
-// the quieter days out of the answer.
+// the quieter days out of the answer. The inner count isn't named visitors: the outer alias would
+// shadow it, putting max() inside argMax().
 export const topSourceSql = (ds, q) =>
-  `SELECT d, argMax(ref, visitors) AS ref, max(visitors) AS visitors FROM (SELECT ${dayOf('toUnixTimestamp(timestamp)', curDays(q))} AS d, ${COL.referrer} AS ref, `
-  + `count(DISTINCT ${COL.visitor}) AS visitors FROM ${ds} WHERE ${where(q, q.start, q.end)} GROUP BY d, ref) GROUP BY d ORDER BY d LIMIT ${q.days}`;
+  `SELECT d, argMax(ref, n) AS ref, max(n) AS visitors FROM (SELECT ${dayOf('toUnixTimestamp(timestamp)', curDays(q))} AS d, ${COL.referrer} AS ref, `
+  + `count(DISTINCT ${COL.visitor}) AS n FROM ${ds} WHERE ${where(q, q.start, q.end)} GROUP BY d, ref) GROUP BY d ORDER BY d LIMIT ${q.days}`;
 
 // d is the day of this period each key was first seen, so the timeline can mark new pages and sources
 // without a query of its own (this period's rows only).
@@ -230,10 +233,11 @@ export const hourlySql = (ds, q, from, to) =>
 // so the page's view can show where readers stop without a query of its own.
 // It also takes the median engaged time, and the 75th percentile of each Web Vital (what Google's
 // thresholds are judged on) over the views that measured it: a view with 0 had none (an older tracker,
-// a browser without the API, no tap or key for INP). CLS is often truly 0, so it counts over the views
-// that measured LCP or a shift. lcp_n, inp_n, cls_n: the views each one comes from.
+// a browser without the API, no tap or key for INP). CLS 0 is left out too: it can't be told apart from
+// a browser that doesn't report layout shifts (Firefox, Safari), so pages that never shift have none.
+// lcp_n, inp_n, cls_n: the views each one comes from.
 export const BANDS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-const VITALS = [['lcp', `${COL.lcp} > 0`], ['inp', `${COL.inp} > 0`], ['cls', `${COL.lcp} > 0 OR ${COL.cls} > 0`]]
+const VITALS = [['lcp', `${COL.lcp} > 0`], ['inp', `${COL.inp} > 0`], ['cls', `${COL.cls} > 0`]]
   .map(([k, has]) => `, quantileExactWeighted(0.75)(${COL[k]}, if(${has}, _sample_interval, 0)) AS ${k}, sumIf(_sample_interval, ${has}) AS ${k}_n`).join('');
 export const engagementSql = (ds, q, only) =>
   `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, sum(_sample_interval) AS n, sum(_sample_interval * ${COL.engaged}) AS ms, sum(_sample_interval * ${COL.scroll}) AS depth`

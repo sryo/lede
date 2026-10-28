@@ -2,7 +2,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseQuery, sqlStore } from '../src/api.js';
 import { ranges, dayOf, zoneOffset, summarySql, seriesSql, topSourceSql, breakdownSql, flowSql, engagementSql, everSql, monthSplit, LISTS, BREAKDOWNS, DAY } from '../src/queries.js';
-import { COL } from '../src/schema.js';
 import { toSummary, toSeriesBoth, toSeries, byPeriod, topByDay } from '../src/shape.js';
 import { dayDate, todayPace } from '../public/story.js';
 
@@ -122,6 +121,24 @@ test('every query stays well under the 10 KiB limit for 45 days with a clock cha
   for (const sql of sqls) assert.ok(new TextEncoder().encode(sql).length < 8 * 1024, `${sql.length} bytes: ${sql.slice(0, 60)}`);
 });
 
+test('every query names real columns: none comes out undefined when schema.js lacks one', () => {
+  const q = parseQuery(url('series?days=7&path=/a'), SITES);
+  const sqls = [summarySql('lede', q), seriesSql('lede', q), topSourceSql('lede', q), flowSql('lede', q), engagementSql('lede', q),
+    engagementSql('lede', { ...q, filters: {} }), ...BREAKDOWNS.map(dim => breakdownSql('lede', q, dim))];
+  for (const sql of sqls) assert.ok(!/undefined|NaN/.test(sql), sql.slice(0, 80));
+});
+
+// v1 and v2 of the summary SQL worked out over per-visit rows, so the counts are checked, not only the text.
+function flatCounts(sql, visits) {
+  const js = c => c.replace(/ AND /g, ' && ').replace(/ OR /g, ' || ').replace(/(?<![<>!=])=(?!=)/g, '===');
+  const holds = (c, v) => new Function(...Object.keys(v), `return ${js(c)}`)(...Object.values(v));
+  const count = (after, k) => {
+    const [, exact, col, flat] = sql.match(new RegExp(`${after}, countIf\\((.+?)\\) \\+ sumIf\\((\\w+), (.+?)\\) AS ${k}`));
+    return visits.reduce((t, v) => t + (holds(exact, v) ? 1 : 0) + (holds(flat, v) ? v[col] : 0), 0);
+  };
+  return { v1: count('AS sampled', 'v1'), v2: count('AS v1', 'v2') };
+}
+
 test('one query reads both periods, grouping visits by period so none straddles the two', () => {
   const q = parseQuery(url('summary?days=7&referrer='), SITES, Date.UTC(2026, 9, 27, 15));
   const sql = summarySql('lede', q);
@@ -169,8 +186,18 @@ test('summary says when a period was sampled', async () => {
 
 test('once a period is sampled, visits and bounces come from the view steps, and only for visits that carry them', () => {
   const sql = summarySql('lede', parseQuery(url('summary?days=7'), SITES));
-  assert.ok(sql.includes(`sumIf(_sample_interval, ${COL.step} = 1) AS k1, sumIf(_sample_interval, ${COL.step} = 2) AS k2, countIf(${COL.step} = 0) AS k0`), 'per visit');
-  assert.ok(sql.includes('countIf(k0 > 0) + sumIf(k1, k0 = 0) AS v1, countIf(k0 > 0 AND n > 1) + sumIf(k2, k0 = 0) AS v2'), 'a visit from an older tracker counts as before');
+  assert.ok(sql.includes('sumIf(_sample_interval, double3 = 1) AS k1, sumIf(_sample_interval, double3 = 2) AS k2, countIf(double3 = 0) AS k0'), 'per visit');
+  const visit = { k0: 0, k1: 1, k2: 1, n: 3, w: 3 };
+  // A visit kept whole counts once, however many step-1 views it has: a second tab joins it, or the
+  // tracker couldn't keep its count and every page said step 1.
+  assert.deepEqual(flatCounts(sql, [{ ...visit, k1: 2 }]), { v1: 1, v2: 1 }, 'two tabs');
+  assert.deepEqual(flatCounts(sql, [{ ...visit, k1: 5, k2: 0, n: 5, w: 5 }]), { v1: 1, v2: 1 }, 'every view step 1');
+  assert.deepEqual(flatCounts(sql, [{ ...visit, k1: 0, k2: 0, n: 2, w: 2 }]), { v1: 1, v2: 1 }, 'begun in the period before');
+  assert.deepEqual(flatCounts(sql, [{ ...visit, k1: 1, k2: 0, n: 1, w: 1 }]), { v1: 1, v2: 0 }, 'a bounce');
+  assert.deepEqual(flatCounts(sql, [{ k0: 2, k1: 0, k2: 0, n: 2, w: 6 }]), { v1: 1, v2: 1 }, 'a visit from an older tracker counts as before');
+  // A sampled visit: one stored step-1 view that stands for 3, and one step-2 view for 2.
+  assert.deepEqual(flatCounts(sql, [{ k0: 0, k1: 3, k2: 2, n: 2, w: 5 }]), { v1: 3, v2: 2 }, 'sampled: from the steps');
+  assert.deepEqual(flatCounts(sql, [{ k0: 0, k1: 3, k2: 0, n: 1, w: 3 }, { ...visit, k1: 2 }]), { v1: 4, v2: 1 }, 'both kinds in one period');
   assert.ok(seriesSql('lede', parseQuery(url('series?days=7'), SITES)).includes('AS v1'), 'the days too');
   // 40 visits counted, but each stored view of step 1 stands for 3: 90 visits, 30 of them going on.
   const row = { p: 1, visitors: '40', visits: '40', views: '150', bounces: '25', total_time: '1500', v1: '90', v2: '30' };
@@ -216,17 +243,20 @@ test('with nothing in either period, summary asks once more whether the site eve
 test('the top source per day is picked in SQL: one row per day, so busy days keep theirs', () => {
   const q = parseQuery(url('series?days=30'), SITES);
   const sql = topSourceSql('lede', q);
-  assert.ok(sql.startsWith('SELECT d, argMax(ref, visitors) AS ref, max(visitors) AS visitors FROM (SELECT'));
+  assert.ok(sql.startsWith('SELECT d, argMax(ref, n) AS ref, max(n) AS visitors FROM (SELECT'));
+  // An outer alias named like the inner count would shadow it, and max() inside argMax() is refused.
+  assert.ok(sql.includes('count(DISTINCT blob6) AS n FROM') && !/AS visitors FROM \(SELECT[^)]*AS visitors/.test(sql));
   assert.match(sql, /GROUP BY d, ref\) GROUP BY d ORDER BY d LIMIT 30$/);
   assert.deepEqual(topByDay([{ d: '0', ref: 'a.com', visitors: '9' }, { d: '2', ref: '', visitors: '4' }], 3), { top: ['a.com', null, ''], topVisitors: [9, 0, 4] });
 });
 
 test('engagement takes the median read and each Web Vital at the 75th percentile, over the views that measured it', () => {
   const sql = engagementSql('lede', parseQuery(url('engagement?days=7'), SITES));
-  assert.ok(sql.includes(`quantileExactWeighted(0.5)(${COL.engaged}, _sample_interval) AS median_ms`));
-  assert.ok(sql.includes(`quantileExactWeighted(0.75)(${COL.lcp}, if(${COL.lcp} > 0, _sample_interval, 0)) AS lcp, sumIf(_sample_interval, ${COL.lcp} > 0) AS lcp_n`));
-  assert.ok(sql.includes(`quantileExactWeighted(0.75)(${COL.inp}, if(${COL.inp} > 0, _sample_interval, 0)) AS inp`));
-  assert.ok(sql.includes(`if(${COL.lcp} > 0 OR ${COL.cls} > 0, _sample_interval, 0)) AS cls`), 'a page that never shifts has CLS 0, which counts');
+  assert.ok(sql.includes('quantileExactWeighted(0.5)(double1, _sample_interval) AS median_ms'));
+  assert.ok(sql.includes('quantileExactWeighted(0.75)(double4, if(double4 > 0, _sample_interval, 0)) AS lcp, sumIf(_sample_interval, double4 > 0) AS lcp_n'));
+  assert.ok(sql.includes('quantileExactWeighted(0.75)(double5, if(double5 > 0, _sample_interval, 0)) AS inp'));
+  // A browser that can't measure CLS sends none, stored as 0, so 0 is no measure at all.
+  assert.ok(sql.includes('quantileExactWeighted(0.75)(double6, if(double6 > 0, _sample_interval, 0)) AS cls, sumIf(_sample_interval, double6 > 0) AS cls_n'));
 });
 
 // A fake SQL API for breakdowns: answers the query over both periods with rows, and a single-period
