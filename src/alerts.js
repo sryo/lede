@@ -62,15 +62,16 @@ const people = (n, one) => `${fmtInt(n)} ${Math.round(n) === 1 ? one : `${one}s`
 function supporting(S, pageRows, toldPage) {
   const { c, p, diff } = S, lines = [];
   const pct = p.visitors >= 30 ? ` (${diff > 0 ? '+' : '−'}${Math.round(Math.abs(diff) / p.visitors * 100)}%)` : '';
-  lines.push(!p.visitors ? `${people(c.visitors, 'visitor')}.`
-    : S.flat ? `${people(c.visitors, 'visitor')}, about as many as the week before.`
+  // A flat week's sentence already says it was about the same, so the total stands alone.
+  lines.push(!c.visitors ? `No visitors this week, down from ${fmtInt(p.visitors)} the week before.`
+    : !p.visitors || S.flat ? `${people(c.visitors, 'visitor')}.`
       : `${people(c.visitors, 'visitor')}, ${fmtInt(Math.abs(diff))} ${diff > 0 ? 'more' : 'fewer'} than the week before${pct}.`);
   const top = S.sources.filter(s => s.value > 0).sort((a, b) => b.value - a.value)[0];
-  if (top) lines.push(`Top source: ${top.label}, with ${people(top.value, 'visitor')}.`);
+  if (top) lines.push(top.key ? `${top.label} sent the most visitors: ${fmtInt(top.value)}.` : `More visitors came direct than from any source: ${fmtInt(top.value)}.`);
   const moved = pagesFinding(pageRows, toldPage);
   const read = pageRows.filter(r => r.value > 0).sort((a, b) => b.value - a.value)[0];
   if (moved) lines.push(`${plain(moved.html)}.`);
-  else if (read) lines.push(`Most read: ${pageName(read.key)}, with ${people(read.value, 'visitor')}.`);
+  else if (read) lines.push(`Most visited page: ${pageName(read.key)}, with ${people(read.value, 'visitor')}.`);
   return lines;
 }
 
@@ -78,10 +79,10 @@ async function weekText(store, site, nowMs, link) {
   const q = weekQuery(site, nowMs);
   const [totals, ser, pages, refs, flows] = await Promise.all([store.summary(q), store.series(q), store.breakdown(q, 'path'),
     store.breakdown(q, 'referrer').then(withChannels), store.flows(q)]);
-  const S = readStory({ totals, ser, pages, refs, flows }), T = tellStory(S, ser, q.days);
+  const S = readStory({ totals, ser, pages, refs, flows }), T = tellStory(S, ser, q.days, { now: 'this week', before: 'the week before' });
   const pageRows = pages.rows.map(r => ({ key: r.key, value: r.visitors, prev: r.prev?.visitors }));
   return [`${displayHost(site)}, the week of ${fmtDay(dayDate(q.start, 0))}`, plain(T.html),
-    ...(S.c.visitors ? supporting(S, pageRows, T.page) : []), ...(link ? [link] : [])].join('\n');
+    ...(S.c.visitors || S.p.visitors ? supporting(S, pageRows, T.page) : []), ...(link ? [link] : [])].join('\n');
 }
 
 async function weekly(env, store, nowMs, fetchImpl) {
@@ -115,11 +116,13 @@ export function spikeText(here, full, usual, site) {
   const focus = onPage * 2 >= here.length, crowd = focus ? here.filter(v => v.path === page) : here;
   const [src, fromSrc] = most(crowd, v => v.referrer);
   const n = `${full ? 'At least ' : ''}${fmtInt(here.length)}`;
-  const where = onPage === here.length ? `${n} people are on ${pageName(page)} right now`
+  const all = onPage === here.length, where = all ? `${n} people are on ${pageName(page)} of ${displayHost(site)} right now`
     : `${n} people are on ${displayHost(site)} right now${focus ? `, ${fmtInt(onPage)} of them on ${pageName(page)}` : ''}`;
+  // After "12 of them on /x", "most of those" says the count is of the people on that page.
+  const mostOf = focus && !all ? 'most of those' : 'most';
   const from = fromSrc * 2 > crowd.length
-    ? (src ? `most from ${labelOf('referrer', src)}` : 'most of them direct visitors')
-    : (src ? `the largest share from ${labelOf('referrer', src)}` : 'the largest share direct visitors');
+    ? (src ? `${mostOf} from ${labelOf('referrer', src)}` : `${focus && !all ? 'most of those' : 'most of them'} direct visitors`)
+    : (src ? `more from ${labelOf('referrer', src)} than anywhere else` : 'more direct visitors than from any one source');
   const r = Math.round(usual);
   return `${where}, ${from}. Usually ${r ? `about ${fmtInt(r)}` : 'hardly anyone'} at this time of day.`;
 }

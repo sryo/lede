@@ -155,7 +155,7 @@ test('the weekly message tells the week Monday to Sunday with the sentence home 
     'example.com, the week of Oct 19',
     'Hacker News sent 220 more visitors, mostly to /blog/x.',
     '1,200 visitors, 200 more than the week before (+20%).',
-    'Top source: google.com, with 500 visitors.',
+    'google.com sent the most visitors: 500.',
     '/about lost 100 visitors (−50%).',
     'https://lede.example.workers.dev/?days=7',
   ].join('\n'));
@@ -171,7 +171,7 @@ test('each site gets its own story in one message, quiet ones said plainly', asy
   assert.equal(f.sent.length, 1);
   const body = f.sent[0].body;
   assert.match(body, /^example\.com, the week of Oct 19\n/);
-  assert.match(body, /\n\nquiet\.org, the week of Oct 19\nNo visitors in the last 7 days yet\.$/);
+  assert.match(body, /\n\nquiet\.org, the week of Oct 19\nNo visitors this week\.$/);
   assert.ok(!body.includes('https://'), 'no dashboard address known yet, so no link');
 });
 
@@ -189,7 +189,7 @@ test('a crowd well above the usual for the hour sends one line, with where they 
   await run(SPIKES, e, f, WED);
   assert.equal(f.sent.length, 1);
   assert.equal(f.sent[0].body, [
-    '42 people are on /blog/x right now, most from Hacker News. Usually about 2 at this time of day.',
+    '42 people are on /blog/x of example.com right now, most from Hacker News. Usually about 2 at this time of day.',
     'https://lede.example.workers.dev/online',
   ].join('\n'));
   assert.equal(f.sql.length, 2, 'who is here now, then the usual');
@@ -207,7 +207,7 @@ test('a crowd spread over the site names the site', async () => {
   assert.match(f.sent[0].body, /^20 people are on example\.com right now, most from Hacker News\. Usually hardly anyone at this time of day\.\n/);
   const half = fakes({ here: 20, onPage: 12 });
   await run(SPIKES, env(), half, WED);
-  assert.match(half.sent[0].body, /^20 people are on example\.com right now, 12 of them on \/blog\/x, most from Hacker News\./);
+  assert.match(half.sent[0].body, /^20 people are on example\.com right now, 12 of them on \/blog\/x, most of those from Hacker News\./);
 });
 
 test('fewer than 10 people, or a usual crowd, sends nothing; under 10 costs one query and no KV', async () => {
@@ -311,6 +311,6 @@ test('npm run dev (the demo) prints both messages when no webhook is set', async
     await runAlerts(SPIKES, e, WED, offline);
   } finally { console.log = log; }
   assert.equal(logged.length, 2);
-  assert.match(logged[0], /^Lede alert:\nbirds\.example, the week of Oct 19\n.+\.\n[\d,]+ visitors, /);
-  assert.match(logged[1], /^Lede alert:\n24 people are on birds\.example right now, 17 of them on \/migration, most from Hacker News\. Usually about 2 at this time of day\.$/);
+  assert.match(logged[0], /^Lede alert:\nbirds\.example, the week of Oct 19\n.+\.\n[\d,]+ visitors[.,]/);
+  assert.match(logged[1], /^Lede alert:\n24 people are on birds\.example right now, 17 of them on \/migration, most of those from Hacker News\. Usually about 2 at this time of day\.$/);
 });

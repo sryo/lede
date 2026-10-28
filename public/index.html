@@ -336,6 +336,7 @@ button.tile-title:hover{color:var(--ink)}
 .cross.narrow .lbl{max-width:calc(40% - 14px)}
 .cross .lbl.l{transform:translate(-100%,-50%);text-align:right}
 .cross-say{margin:0 0 12px;font-size:var(--fs-s)}
+.cross-k{display:flex;justify-content:space-between;font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px}
 .cross-say:empty{display:none}
 .tip{position:absolute;pointer-events:none;background:var(--tile);color:var(--ink);border-radius:8px;padding:4px 8px;font-size:var(--fs-xs);line-height:1.35;
   white-space:nowrap;transform:translate(-50%,calc(-100% - 8px));box-shadow:0 0 0 1px var(--line),0 6px 18px -6px rgba(0,0,0,.25);z-index:2}
@@ -522,7 +523,7 @@ async function drawGoalLine(){
   if(!GOALS.length){
     const g=suggestGoal(HOME.pageRows||[]);
     if(!g||store.get(`lede_goal_no:${SITE}`)===g){el.hidden=true;return}
-    el.innerHTML=`<span>Is <b>${esc(pageName(g))}</b> a goal?</span>${goalSeg(g,null)}`;
+    el.innerHTML=`<span>Is <b>${esc(pageName(g))}</b> a goal, a page you want visits to reach?</span>${goalSeg(g,null)}`;
     el.querySelector('[data-a="yes"]').onclick=()=>toggleGoal(g);
     el.querySelector('[data-a="no"]').onclick=()=>{store.set(`lede_goal_no:${SITE}`,g);el.hidden=true};
     el.hidden=false;return;
@@ -545,22 +546,24 @@ async function toggleGoal(path){
   const saved=await saveGoals(on?GOALS.filter(g=>g!==path):[...GOALS,path]);
   document.querySelectorAll('.goal-t').forEach(paintGoalToggle);
   document.querySelectorAll('.goal-card').forEach(c=>drawGoalCard(c,c.dataset.path));
-  if(saved)announce(on?`${path} is no longer a goal`:`${path} is now a goal`);
+  const name=path==='/'?'The home page':path;
+  if(saved)announce(on?`${name} is no longer a goal`:`${name} is now a goal`);
 }
 function paintGoalToggle(b){
   const on=GOALS.includes(b.dataset.path);
   b.setAttribute('aria-pressed',on);b.innerHTML=FLAG(on);
-  b.setAttribute('aria-label',on?`${b.dataset.path} is a goal. Stop tracking it`:`Track ${b.dataset.path} as a goal`);
-  b.title=on?'Goal: click to stop tracking':'Track as a goal';
+  const p=b.dataset.path,name=p==='/'?'the home page':p;
+  b.setAttribute('aria-label',on?`${name[0].toUpperCase()+name.slice(1)} is a goal. Stop tracking it`:`Track ${name} as a goal`);
+  b.title=on?'A goal. Stop tracking it':'Track as a goal';
 }
 
 // At the foot of a page's view: what the page would show as a goal, before deciding.
 async function drawGoalCard(card,path){
   const on=GOALS.includes(path),no=!on&&store.get(`lede_not_goal:${SITE}:${path}`)==='1';
   let text='';
-  try{text=goalStory(await api('conversions',{goal:[path]}),[path],HOME?.S?.lead?.key)||''}catch{}
+  try{text=goalStory(await api('conversions',{goal:[path]}),[path],HOME?.S?.lead?.key)||''}catch{text='Couldn’t load this. Check your connection, then reopen the page.'}
   card.innerHTML=`<div class="card-head"><div class="card-title">Is this page a goal?</div>${goalSeg(path,on?true:no?false:null)}</div>
-    <p class="goal-text">${text||`Not enough visits yet to say how often visits reach ${esc(pageName(path))}.`}</p>`;
+    <p class="goal-text">${text||`Too few visits yet to say how often they reach ${esc(pageName(path))}.`}</p><p class="goal-text muted">A goal is a page you want visits to reach, like a sign-up or thank-you page.</p>`;
   card.querySelector('[data-a="yes"]').onclick=()=>{store.set(`lede_not_goal:${SITE}:${path}`,'');if(!on)toggleGoal(path)};
   card.querySelector('[data-a="no"]').onclick=()=>{store.set(`lede_not_goal:${SITE}:${path}`,'1');if(on)toggleGoal(path);else drawGoalCard(card,path)};
   card.hidden=false;
@@ -581,7 +584,6 @@ function delta(c,p,inverse){
 const change=(c,p)=>p?((c-p)/p>=0?'+':'−')+Math.round(Math.abs(c-p)/p*100)+'%':'new';
 // For number rows: a change that rounds to 0% reads "same", as rates and lists already say; nothing then and now says nothing.
 const changeWord=(c,p)=>!c&&!p?'':change(c,p).replace(/^[+−]0%$/,'same');
-const mmss=t=>{const s=Math.round(t);return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`};
 const CHEV='<svg class="chev" viewBox="0 0 7 12" aria-hidden="true"><path d="M1 1l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const BACK='<svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><path d="M8 2L2 8l6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const announce=msg=>{const el=$('#status');el.textContent='';setTimeout(()=>{el.textContent=msg},50)};
@@ -638,7 +640,7 @@ function squarify(vals,W,H){
 function treemap(el,items,{gap=4}={}){
   // The long tail goes last whatever its size, so it fills the far corner instead of leading.
   items=items.filter(it=>it.value>0).sort((a,b)=>(a.last?1:0)-(b.last?1:0)||b.value-a.value);
-  if(!items.length){el.innerHTML='<div class="empty">No data yet</div>';return}
+  if(!items.length){el.innerHTML='<div class="empty">No visitors yet</div>';return}
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
     const rects=squarify(items.map(it=>it.value),W,H);
@@ -995,7 +997,7 @@ async function view(body,fn){
 // goalable: rows are pages, and each gets a flag to track it as a goal.
 // named: keys this page's own sentence names; they are bold, as in every list.
 function rowsInto(group,rows,{fmt=fmtInt,total,inverse=false,onClick,subj='time',goalable=false,named=new Set()}){
-  if(!rows.length){group.innerHTML='<div class="muted">Nothing here yet.</div>';return}
+  if(!rows.length){group.innerHTML='<div class="muted">No visitors yet.</div>';return}
   const max=maxOf(rows.map(r=>r.value))||1;
   group.className='list';
   const head=document.createElement('div');head.className='lrow lhead';head.setAttribute('aria-hidden','true');
@@ -1022,7 +1024,7 @@ function rowsInto(group,rows,{fmt=fmtInt,total,inverse=false,onClick,subj='time'
 
 // Rates on a 0–100% track, with last period's value beside them; the named one at full strength.
 function rateRows(group,rows){
-  if(!rows.length){group.innerHTML='<div class="muted">Nothing here yet.</div>';return}
+  if(!rows.length){group.innerHTML='<div class="muted">No visitors yet.</div>';return}
   group.className='list';
   const head=document.createElement('div');head.className='lrow rate lhead';head.setAttribute('aria-hidden','true');
   head.innerHTML='<span></span><span></span><span>bounce</span><span>change</span><span></span>';
@@ -1049,7 +1051,7 @@ function viewOptions(vw){
     case 'filter':{
       const f=vw.f,source=(f.referrer!=null)!==(f.channel!=null)&&f.path==null;
       const title=vw.label||(f.path!=null?f.path:f.channel!=null?labelOf('channel',f.channel):labelOf('referrer',f.referrer));
-      return {title:source?(f.channel!=null?labelOf('channel',f.channel):labelOf('referrer',f.referrer)):title,render:b=>view(b,x=>source?renderSource(x,f):renderFilter(x,f))};
+      return {title:source?(f.channel!=null?labelOf('channel',f.channel):labelOf('referrer',f.referrer)):f.path==='/'&&f.referrer==null&&f.channel==null?'Home page':title,render:b=>view(b,x=>source?renderSource(x,f):renderFilter(x,f))};
     }
   }
   return null;
@@ -1076,7 +1078,7 @@ function onSeg(sec,pick){
 
 // boldKeys: the keys the page's sentence names (channels as ch:key, like the home sentence's).
 function dimSection(sec,group,f,compact,boldKeys=null){
-  const modes=group==='pages'?[['Viewed','path'],['Landed on','entry'],['Left from','exit']]:[['Sites','referrer'],['Channels','channel']];
+  const modes=group==='pages'?[['Viewed','path'],['Landed on','entry'],['Left on','exit']]:[['Sites','referrer'],['Channels','channel']];
   let mode=modes[0][1];
   sec.className='card';
   sec.innerHTML=`<div class="card-head">${compact?`<div class="card-title">${group==='pages'?'Pages':'Sources'}</div>`:''}
@@ -1107,7 +1109,9 @@ function dimSection(sec,group,f,compact,boldKeys=null){
 }
 
 // The top of every slice: one big number, then the rest, straight on the page.
-const heroHTML=(c,pr)=>`<div class="nums"><div class="hero"><span class="big">${fmtInt(c.visitors)}</span><span>visitors <b>${changeWord(c.visitors,pr.visitors)}</b></span></div>${numsHTML(c,pr)}</div>`;
+// With nothing before to compare with, the count stands alone rather than reading "visitors new".
+const heroSub=(c,pr)=>`visitors${pr.visitors?` <b>${changeWord(c.visitors,pr.visitors)}</b>`:''}`;
+const heroHTML=(c,pr)=>`<div class="nums"><div class="hero"><span class="big">${fmtInt(c.visitors)}</span><span>${heroSub(c,pr)}</span></div>${numsHTML(c,pr)}</div>`;
 // Links in a generated sentence open the slice they name.
 function bindLinks(root){
   root.querySelectorAll('.link').forEach(b=>{
@@ -1127,13 +1131,13 @@ async function renderFilter(body,f){
   const into=flows?flows.flows.filter(x=>x.page===f.path):[];
   // A single page's chart marks the events about that page, the way the overview marks all of them.
   const pick=e=>e.kind==='page'&&e.key===f.path,own=HOME&&f.path!=null&&f.referrer==null&&f.channel==null?HOME.events.filter(pick):[];
-  const say=overview?(HOME?.T.html||''):f.path!=null?pageStory(totals,into,f.path)
+  const say=overview?(HOME?.T.html||''):f.path!=null?pageStory(totals,into,f.path,DAYS)
     :sourceStory(totals,ser,labelOf('channel',f.channel),DAYS).html+(all?' '+(channelShare(totals,all,labelOf('channel',f.channel))||''):'');
   body.innerHTML=`<p class="say">${say}</p>${heroHTML(c,pr)}
-    <section class="card"><div class="card-head"><div class="card-title">Visitors per day${pr.visitors?` vs the ${DAYS} days before`:''}</div>${overview&&HOME?'<span class="tile-key">Pick a day to note what you did</span>':''}</div><div class="chart"></div>${overview&&HOME?'<div class="marks"></div>':own.length?'<div class="marks own"></div>':''}</section>
+    <section class="card"><div class="card-head"><div class="card-title">Visitors per day${pr.visitors?`, against the ${DAYS} days before`:''}</div>${overview&&HOME?'<span class="tile-key">Pick a day to note what you did</span>':''}</div><div class="chart"></div>${overview&&HOME?'<div class="marks"></div>':own.length?'<div class="marks own"></div>':''}</section>
     ${overview&&HOME?`<section class="card"><div class="card-title">What happened</div>${HOME.events.length?'<div class="events-list"></div>':`<p class="muted" style="margin:0">Nothing unusual in the last ${DAYS} days.</p>`}</section>`:''}
     ${overview?'<section class="card"><div class="card-title heat-title">By weekday and hour</div><div class="chart"></div></section><section class="card funnels-card" hidden></section>':''}
-    ${f.path!=null?'<section class="card"><div class="card-title">Where readers came from, and where they went next</div><p class="cross-say"></p><div class="landed cross"></div><p class="say-sub landed-note"></p></section>':''}
+    ${f.path!=null?'<section class="card"><div class="card-title">Where readers came from, and where they went next</div><p class="cross-say"></p><div class="cross-k" aria-hidden="true"><span>visitors</span><span></span></div><div class="landed cross"></div><p class="say-sub landed-note"></p></section>':''}
     ${f.path!=null?'<section class="card goal-card" hidden></section>':''}
     ${f.path==null?'<section data-group="pages"></section>':''}
     ${f.referrer==null&&f.path==null?'<section data-group="sources"></section>':''}${overview?'<section class="card kw" hidden></section>':''}
@@ -1153,7 +1157,7 @@ async function renderFilter(body,f){
   if(overview&&HOME){
     const charts=body.querySelectorAll('.chart');
     if(drawHeat(charts[1],HOME.S,HOME.ser,hourly)&&HOME.S.spike>=0)
-      body.querySelector('.heat-title').innerHTML+=` · <span class="ring"></span> mostly visitors on ${fmtDate(dayDate(HOME.ser.start,HOME.S.spike))}`;
+      body.querySelector('.heat-title').innerHTML+=` · <span class="ring"></span> hours when most visitors came on ${fmtDate(dayDate(HOME.ser.start,HOME.S.spike))}`;
   }
   if(overview)drawFunnels(body,gen);
   if(marks){
@@ -1168,16 +1172,18 @@ async function renderFilter(body,f){
     const landed=sum(into.map(x=>x.visitors)),cross=body.querySelector('.cross'),note=body.querySelector('.landed-note');
     const from=cameFromItems(into,new Set(lead&&landed>=20?[lead[0]]:[]),c.visitors);
     drawCrossing(cross,from,[]);
-    const arrived=landed&&c.visitors>landed?`${fmtInt(landed)} of the ${fmtInt(c.visitors)} visitors started their visit here; the rest arrived from another page.`:'';
+    const arrived=landed&&c.visitors>landed?`${fmtInt(landed)} of the ${fmtInt(c.visitors)} visitors landed here; the rest came from another of your pages.`:'';
     note.textContent=arrived;
     // Two queries, so it comes in after the rest.
     api('next',p).then(n=>{
       if(stale(body,gen))return;
-      const st=nextStory(n);
+      const st=nextStory(n,DAYS);
       if(!st)return;
       body.querySelector('.cross-say').innerHTML=st.html;
       if(st.note)note.textContent=arrived?`${arrived} ${st.note}`:st.note;
-      drawCrossing(cross,from,nextItems(n.cur,st.told),{shares:true});
+      const next=nextItems(n.cur,st.told);
+      body.querySelector('.cross-k').lastChild.textContent=sum(next.map(i=>i.value))>=20?'of views':'views';
+      drawCrossing(cross,from,next,{shares:true});
     },()=>{});
   }
   body.querySelectorAll('[data-group]').forEach(sec=>dimSection(sec,sec.dataset.group,f,true));
@@ -1187,8 +1193,8 @@ async function renderFilter(body,f){
     if(stale(body,gen)||!r?.views)return;
     const n=(k,v,sub,tip)=>`<div class="num" title="${tip}"><span class="k">${k}</span><span class="v">${v}</span><span class="delta">${sub}</span></div>`;
     body.querySelector('.nums').insertAdjacentHTML('beforeend',
-      n('Time on page',fmtDur(r.time),r.prev?changeWord(r.time,r.prev.time):'new','On average, counting only while the page was on screen and in front')
-      +n('Scrolled',fmtPct(r.scroll),r.prev?pts(r.scroll,r.prev.scroll):'new','How far down the page people got, on average'));
+      n('Time on page',fmtDur(r.time),r.prev?changeWord(r.time,r.prev.time):'new','Average time people had this page open and in view')
+      +n('How far down',fmtPct(r.scroll),r.prev?pts(r.scroll,r.prev.scroll):'new','How far down the page people got, on average'));
     drawReach(body,r,f.path);
   },()=>{});
   if(overview)api('audience').then(A=>{if(!stale(body,gen))drawAudience(body.querySelector('.aud'),A)},()=>{});
@@ -1258,7 +1264,7 @@ function drawLinks(body,L,visitors){
   const modes=[['Other sites',L.outbound],['Downloads',L.downloads]].filter(m=>m[1].length);
   if(!modes.length)return;
   const sec=document.createElement('section');sec.className='card';
-  sec.innerHTML=`<div class="card-head"><div class="card-title">${modes.length>1?'Links clicked':modes[0][0]==='Downloads'?'Downloads':'Links to other sites'}</div>
+  sec.innerHTML=`<div class="card-head"><div class="card-title">${modes.length>1?'Links people clicked':modes[0][0]==='Downloads'?'Downloads':'Links to other sites'}</div>
     ${modes.length>1?segHTML('Links',modes.map(m=>m[0])):''}</div><div></div>`;
   // Files on the site itself go by their path, as pages do.
   const draw=i=>rowsInto(sec.lastElementChild,modes[i][1].slice(0,8).map(r=>({key:r.key,label:r.key.startsWith(SITE+'/')?r.key.slice(SITE.length):r.key,value:r.visitors,prev:r.prev})),{total:visitors,subj:'muted'});
@@ -1271,7 +1277,7 @@ function drawLinks(body,L,visitors){
 function drawKeywords(sec,K){
   const ks=['site','paid'],k0=keywordsCard(K).k;
   sec.hidden=false;
-  sec.innerHTML=`<div class="card-head"><div class="card-title">Keywords</div>${segHTML('Keywords',['On your site','From ads'],ks.indexOf(k0))}</div>
+  sec.innerHTML=`<div class="card-head"><div class="card-title">Keywords</div>${segHTML('Keywords',['Searched on your site','Words your ads paid for'],ks.indexOf(k0))}</div>
     <p class="card-say"></p><div></div><p class="say-sub"></p>`;
   const [,say,list,note]=sec.children;
   const draw=(k,open)=>{
@@ -1280,10 +1286,10 @@ function drawKeywords(sec,K){
     list.innerHTML=C.empty?`<p class="muted" style="margin:0">${esc(C.empty)}</p>`:'<div></div>';
     if(!C.empty){rowsInto(list.firstChild,C.rows,{total:C.total,subj:k==='site'?'muted':'src'});list.firstChild.classList.add('kw')}
     if(C.all){
-      list.insertAdjacentHTML('beforeend',`<button type="button" class="more-link" aria-expanded="false"><span>All ${C.all} words</span>${CHEV}</button>`);
-      list.lastChild.onclick=()=>{draw(k,1);const r=list.firstChild.children[6];r.tabIndex=-1;r.focus()};
+      list.insertAdjacentHTML('beforeend',`<button type="button" class="more-link"><span>All ${C.all} words</span>${CHEV}</button>`);
+      list.lastChild.onclick=()=>{const n=C.all;draw(k,1);const r=list.firstChild.children[6];r.tabIndex=-1;r.focus();announce(`Showing all ${n} words`)};
     }
-    note.textContent='Google doesn’t share what people searched for to find you.'+(k==='site'&&!C.empty?' Words only one person used, emails and phone numbers are left out.':'');
+    note.textContent='Google doesn’t share what people searched for to find you.'+(k==='site'&&!C.empty?' Words only one person used are left out, and so are emails and phone numbers.':'');
   };
   onSeg(sec,i=>draw(ks[i]));
   draw(k0);
@@ -1292,7 +1298,7 @@ function drawKeywords(sec,K){
 // Sources open with where the change came from; pages with the page that moved most.
 function renderDim(body,group){
   const W=group==='sources'&&HOME?waterfall(HOME.S,HOME.T.told):null;
-  body.innerHTML=`<p class="say"></p>${W?`<section class="card"><div class="card-title">Change in visitors vs the ${DAYS} days before</div><div class="steps"></div></section>`:''}<section></section>`;
+  body.innerHTML=`<p class="say"></p>${W?`<section class="card"><div class="card-title">Change in visitors, against the ${DAYS} days before</div><div class="steps"></div></section>`:''}<section></section>`;
   const say=body.querySelector('.say');
   const cap=W?waterfallCaption(W,HOME.S):group==='pages'&&HOME?.pageRows?pagesFinding(HOME.pageRows,HOME.T.page)??pagesCaption(HOME.pageRows.slice(0,6)):null;
   if(cap?.html)say.innerHTML=cap.html+'.';else say.remove();
@@ -1312,7 +1318,7 @@ async function drawFunnels(body,gen){
   const stories=data.map(f=>funnelStory(f,DAYS));
   sec.innerHTML=`<div class="card-title">Funnels</div><p class="card-say">${stories[0]?.html||FUNNEL_EMPTY}</p>
     ${data.map((f,i)=>`<div class="card-head fun-head"><span class="goal-text">${esc(funnelName(f.steps))}</span><button type="button" class="link goal-text">Remove</button></div>${i?`<p class="goal-text">${stories[i].html}</p>`:''}<div class="steps"></div>`).join('')}
-    ${funnels.length<5?`<form novalidate><div class="add"><input name="steps" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="/pricing → /signup → /thanks" aria-label="Pages, in order"><button class="retry">Save</button></div><span class="err" role="alert"></span></form>`:''}`;
+    ${funnels.length<5?`<form novalidate><div class="add"><input name="steps" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="/pricing, /signup, /thanks" aria-label="Pages, in order"><button class="retry">Save</button></div><span class="err" role="alert"></span></form>`:''}`;
   sec.hidden=false;
   const save=async(list,done)=>{
     const r=await fetch(`/api/funnels?site=${encodeURIComponent(SITE)}`,{method:'PUT',body:JSON.stringify({funnels:list})}).catch(()=>null);
@@ -1321,7 +1327,7 @@ async function drawFunnels(body,gen){
   };
   sec.querySelectorAll('.steps').forEach((el,i)=>drawFunnel(el,data[i],stories[i].drop));
   sec.querySelectorAll('.fun-head button').forEach((b,i)=>{
-    b.setAttribute('aria-label',`Remove the funnel ${funnelName(funnels[i])}`);
+    b.setAttribute('aria-label',`Remove the funnel from ${funnelName([funnels[i][0]])} to ${funnelName([funnels[i].at(-1)])}`);
     b.onclick=async()=>{if(!await save(funnels.filter((_,j)=>j!==i),'Funnel removed'))announce("Couldn't remove the funnel. Try again.")};
   });
   const form=sec.querySelector('form');if(!form)return;
@@ -1370,7 +1376,7 @@ function drawFunnel(el,f,drop){
 
 // The link to the bounce page says what bounce did overall, not what it did for this slice.
 // A rate's change in percentage points: +2 pts.
-const pts=(c,p)=>{const d=Math.round((c-p)*100);return d?`${d>0?'+':'−'}${Math.abs(d)} ${Math.abs(d)===1?'pt':'pts'}`:'same'};
+const pts=(c,p)=>{const d=Math.round((c-p)*100);return d?`${d>0?'+':'−'}${Math.abs(d)} ${Math.abs(d)===1?'point':'points'}`:'same'};
 const bounceLink=()=>{const d=HOME?Math.round((HOME.S.c.bounce-HOME.S.p.bounce)*100):0;return `<span>${d>0?'Why bounce rose':d<0?'Why bounce fell':'Bounce by source'}</span>${CHEV}`};
 const numsHTML=(c,pr,{story=false}={})=>{
   const n=(k,v,sub,told)=>`<div class="num"><span class="k">${k}</span><span class="v${told?' told':''}">${v}</span><span class="delta">${sub}</span></div>`;
@@ -1402,8 +1408,8 @@ async function renderSource(body,f){
   // Events about these sources (a new one appearing) are marked under the chart, as on the overview.
   const pick=e=>e.kind==='source'&&inside(e.key),own=HOME?HOME.events.filter(pick):[];
   body.innerHTML=`<div><p class="say">${st.html}${share?' '+share:''}</p>${st.without?`<p class="say-sub">${esc(st.without)}</p>`:''}</div>
-    <div class="nums"><div class="hero"><span class="big">${fmtInt(c.visitors)}</span><span>visitors <b>${changeWord(c.visitors,pr.visitors)}</b></span></div>${numsHTML(c,pr,{story:bouncy})}</div>
-    <section class="card"><div class="card-title">Visitors per day${pr.visitors?` vs the ${DAYS} days before`:''}</div><div class="chart"></div>${own.length?'<div class="marks"></div>':''}</section>
+    <div class="nums"><div class="hero"><span class="big">${fmtInt(c.visitors)}</span><span>${heroSub(c,pr)}</span></div>${numsHTML(c,pr,{story:bouncy})}</div>
+    <section class="card"><div class="card-title">Visitors per day${pr.visitors?`, against the ${DAYS} days before`:''}</div><div class="chart"></div>${own.length?'<div class="marks"></div>':''}</section>
     <div class="two">
       <section class="card"><div class="card-title">Where they landed</div><div class="landed"></div></section>
       <section class="card"><div class="card-title">Bounce</div><div class="sq-box" style="height:104px"></div>
@@ -1428,7 +1434,7 @@ async function renderSource(body,f){
   // The landing page this source sends most first visits to, and how many of those leave at once.
   const topEntry=entries.rows.slice().sort((a,b)=>b.visits-a.visits)[0];
   if(topEntry&&topEntry.visits>=50&&topEntry.bounce>=c.bounce+.08)
-    body.querySelector('#sq-note').textContent=`${fmtPct(topEntry.bounce)} of these visitors bounce from ${topEntry.key}.`;
+    body.querySelector('#sq-note').textContent=`${fmtPct(topEntry.bounce)} of visits from ${label} that landed on ${pageName(topEntry.key)} bounced.`;
   body.querySelector('.more-link').onclick=e=>openBounce(e.currentTarget);
   rowsInto(body.querySelector('.pages-list'),pages.rows.map(r=>({key:r.key,label:r.key,value:r.visitors,prev:r.prev?.visitors})),
     {total:c.visitors,subj:'page',goalable:true,onClick:(r,el)=>openFilter({path:r.key},r.label,el)});
@@ -1466,7 +1472,9 @@ function drawCrossing(el,left,right,{edge=false,shares=false,bar='page'}={}){
   const tl=sum(left.map(i=>i.value)),tr=sum(right.map(i=>i.value));
   if(!tl&&!tr){el.innerHTML='<div class="empty">No visits yet</div>';return}
   const share=it=>shares&&tr>=20?fmtPct(it.value/tr):fmtInt(it.value);
-  if(shares)for(const it of right)it.hint=`${share(it)} of views of this page ${it.kind==='left'?'were the last of the visit':`went on to ${it.key!=null?it.label:'one of these'}`}`;
+  // "38% of views of this page went on to /signup", or on few views "7 of 15 views went on to /signup".
+  const of=it=>shares&&tr>=20?`${share(it)} of views of this page`:`${fmtInt(it.value)} of ${fmtInt(tr)} views`;
+  if(shares)for(const it of right)it.hint=`${of(it)} ${it.kind==='left'?'ended the visit: they left the site here':`went on to ${it.key!=null?it.label:/^1 /.test(it.label)?'another page':`one of ${it.label}`}`}`;
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
     // On a phone, labels take two lines.
@@ -1513,23 +1521,23 @@ async function renderBounce(body){
   const c=totals.cur.bounce,p=totals.prev.bounce;
   let say;
   if(!totals.cur.visits)say=`No visits in the last ${DAYS} days.`;
-  else if(!B)say='There is no earlier period to compare with yet.';
-  else if(B.cause==='same')say=`About the same as the ${DAYS} days before.`;
+  else if(!B)say=`There were no visits in the ${DAYS} days before, so there’s nothing to compare with yet.`;
+  else if(B.cause==='same')say=`Bounce is about the same as in the ${DAYS} days before.`;
   else if(B.cause==='source'){
     const who=`<b${told.has(B.top.key)?' class="told"':''}>${esc(readers(B.top.label))}</b>`;
-    say=`It’s not who visited, it’s how they behaved: ${who} bounced ${B.total>0?'more':'less'} often than before.`;
-  }else if(B.cause==='mix')say=`It’s mostly who visited: ${B.total>0?'more':'fewer'} of the visits came from sources that often bounce.`;
-  else say=`Visitors from most sources bounced a little ${B.total>0?'more':'less'} often.`;
+    say=`${who} moved bounce most: ${B.total>0?'more':'fewer'} of their visits bounced than before.`;
+  }else if(B.cause==='mix')say=`It’s mostly a change in where visitors came from: ${B.total>0?'more':'fewer'} of the visits came from sources that often bounce.`;
+  else say='The change was spread across sources; no one source made up even a third of it.';
   body.innerHTML=`<p class="say">${say}</p>
     <div class="nums"><div class="hero"><span class="big">${totals.cur.visits?fmtPct(c):'–'}</span><span>bounce${totals.prev.visits&&totals.cur.visits?` · <b>${pts(c,p)}</b>`:''}</span><span class="hero-sq">${squaresSVG(c,22,5,'var(--bnc)')}</span></div></div>
     ${B&&B.cause!=='same'?`<section class="card"><div class="card-title">Why it ${B.total>0?'rose':'fell'} · in percentage points</div><div class="steps"></div>
-      <div class="legend"><span>${(c*100).toFixed(1)}% now</span><span>${(p*100).toFixed(1)}% before</span></div></section>`:''}
-    <section class="card"><div class="card-title">Bounce per day${totals.prev.visits?` vs the ${DAYS} days before`:''}</div><div class="chart"></div></section>
+      <div class="legend"><span>${fmtPct(c)} now</span><span>${fmtPct(p)} before</span></div></section>`:''}
+    <section class="card"><div class="card-title">Bounce per day${totals.prev.visits?`, against the ${DAYS} days before`:''}</div><div class="chart"></div></section>
     <section class="card"><div class="card-title">Sources</div><div data-dim="referrer"></div></section>
-    <section class="card"><div class="card-title">Entry pages</div><div data-dim="entry"></div></section>`;
+    <section class="card"><div class="card-title">Pages they landed on</div><div data-dim="entry"></div></section>`;
   if(B&&B.cause!=='same'){
-    const pts=(v,total)=>(v>0?'+':v<0?'−':'±')+(Math.abs(v)*100).toFixed(1)+(total?' pts':'');
-    const steps=[{kind:'mix',label:'who visited',value:B.mix}];
+    const pts=(v,total)=>(v>0?'+':v<0?'−':'±')+(Math.abs(v)*100).toFixed(1)+(total?' points':'');
+    const steps=[{kind:'mix',label:'where visitors came from',value:B.mix}];
     if(B.top)steps.push({kind:'named',label:readers(B.top.label),value:B.top.pts,story:true,key:B.top.key});
     steps.push({kind:'else',label:'everyone else',value:B.rest},{kind:'total',label:'total',value:B.total});
     drawSteps(body.querySelector('.steps'),steps,{fmt:pts,colorOf:s=>s.kind==='total'?'var(--ink)':'var(--bnc)',
@@ -1573,7 +1581,7 @@ async function renderOnline(body){
   const here=g=>g.filter(p=>p.here).length;
   const rows=[...groups].sort((a,b)=>here(b[1])-here(a[1])||b[1].length-a[1].length);
   body.innerHTML=`<p class="say">${onlineStory(live,told,page)}</p>
-    <div class="nums"><div class="hero" style="gap:8px">${lineHTML(C,'big')}<span class="muted" style="font-size:var(--fs-xs)">${C.more?`${C.more} earlier not shown · `:''}Here now, then earlier, in the order they arrived</span><span><i class="sw here"></i><b style="font-size:var(--fs-l)">${live.now}</b> here now <span class="muted">· ${live.recent} in the last 30 minutes</span></span></div></div>
+    <div class="nums"><div class="hero" style="gap:8px">${lineHTML(C,'big')}<span class="muted" style="font-size:var(--fs-xs)">${C.more?`${C.more} more earlier · `:''}Here now, then earlier, in the order they arrived</span><span><i class="sw here"></i><b style="font-size:var(--fs-l)">${live.now}</b> here now <span class="muted">· ${live.recent} in the last 30 minutes</span></span></div></div>
     <section class="card">${rows.length?`<div class="people list"><div class="lrow lhead online"><span>Page</span><span>People</span><span>Source</span><span class="cty">Country</span><span>Time on site</span><span></span></div></div>`:'<div class="muted">No one in the last 30 minutes.</div>'}</section>
     <p class="credit">Figures: Wee People, ProPublica</p>`;
   const list=body.querySelector('.people');
@@ -1584,10 +1592,10 @@ async function renderOnline(body){
       <span class="ppl small" style="grid-row:span ${n}" aria-hidden="true">${g.map(p=>`<span class="${p.named?'named':p.here?'':'gone'}">${p.letter}</span>`).join('')}</span>`
       +g.map((p,k)=>{
         const src=labelOf('referrer',p.v.referrer),m=p.here?'':' muted';
-        return `<span class="src${m}">${p.named?`<b>${esc(src)}</b>`:esc(src)}</span><span class="cty${m}">${esc(p.v.country||'')}</span><span class="num${p.here?'':' muted'}">${mmss(p.v.seconds)}</span>`
+        return `<span class="src${m}">${p.named?`<b>${esc(src)}</b>`:esc(src)}</span><span class="cty${m}">${p.v.country?esc(labelOf('country',p.v.country)):''}</span><span class="num${p.here?'':' muted'}">${fmtDur(p.v.seconds)}</span>`
           +(k===0?`<span style="grid-row:span ${n};align-self:center">${CHEV}</span>`:'');
       }).join('');
-    b.setAttribute('aria-label',`${path}: ${here(g)} here now, ${n} in the last 30 minutes. `+g.map(p=>`${p.here?'Here now':'Earlier'} from ${labelOf('referrer',p.v.referrer)}${p.v.country?`, ${p.v.country}`:''}, ${mmss(p.v.seconds)}`).join('; ')+'. Zoom in');
+    b.setAttribute('aria-label',`${path}: ${here(g)} here now, ${n} in the last 30 minutes. `+g.map(p=>`${p.here?'Here now':'Earlier'} from ${labelOf('referrer',p.v.referrer)}${p.v.country?`, ${labelOf('country',p.v.country)}`:''}, ${fmtDur(p.v.seconds)}`).join('; ')+'. Zoom in');
     b.onclick=()=>openFilter({path},path,b);
     list.append(b);
   }
@@ -1626,7 +1634,7 @@ function drawNow(live,told,pace){
   // On home the figures are only here or left; who they are is the online page's story.
   const C=live&&crowdLine(live,new Set());
   now.innerHTML=(pace?`<span class="pace">${pace.html}</span>`:'')
-    +(live?`${lineHTML(C)}<span>${crowdCaption(live)}${C.more?` <span class="muted">· ${C.more} earlier not shown</span>`:''}</span>`:'');
+    +(live?`${lineHTML(C)}<span>${crowdCaption(live)}${C.more?` <span class="muted">· ${C.more} more earlier</span>`:''}</span>`:'');
   now.setAttribute('aria-label',`${pace?pace.html.replace(/<[^>]+>/g,'')+'. ':''}${live?crowdAria(live,told):''}. Zoom in`);
 }
 
@@ -1645,21 +1653,21 @@ function drawDays(el,S,ser,{scale=false}={}){
   const cur=ser.cur.visitors,prev=ser.prev.visitors,n=cur.length,seg=spikeSegment(S,ser),was=S.prevSpike;
   const prevStart=ser.start-ser.days*86400,busiest=cur.indexOf(maxOf(cur));
   const label=seg?{i:seg.day,title:`${fmtDate(dayDate(ser.start,seg.day))} · ${fmtInt(seg.total)}`,sub:`${fmtInt(seg.top)} from ${labelOf('referrer',seg.source)}`,swatch:'var(--src)'}
-    :was>=0?{i:was,title:`${fmtDate(dayDate(prevStart,was))} · ${fmtInt(prev[was])}`,sub:`spike in the ${DAYS} days before`}:null;
+    :was>=0?{i:was,title:`${fmtDate(dayDate(prevStart,was))} · ${fmtInt(prev[was])}`,sub:`big day in the ${DAYS} days before`}:null;
   dayBars(el,{cur,prev:S.p.visitors?prev:null,start:ser.start,seg:seg&&{...seg,subj:'src'},label,prevDot:was,scale,
     aria:`Visitors per day from ${fmtDay(dayDate(ser.start,0))} to ${fmtDay(dayDate(ser.start,n-1))}. Busiest: ${fmtDate(dayDate(ser.start,busiest))} with ${fmtInt(cur[busiest])}`
       +(seg?`, ${fmtInt(seg.top)} of them from ${labelOf('referrer',seg.source)}.`:'.')});
 }
 
 function drawFlow(el,S,T,flows,flowsPrev,pageRows){
-  if(!flows.length){el.innerHTML='<div class="empty">No data yet</div>';return}
+  if(!flows.length){el.innerHTML='<div class="empty">No visitors yet</div>';return}
   // Left: the sources the sentence names and those that moved the total most, in order of change; named ones are bold.
   const live=S.sources.filter(s=>s.value>0);
   const named=live.filter(s=>T.told.has(s.key));
   const others=live.filter(s=>!T.told.has(s.key)).sort((a,b)=>Math.abs(b.change)-Math.abs(a.change)).slice(0,Math.max(0,5-named.length));
   const shown=[...named,...others].sort((a,b)=>b.change-a.change),rest=live.filter(s=>!shown.includes(s));
   const left=shown.map(s=>({key:s.key,label:s.label,value:s.value,prev:s.prev,change:s.change}));
-  if(rest.length)left.push({key:null,label:`${rest.length} others`,value:sum(rest.map(s=>s.value)),prev:sum(rest.map(s=>s.prev)),change:sum(rest.map(s=>s.change))});
+  if(rest.length)left.push({key:null,label:`${rest.length} other ${rest.length===1?'source':'sources'}`,value:sum(rest.map(s=>s.value)),prev:sum(rest.map(s=>s.prev)),change:sum(rest.map(s=>s.change))});
   // Right: the pages most visits landed on, biggest first, always including the page the sentence names.
   const byPage=new Map();
   for(const f of flows)byPage.set(f.page,(byPage.get(f.page)||0)+f.visitors);
@@ -1678,7 +1686,7 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
   const at=(list,k)=>{const i=list.findIndex(s=>s.key===k);return i>=0?i:list.findIndex(s=>s.key==null)};
   const m=left.map(()=>right.map(()=>0));
   for(const f of flows){const i=at(left,f.source),j=at(right,f.page);if(i>=0&&j>=0)m[i][j]+=f.visitors}
-  const total=sum(m.flat());if(!total){el.innerHTML='<div class="empty">No data yet</div>';return}
+  const total=sum(m.flat());if(!total){el.innerHTML='<div class="empty">No visitors yet</div>';return}
 
   // Each side has its own gaps, so each gets its own scale; a ribbon is v*kL tall on the left and v*kR on the right.
   const gap=3,scaleOf=n=>(100-gap*(n-1))/total,kL=scaleOf(left.length),kR=scaleOf(right.length);
@@ -1732,7 +1740,7 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
 
 function drawGrowth(el,W){
   if(!W){el.innerHTML='<div class="empty">Nothing to compare with yet</div>';return}
-  const aria=`Change in visitors vs the ${DAYS} days before: `+W.steps.map(s=>`${s.label} ${fmtSigned(s.value)}`).join(', ')+'.';
+  const aria=`Change in visitors, against the ${DAYS} days before: `+W.steps.map(s=>`${s.label} ${fmtSigned(s.value)}`).join(', ')+'.';
   drawSteps(el,W.steps,{fmt:v=>fmtSigned(v),aria,colorOf:s=>s.kind==='total'?'var(--ink)':'var(--src)',
     openOf:s=>s.kind==='total'?openOverview:s.channel?b=>openFilter({channel:s.channel},s.label,b):s.key!==null&&s.kind!=='else'?b=>openFilter({referrer:s.key},s.label,b):null});
 }
@@ -1794,7 +1802,7 @@ function findEvents(S,T,ser,firsts,pageRows){
   }
   if(usual>=20)cur.forEach((v,i)=>{
     if(i<n-1&&v<usual*.35)ev.push({day:i,kind:'quiet',told:false,name:'Quiet day',title:`Quiet day: ${fmtInt(v)} visitors`,tag:'quiet',
-      short:`${fmtInt(v)} visitors: tracking gap?`,detail:`a usual day has ${fmtInt(usual)}; is the tracker still on every page?`,open:openOverview});
+      short:`${fmtInt(v)} visitors, far fewer than usual. Check that Lede’s line is still on every page.`,detail:`a usual day has ${fmtInt(usual)}. Check that Lede’s line is still on every page.`,open:openOverview});
   });
   const enough=v=>v>=Math.max(20,S.c.visitors*.005);
   for(const f of firsts.pages){
@@ -1804,8 +1812,8 @@ function findEvents(S,T,ser,firsts,pageRows){
   }
   for(const f of firsts.sources){
     const src=S.sources.find(x=>x.key===f.key);
-    if(f.key&&src&&!src.prev&&f.day>0&&S.p.visitors&&enough(f.visitors))ev.push({day:f.day,kind:'source',key:f.key,told:T.told.has(f.key),name:'New source',title:`New source: ${f.key}`,tag:shorten(f.key,14),
-      short:f.key,detail:`${fmtInt(f.visitors)} visitors since`,open:b=>openFilter({referrer:f.key},f.key,b)});
+    if(f.key&&src&&!src.prev&&f.day>0&&S.p.visitors&&enough(f.visitors))ev.push({day:f.day,kind:'source',key:f.key,told:T.told.has(f.key),name:'New source',title:`New source: ${src.label}`,tag:shorten(src.label,14),
+      short:src.label,detail:`${fmtInt(f.visitors)} visitors since`,open:b=>openFilter({referrer:f.key},f.key,b)});
   }
   // The owner's notes on days of this period. Opening one edits it.
   cur.forEach((_,i)=>{
@@ -1817,8 +1825,8 @@ function findEvents(S,T,ser,firsts,pageRows){
   if(n>=15){
     const a=sum(cur.slice(n-8,n-1)),b=sum(cur.slice(n-15,n-8)),pct=b?Math.round((a-b)/b*100):0;
     const sp=findSpike(cur,ser.start);
-    if(Math.abs(pct)>=10&&!(sp>=n-15&&sp<n-1))ev.push({day:n-2,kind:'week',told:false,name:'Last 7 days',title:`Visitors ${pct>0?'up':'down'} ${Math.abs(pct)}% on the week`,
-      short:`${pct>0?'up':'down'} ${Math.abs(pct)}% on the 7 before`,detail:`${fmtInt(a)} in the last 7 full days, ${fmtInt(b)} the 7 before`,open:openOverview});
+    if(Math.abs(pct)>=10&&!(sp>=n-15&&sp<n-1))ev.push({day:n-2,kind:'week',told:false,name:'Last 7 days',title:`Visitors ${pct>0?'up':'down'} ${Math.abs(pct)}% from the 7 days before`,
+      short:`${pct>0?'up':'down'} ${Math.abs(pct)}% from the 7 days before`,detail:`${fmtInt(a)} in the last 7 full days, ${fmtInt(b)} the 7 before`,open:openOverview});
   }
   return ev.sort((x,y)=>y.day-x.day||(x.kind==='spike'?-1:1));
 }
@@ -1848,9 +1856,10 @@ function drawMarks(el,events,ser,pick=null){
     const note=list.find(e=>e.kind==='note'),only=list.every(e=>e.kind==='note');
     const tag=note?.tag||(list.some(e=>e.kind==='spike')?'big day':list.find(e=>e.tag)?.tag);
     b.innerHTML=`<span class="g">${list.map(e=>glyph(e.kind,e.told)).join('')}</span>${tag?`<span class="tag">${esc(tag)}</span>`:''}`;
-    const when=fmtDate(dayDate(ser.start,d));
-    b.title=`${when}: ${list.map(e=>e.title).join('; ')}`;
-    b.setAttribute('aria-label',`${when}: ${list.map(e=>e.title).join('; ')}. ${only?'Edit your note':'Show what happened'}`);
+    // "Wed, Oct 7: big day, 840 visitors; new source, Hacker News": one line, so each event's own colon becomes a comma.
+    const when=fmtDate(dayDate(ser.start,d)),said=list.map(e=>e.kind==='note'?e.title:e.title[0].toLowerCase()+e.title.slice(1).replace(': ',', '));
+    b.title=`${when}: ${said.join('; ')}`;
+    b.setAttribute('aria-label',`${when}: ${said.join('; ')}. ${only?'Edit your note':'Show what happened'}`);
     // A day with only a note opens the note; any other marker opens the list of what happened, where each item opens what explains it.
     b.onclick=ev=>{ev.stopPropagation();only?editNote(d,b):openView({v:'events',pick},b)};
     el.appendChild(b);
@@ -1958,15 +1967,15 @@ function drawHeat(el,S,ser,hourly){
   });
   const spikeRow=spikeDay?(new Date(spikeDay).getDay()+6)%7:-1;
   const max=maxOf(cells.flat());
-  if(!max){el.innerHTML='<div class="empty">No data yet</div>';return false}
-  const DAYN=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],steps=[8,25,45,70,100];
+  if(!max){el.innerHTML='<div class="empty">No visitors yet</div>';return false}
+  const DAYN=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'],DAYS_N=['Mondays','Tuesdays','Wednesdays','Thursdays','Fridays','Saturdays','Sundays'],steps=[8,25,45,70,100];
   let html='',hits=0,best=[0,0];
   // A cell is ringed when most of its visitors came on the spike day.
   for(let r=0;r<7;r++)for(let h=0;h<24;h++){
     const v=cells[r][h],hit=r===spikeRow&&v>0&&spikeHours[h]>=v*.5;
     if(hit)hits++;
     if(v>cells[best[0]][best[1]])best=[r,h];
-    html+=`<i class="${hit?'hit':''}" style="background:color-mix(in srgb,var(--time) ${steps[Math.min(4,Math.floor(v/max*5))]}%,transparent)" title="${DAYN[r]} ${h}:00 · ${fmtInt(v)} visitors in that hour, added up"></i>`;
+    html+=`<i class="${hit?'hit':''}" style="background:color-mix(in srgb,var(--time) ${steps[Math.min(4,Math.floor(v/max*5))]}%,transparent)" title="${DAYS_N[r]}, ${h}:00: ${fmtInt(v)} visitors, all ${DAYS_N[r]} added up"></i>`;
   }
   el.innerHTML=`<div class="heat"><div class="days" aria-hidden="true">${DAYN.map(d=>`<span>${d}</span>`).join('')}</div>
     <div class="cells" role="img" aria-label="Visitors by weekday and hour. Busiest: ${DAYN[best[0]]} at ${best[1]}:00.">${html}</div><span></span>
@@ -2080,7 +2089,7 @@ async function renderHome(message){
   HOME={S,T,ser,pace:todayPace(hourly,Date.now()/1000)};
   renderStory(S,T,live);
   // At very high volume Analytics Engine keeps only some of the views; views are scaled back up, visitors aren't.
-  if(sumR.sampled)$('#story .say-col').insertAdjacentHTML('beforeend','<p class="sampled">This period was busy enough that Cloudflare kept a sample of the views, so visitor counts may run a little low.</p>');
+  if(sumR.sampled)$('#story .say-col').insertAdjacentHTML('beforeend',`<p class="sampled">These ${DAYS} days were busy enough that Cloudflare kept only some of the views, so visitor counts may run a little low.</p>`);
   const pageRows=pages.rows.map(r=>({key:r.key,label:labelOf('path',r.key),value:r.visitors,prev:r.prev?.visitors}));
   const openDim=g=>t=>openView({v:g},t);
   const B=bounceSplit(S),events=findEvents(S,T,ser,firsts,pageRows);
@@ -2089,10 +2098,10 @@ async function renderHome(message){
 
   // Four tiles, one question each: when, from where to where, did they stay, what they read.
   // A caption only where it adds a fact the chart doesn't show by itself.
-  const days=tile('t-days',`Visitors per day${S.p.visitors?` vs the ${DAYS} days before`:''}`,null,openOverview);
+  const days=tile('t-days',`Visitors per day${S.p.visitors?`, against the ${DAYS} days before`:''}`,null,openOverview);
   const marks=document.createElement('div');marks.className='marks';
   days.querySelector('.viz').after(marks);
-  const flow=tile('t-flow','Sources and the pages they landed on',flowCaption(S,T,flows.flows),openDim('sources'));
+  const flow=tile('t-flow','Where visitors came from, and the pages they landed on',flowCaption(S,T,flows.flows),openDim('sources'));
   const stay=tile('t-stay','Bounce',bounceCaption(B),openBounce);
   const pg=tile('t-pages','Pages by visitors','',openDim('pages'));
   grid.replaceChildren(days,flow,stay,pg);

@@ -140,27 +140,27 @@ const F = (cur, prev = cur.map(() => 0), steps = STEPS.slice(0, cur.length)) => 
 
 test('funnel sentence: how many saw the first step, how many finished, and where most were lost', () => {
   const s = funnelStory(F([120, 30, 9]), 30);
-  assert.equal(strip(s.html), 'Of 120 visits that saw /pricing, 9 finished. Most were lost between /pricing and /signup.');
+  assert.equal(strip(s.html), 'Of 120 visits that reached /pricing, 9 got to /thanks. Most dropped off between /pricing and /signup.');
   assert.equal(s.drop, 1, 'the drop into the second step');
 });
 
 test('funnel sentence calls it the biggest drop when no one drop is most of the loss', () => {
   const s = funnelStory(F([200, 110, 40, 10], undefined, ['/a', '/b', '/c', '/d']), 30);
-  assert.equal(strip(s.html), 'Of 200 visits that saw /a, 10 finished. The biggest drop was between /a and /b.');
+  assert.equal(strip(s.html), 'Of 200 visits that reached /a, 10 got to /d. The biggest drop was between /a and /b.');
   assert.equal(s.drop, 1);
 });
 
 test('funnel sentence: everyone finished, no one finished, the home page by name', () => {
-  assert.equal(strip(funnelStory(F([50, 50]), 30).html), 'Of 50 visits that saw /pricing, all 50 finished.');
+  assert.equal(strip(funnelStory(F([50, 50]), 30).html), 'Of 50 visits that reached /pricing, all 50 got to /signup.');
   assert.equal(funnelStory(F([50, 50]), 30).drop, -1);
-  assert.equal(strip(funnelStory(F([60, 0], undefined, ['/', '/signup']), 30).html), 'Of 60 visits that saw the home page, none finished. Most were lost between the home page and /signup.');
+  assert.equal(strip(funnelStory(F([60, 0], undefined, ['/', '/signup']), 30).html), 'Of 60 visits that reached the home page, none got to /signup. Most dropped off between the home page and /signup.');
 });
 
 test('small funnels are said plainly, with no drop picked out', () => {
   const s = funnelStory(F([12, 4, 1]), 30);
-  assert.equal(strip(s.html), 'Too few visits to say yet: 12 saw /pricing and 1 finished.');
+  assert.equal(strip(s.html), '12 visits reached /pricing and 1 got to /thanks, too few yet to say where visits drop off.');
   assert.equal(s.drop, -1);
-  assert.equal(strip(funnelStory(F([0, 0]), 7).html), 'No visits saw /pricing in the last 7 days.');
+  assert.equal(strip(funnelStory(F([0, 0]), 7).html), 'No visits reached /pricing in the last 7 days.');
 });
 
 test('steps typed in one line, separated by spaces, commas or arrows', () => {
@@ -169,14 +169,14 @@ test('steps typed in one line, separated by spaces, commas or arrows', () => {
   assert.match(parseSteps('/pricing').error, /at least two pages/);
   assert.match(parseSteps('/a /b /c /d /e /f').error, /at most five/);
   assert.match(parseSteps('/pricing signup').error, /starts with a slash/);
-  assert.match(parseSteps('/a /a').error, /twice/);
+  assert.equal(parseSteps('/a /a').error, 'A page can only be in a funnel once.');
   assert.match(parseSteps('').error, /at least two pages/);
 });
 
 test('each step hints at its visits, the share of the step before, and how many were lost on the way', () => {
   const f = F([120, 30, 9], undefined, ['/', '/signup', '/thanks']);
   assert.equal(stepHint(f, 0), 'Home page: 120 visits');
-  assert.equal(stepHint(f, 1), '/signup: 30 visits, 25% of those at the home page; 90 lost on the way');
+  assert.equal(stepHint(f, 1), '/signup: 30 visits, 25% of those at the home page; 90 dropped off on the way');
   assert.equal(stepHint(F([5, 5]), 1), '/signup: 5 visits, 100% of those at /pricing');
 });
 
@@ -214,13 +214,13 @@ test('the finishing step never shrinks to a sliver: a step with visits keeps a v
 });
 
 test('with no funnel, the card says what a funnel shows in one sentence', () => {
-  assert.equal(FUNNEL_EMPTY, 'A funnel shows where visits drop off on their way to a page that matters, such as a sign-up.');
+  assert.equal(FUNNEL_EMPTY, 'Type the pages a visit goes through, in order, to see where visits drop off.');
 });
 
 test('the add field is filled in from the first goal: the busiest other page, then the goal', () => {
   const rows = [{ key: '/' }, { key: '/signup' }, { key: '/blog' }];
-  assert.equal(funnelOffer(rows, ['/signup', '/thanks'], []), '/ → /signup');
-  assert.equal(funnelOffer([{ key: '/signup' }, { key: '/blog' }], ['/signup'], []), '/blog → /signup', 'not the goal itself');
+  assert.equal(funnelOffer(rows, ['/signup', '/thanks'], []), '/, /signup');
+  assert.equal(funnelOffer([{ key: '/signup' }, { key: '/blog' }], ['/signup'], []), '/blog, /signup', 'not the goal itself');
   assert.equal(funnelOffer(rows, [], []), '', 'no goal, nothing filled in');
   assert.equal(funnelOffer(rows, ['/signup'], [['/', '/pricing', '/signup']]), '', 'not when a saved funnel already goes there');
   assert.equal(funnelOffer([], ['/signup'], []), '');

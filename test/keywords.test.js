@@ -164,12 +164,12 @@ const w = (key, visitors, prev = null) => ({ key, visitors, prev });
 
 test('the sentence names the most searched word and how it changed', () => {
   assert.equal(strip(keywordsStory({ site: [w('pricing', 90, 30), w('refund', 20, 20)], paid: [] })),
-    'People searched your site for pricing most, 3× more than before.');
-  assert.equal(strip(keywordsStory({ site: [w('pricing', 60, 50)], paid: [] })), 'People searched your site for pricing most, up 20%.');
-  assert.equal(strip(keywordsStory({ site: [w('pricing', 30, 60)], paid: [] })), 'People searched your site for pricing most, down 50%.');
-  assert.equal(strip(keywordsStory({ site: [w('pricing', 52, 50)], paid: [] })), 'People searched your site for pricing most.');
-  assert.equal(strip(keywordsStory({ site: [w('pricing', 40), w('refund', 30, 25)], paid: [] })), 'People searched your site for pricing most, new this period.');
-  assert.equal(strip(keywordsStory({ site: [w('pricing', 40)], paid: [] })), 'People searched your site for pricing most.',
+    'The word people searched your site for most was pricing, 3 times as often as before.');
+  assert.equal(strip(keywordsStory({ site: [w('pricing', 60, 50)], paid: [] })), 'The word people searched your site for most was pricing, up 20%.');
+  assert.equal(strip(keywordsStory({ site: [w('pricing', 30, 60)], paid: [] })), 'The word people searched your site for most was pricing, down 50%.');
+  assert.equal(strip(keywordsStory({ site: [w('pricing', 52, 50)], paid: [] })), 'The word people searched your site for most was pricing.');
+  assert.equal(strip(keywordsStory({ site: [w('pricing', 40), w('refund', 30, 25)], paid: [] })), 'The word people searched your site for most was pricing, a word no one used before.');
+  assert.equal(strip(keywordsStory({ site: [w('pricing', 40)], paid: [] })), 'The word people searched your site for most was pricing.',
     'with nothing searched before, new says nothing');
 });
 
@@ -179,7 +179,7 @@ test('a small sample is said plainly, never as a trend', () => {
 
 test('the words ads paid for get their own sentence, or lead when nobody searched the site', () => {
   assert.equal(strip(keywordsStory({ site: [w('pricing', 90, 30)], paid: [w('bird feeder', 40, 20)] })),
-    'People searched your site for pricing most, 3× more than before. Of the words your ads paid for, bird feeder brought the most visitors, 2× more than before.');
+    'The word people searched your site for most was pricing, 3 times as often as before. Of the words your ads paid for, bird feeder brought the most visitors, twice as many as before.');
   assert.equal(strip(keywordsStory({ site: [], paid: [w('bird feeder', 40, 38)] })), 'Of the words your ads paid for, bird feeder brought the most visitors.');
   assert.equal(strip(keywordsStory({ site: [], paid: [w('bird feeder', 4)] })), 'A few visitors came from your ads; bird feeder brought the most.');
 });
@@ -210,8 +210,8 @@ test('the card opens on site searches, or on ads when nobody searched the site',
 
 test('the card leads with the sentence for the list it shows', () => {
   const K = { site: [w('pricing', 90, 30)], paid: [w('bird feeder', 40, 20)] };
-  assert.equal(strip(keywordsCard(K, 'site').say), 'People searched your site for pricing most, 3× more than before.');
-  assert.equal(strip(keywordsCard(K, 'paid').say), 'Of the words your ads paid for, bird feeder brought the most visitors, 2× more than before.');
+  assert.equal(strip(keywordsCard(K, 'site').say), 'The word people searched your site for most was pricing, 3 times as often as before.');
+  assert.equal(strip(keywordsCard(K, 'paid').say), 'Of the words your ads paid for, bird feeder brought the most visitors, twice as many as before.');
 });
 
 test('an empty list says what to do instead of a sentence', () => {

@@ -59,7 +59,7 @@ test('bounce change splits into mix and per-source behaviour that add up to the 
   close(B.mix + B.top.pts + B.rest, B.total);
   close(B.total, S.c.bounce - S.p.bounce);
   assert.equal(B.cause, 'source');
-  assert.equal(strip(bounceCaption(B)), 'Bounce rose 4 pts, mostly Hacker News readers');
+  assert.equal(strip(bounceCaption(B)), 'Bounce rose 4 points, mostly Hacker News readers');
 });
 
 test('bounce caption credits who visited when the mix explains most of the change', () => {
@@ -68,7 +68,7 @@ test('bounce caption credits who visited when the mix explains most of the chang
   const B = bounceSplit(story({ rows, ser: series(300) }).S);
   assert.equal(B.cause, 'mix');
   close(B.mix, B.total, 1e-12);
-  assert.match(strip(bounceCaption(B)), /^Bounce rose \d+ pts, mostly because of who visited$/);
+  assert.match(strip(bounceCaption(B)), /^Bounce rose \d+ points, mostly from a change in where visitors came from$/);
 });
 
 test('sources new this period count toward everyone else, so the split still sums', () => {
@@ -125,18 +125,18 @@ test('waterfall: named sources plus everyone else add up to the total change', (
 test('waterfall groups AI assistants into one step when the sentence names the channel', () => {
   const { S, T } = growth();
   assert.ok(T.told.has('ch:ai'), 'AI assistants moved more visitors than the fastest grower alone');
-  assert.match(strip(T.html), /AI assistants went from 8% to 12% of visitors\.$/);
+  assert.match(strip(T.html), /AI assistants went from 8% to 12% of all visitors\.$/);
   const W = waterfall(S, T.told);
   const ai = W.steps.find(s => s.channel === 'ai');
   assert.equal(ai.label, 'AI assistants');
   assert.equal(ai.value, 400 + 500 + 450);
   assert.ok(!W.steps.some(s => s.key === 'perplexity.ai'));
-  assert.equal(strip(waterfallCaption(W, S).html), 'The extra 4,200 visitors came from two places');
+  assert.equal(strip(waterfallCaption(W, S).html), 'The extra 4,200 visitors came from two sources');
 });
 
 test('the waterfall caption gives the exact total, the same number home and the chart show', () => {
   const W = { total: 3507, steps: [{ kind: 'named', value: 2092, label: 'google.com' }, { kind: 'named', value: 2281, label: 'AI assistants' }, { kind: 'rest', value: -866 }] };
-  assert.equal(strip(waterfallCaption(W, { flat: false }).html), 'The extra 3,507 visitors came from two places');
+  assert.equal(strip(waterfallCaption(W, { flat: false }).html), 'The extra 3,507 visitors came from two sources');
 });
 
 test('waterfall steps follow the order the sentence names them in, even when a later one moved more', () => {
@@ -203,7 +203,7 @@ test('sankey share: the named source\'s part of all first visits to the named pa
   const ser = series(215);
   const { S, T } = story({ rows, ser, flows, pages: [{ key: '/blog/new', visitors: 4000 }, { key: '/', visitors: 2000, prev: { visitors: 2000 } }] });
   assert.equal(T.page, '/blog/new');
-  assert.equal(strip(flowCaption(S, T, flows)), '6 in 10 visitors who landed on the new page came from Hacker News');
+  assert.equal(strip(flowCaption(S, T, flows)), '6 in 10 visitors who landed on the new page /blog/new came from Hacker News');
 });
 
 test('sankey caption without a named page says where most visits landed', () => {
@@ -236,7 +236,7 @@ test('crowd: people here first (named source first), then those who left, at mos
   assert.ok(C.slice(1).every(p => !p.named));
   assert.ok(C.slice(7).every(p => !p.here));
   assert.ok(C.every(p => /^[A-Za-z]$/.test(p.letter)));
-  assert.equal(strip(crowdCaption(L)), '7 here now · 22 in the last 30 min');
+  assert.equal(strip(crowdCaption(L)), '7 here now · 22 in the last 30 minutes');
 });
 
 test('crowd letters stay with the same person across refreshes', () => {
@@ -248,16 +248,16 @@ test('crowd letters stay with the same person across refreshes', () => {
 test('crowd: nobody online', () => {
   assert.deepEqual(crowd(live(0, 0), new Set()), []);
   assert.equal(strip(crowdCaption(live(0, 0))), 'No one here right now');
-  assert.equal(strip(crowdCaption(live(0, 4))), 'No one here right now · 4 in the last 30 min');
+  assert.equal(strip(crowdCaption(live(0, 4))), 'No one here right now · 4 in the last 30 minutes');
 });
 
 /* ---------- pages and source captions ---------- */
 
 test('pages caption counts growth among shown pages and names new ones', () => {
   const rows = [{ key: '/', value: 300, prev: 290 }, { key: '/docs', value: 200, prev: 150 }, { key: '/blog/new', value: 120, prev: undefined }];
-  assert.equal(strip(pagesCaption(rows).html), 'All pages grew; one is new');
+  assert.equal(strip(pagesCaption(rows).html), 'Both pages shown grew; one is new');
   rows[1].prev = 250;
-  assert.equal(strip(pagesCaption(rows).html), '1 of 2 pages grew; one is new');
+  assert.equal(strip(pagesCaption(rows).html), '1 of 2 pages shown grew; one is new');
   assert.equal(strip(pagesCaption([{ key: '/', value: 10 }, { key: '/docs', value: 4 }]).html), 'Most visited: the home page', 'nothing to compare with yet');
   assert.deepEqual(pagesCaption([]), { html: '', key: null });
 });
@@ -267,7 +267,7 @@ test('source story: total, change, the burst days and bounce as a percentage, li
   const ser = { start: START, days: 28, cur: { visitors }, prev: { visitors: visitors.map(() => 128) } };
   const sum = { cur: { visitors: visitors.reduce((a, b) => a + b), bounce: .6 }, prev: { visitors: 128 * 28, bounce: .48 } };
   const s = sourceStory(sum, ser, 'Hacker News', 28);
-  assert.equal(strip(s.html), `6,527 visitors from Hacker News, up 82%. Almost half came on Fri, Oct 16–17, and 60% bounced.`);
+  assert.equal(strip(s.html), `6,527 visitors from Hacker News, up 82%. Almost half came on Fri, Oct 16–17. 60% of their visits bounced.`);
   assert.equal(s.without, 'Without those two days, Hacker News sent 6% fewer visitors than the 28 days before.');
 });
 
@@ -296,12 +296,12 @@ test('crowd line with nobody online is empty', () => {
   assert.deepEqual(crowdLine({ now: 0, recent: 0, visitors: [] }, new Set()), { people: [], more: 0 });
 });
 
-test('the sentence makes two claims: who moved the total (and where to), and who is growing fastest', () => {
+test('the sentence makes two claims: who moved the total (and where to), and whose visitors rose fastest', () => {
   const rows = [ref('news.ycombinator.com', 4000, 1000, .7, .5), ref('google.com', 6000, 6000), ref('perplexity.ai', 900, 500)];
   const ser = series(300, { 18: 3000 }, { 18: ['news.ycombinator.com', 2700] });
   const { S, T } = story({ rows, ser });
   assert.equal(S.spike, 18, 'the spike is still found, for the chart');
-  assert.equal(strip(T.html), 'Hacker News brought 3,000 of the 3,400 extra visitors. perplexity.ai is growing fastest, up 80%.');
+  assert.equal(strip(T.html), 'Hacker News sent 3,000 of the 3,400 extra visitors. perplexity.ai sent 80% more visitors than before, the fastest rise of any source.');
 });
 
 /* ---------- findings: the second claim, ranked by how many visitors each one moved ---------- */
@@ -311,14 +311,14 @@ test('a drop hidden by a rise elsewhere is named', () => {
   const rows = [ref('news.ycombinator.com', 4000, 1000), ref('google.com', 18000, 20000),
     ...['a.com', 'b.com', 'c.com', 'd.com', 'e.com'].map(k => ref(k, 10500, 10000))];
   const { T } = story({ rows, ser: series(3000) });
-  assert.equal(strip(T.html), 'Hacker News brought 3,000 of the 3,500 extra visitors. google.com sent 2,000 fewer visitors (−10%).');
+  assert.equal(strip(T.html), 'Hacker News sent 3,000 of the 3,500 extra visitors. google.com sent 2,000 fewer visitors (−10%).');
   assert.ok(T.told.has('google.com'));
 });
 
 test('a flat period still says what moved', () => {
   const rows = [ref('google.com', 10200, 10000), ref('bing.com', 0, 200), ref('', 5000, 5000)];
   const { T } = story({ rows, ser: series(540) });
-  assert.equal(strip(T.html), 'About as many visitors as the 28 days before (±0). bing.com stopped sending visitors; it sent 200 before.');
+  assert.equal(strip(T.html), 'About as many visitors as the 28 days before (±0). bing.com sent no visitors, down from 200.');
 });
 
 test('a channel growing across several sources is a finding of its own', () => {
@@ -326,7 +326,7 @@ test('a channel growing across several sources is a finding of its own', () => {
   const { S } = story({ rows, ser: series(400) });
   const f = findings(S, new Set()).find(x => x.kind === 'channel');
   assert.equal(f.key, 'ai');
-  assert.equal(strip(f.html), 'AI assistants went from 4% to 11% of visitors.');
+  assert.equal(strip(f.html), 'AI assistants went from 4% to 11% of all visitors.');
 });
 
 test('findings skip what the sentence already named, biggest first', () => {
@@ -355,7 +355,7 @@ test('today against the same weekday so far, counting finished hours only', () =
   assert.equal(P.today, 150);
   assert.equal(P.usual, 100);
   assert.equal(P.pct, 50);
-  assert.equal(strip(P.html), 'Today +50% vs a usual Sunday');
+  assert.equal(strip(P.html), 'Today so far: 50% busier than a usual Sunday');
   assert.equal(todayPace(hourly, at(1, 30)), null, 'too early in the day to say');
 });
 
@@ -372,10 +372,10 @@ test('page sentence: visitors, change or new, and where most first visits came f
   const flows = [{ source: 'news.ycombinator.com', page: '/blog/new', visitors: 2404 }, { source: 'google.com', page: '/blog/new', visitors: 1000 },
     { source: '', page: '/blog/new', visitors: 596 }];
   const totals = { cur: { visitors: 2985 }, prev: { visitors: 0 } };
-  assert.equal(strip(pageStory(totals, flows, '/blog/new')), '2,985 visitors on /blog/new, new this period. 6 in 10 of those who landed here came from Hacker News.');
+  assert.equal(strip(pageStory(totals, flows, '/blog/new', 30)), '2,985 visitors on /blog/new, none in the 30 days before. 6 in 10 of those who landed here came from Hacker News.');
   const spread = [{ source: 'a.com', page: '/p', visitors: 20 }, { source: 'b.com', page: '/p', visitors: 18 }, { source: 'c.com', page: '/p', visitors: 17 }, { source: 'd.com', page: '/p', visitors: 16 }];
-  assert.equal(strip(pageStory({ cur: { visitors: 900 }, prev: { visitors: 800 } }, spread, '/p')), '900 visitors on /p, up 13%. Those who landed here came from many places, the most from a.com.');
-  assert.equal(strip(pageStory({ cur: { visitors: 5 }, prev: { visitors: 5 } }, [], '/p')), '5 visitors on /p, about the same as before.');
+  assert.equal(strip(pageStory({ cur: { visitors: 900 }, prev: { visitors: 800 } }, spread, '/p', 30)), '900 visitors on /p, up 13%. Those who landed here came from many places, the most from a.com.');
+  assert.equal(strip(pageStory({ cur: { visitors: 5 }, prev: { visitors: 5 } }, [], '/p', 30)), '5 visitors on /p, about the same as before.');
 });
 
 test('events sentence counts what stood out', () => {
@@ -396,7 +396,7 @@ test('captions return the key they name, so lists bold it even when the words di
   const step = (kind, key, label, value, channel) => ({ kind, key, label, value, ...(channel ? { channel } : {}) });
   const one = { total: 1000, steps: [step('named', 'a&b.com', 'a&b.com', 600), step('named', 'x.com', 'x.com', -100), step('else', null, 'Everyone else', 500)] };
   const cap = waterfallCaption(one, { flat: false });
-  assert.equal(strip(cap.html), 'a&amp;b.com brought 600 of the 1,000 extra visitors');
+  assert.equal(strip(cap.html), 'a&amp;b.com sent 600 of the 1,000 extra visitors');
   assert.equal(cap.key, 'a&b.com');
   const ai = { total: 1000, steps: [step('named', null, 'AI assistants', 600, 'ai'), step('named', 'x.com', 'x.com', -100), step('else', null, 'Everyone else', 500)] };
   assert.equal(waterfallCaption(ai, { flat: false }).key, 'ch:ai');
@@ -422,7 +422,7 @@ test('goal line: the overall rate, and the named source when it converts very di
 
 test('goal line names the best source when the named one converts like everyone else', () => {
   const c = conv([{ key: 'google.com', visits: 30000, reached: 300 }, { key: 'github.com', visits: 3000, reached: 120 }, { key: '', visits: 20000, reached: 200 }]);
-  assert.equal(strip(goalStory(c, ['/signup', '/thanks'], 'google.com')), '1.2% of visits reached a goal; github.com did best, 4.0%.');
+  assert.equal(strip(goalStory(c, ['/signup', '/thanks'], 'google.com')), '1.2% of visits reached a goal; visits from github.com did best, 4.0%.');
   assert.equal(goalStory(conv([{ key: 'a.com', visits: 20, reached: 1 }]), ['/signup'], null), null, 'too few visits to say');
 });
 
@@ -457,11 +457,11 @@ test('scroll: says where half the readers have stopped', () => {
 test('scroll: names the steepest drop, when one stands out', () => {
   const owls = scrollStory(read(900, .93, .87, .81, .76, .43, .4, .37, .35, .34, .33));
   assert.equal(owls.drop, 4);
-  assert.equal(strip(owls.sub), 'The steepest drop comes between 40% and 50% of the way down, where 33% of readers stop.');
+  assert.equal(strip(owls.sub), 'More readers stop between 40% and 50% of the way down than anywhere else: 33% of them.');
   const first = scrollStory(read(900, .8, .75, .7, .66, .62, .58, .55, .52, .5, .48));
-  assert.equal(strip(first.sub), 'The steepest drop comes in the first 10% of the page, where 20% of readers stop.');
+  assert.equal(strip(first.sub), 'More readers stop in the first 10% of the page than anywhere else: 20% of them.');
   const last = scrollStory(read(900, 1, .98, .96, .94, .92, .9, .88, .86, .84, .6));
-  assert.equal(strip(last.sub), 'The steepest drop comes between 90% and the end, where 24% of readers stop.');
+  assert.equal(strip(last.sub), 'More readers stop between 90% and the end than anywhere else: 24% of them.');
   const even = scrollStory(read(900, .96, .92, .88, .84, .8, .76, .72, .68, .64, .6));
   assert.equal(even.drop, -1, 'a page read evenly has no drop worth naming');
   assert.equal(even.sub, null);
@@ -471,9 +471,9 @@ test('scroll: names the steepest drop, when one stands out', () => {
 
 test('scroll: too few readers is said plainly, with no chart to read into', () => {
   const few = scrollStory(read(12, .5, .4, .3, .2, .1, .1, .1, .1, .1, .1));
-  assert.equal(strip(few.html), 'Only 12 reads of this page so far, too few to say where people stop.');
+  assert.equal(strip(few.html), 'Only 12 views of this page so far, too few to say how far people read.');
   assert.deepEqual([few.few, few.drop, few.sub], [true, -1, null]);
-  assert.equal(strip(scrollStory(read(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)).html), 'Only one read of this page so far, too few to say where people stop.');
+  assert.equal(strip(scrollStory(read(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)).html), 'Only one view of this page so far, too few to say how far people read.');
   assert.equal(scrollStory(read(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)), null);
   assert.equal(scrollStory(read(49, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)).few, true);
   assert.equal(scrollStory({ views: 50 }), null, 'no bands, nothing to say');
@@ -485,7 +485,7 @@ test('scroll: the demo /owls page tells its drop', async () => {
   const { rows: [r] } = await demoStore.engagement(q);
   const S = scrollStory(r);
   assert.equal(strip(S.html), 'Half your readers stop before the middle of this page.');
-  assert.match(strip(S.sub), /^The steepest drop comes between 40% and 50% of the way down, where \d+% of readers stop\.$/);
+  assert.match(strip(S.sub), /^More readers stop between 40% and 50% of the way down than anywhere else: \d+% of them\.$/);
 });
 
 /* ---------- countries, devices and browsers ---------- */
@@ -510,12 +510,12 @@ test('audience: says plainly when nothing stands out, or when there are too few 
 test('audience: phones leaving sooner than computers, said with who most readers are', () => {
   const phones = steady({ device: [ar('phone', 500, 500, .62), ar('computer', 300, 300, .38)] });
   const s = audienceStory(phones, 30);
-  assert.equal(strip(s.html), 'Most readers are on phones, and phones leave sooner: 62% of visits bounce, against 38% on computers.');
+  assert.equal(strip(s.html), 'Most readers are on phones, and readers on phones leave sooner: 62% of their visits bounce, against 38% on computers.');
   assert.deepEqual([s.dim, s.key], ['device', 'phone']);
   const desk = steady({ device: [ar('computer', 500, 500, .38), ar('phone', 300, 300, .62)] });
-  assert.equal(strip(audienceStory(desk, 30).html), 'Most readers are on computers, but phones leave sooner: 62% of visits bounce, against 38% on computers.');
+  assert.equal(strip(audienceStory(desk, 30).html), 'Most readers are on computers, but readers on phones leave sooner: 62% of their visits bounce, against 38% on computers.');
   const even = steady({ device: [ar('phone', 400, 400, .3), ar('computer', 400, 400, .5), ar('tablet', 200, 200)] });
-  assert.equal(strip(audienceStory(even, 30).html), 'Computers leave sooner: 50% of visits bounce, against 30% on phones.');
+  assert.equal(strip(audienceStory(even, 30).html), 'Readers on computers leave sooner: 50% of their visits bounce, against 30% on phones.');
 });
 
 test('audience: a bounce gap needs 10 points and 50 visits on each side', () => {
@@ -616,12 +616,12 @@ test('a note says what the owner did, as something they did', () => {
 test('a rise that starts the day after a note is told as coming after it, and nothing more', () => {
   const { S, T } = story({ rows: rose, ser: stepped(420), notes: [note(9, 'Posted on Hacker News')] });
   assert.equal(S.note.kind, 'shift');
-  assert.equal(strip(T.html), 'Hacker News brought all of the 2,160 extra visitors. Visitors rose 40% after you posted on Hacker News (Wed, Oct 7).');
+  assert.equal(strip(T.html), 'Hacker News sent all of the 2,160 extra visitors. Visitors rose 40% after you posted on Hacker News (Wed, Oct 7).');
 });
 
 test('a rise that starts on the noted day is cited too', () => {
   const { T } = story({ rows: rose, ser: stepped(420), notes: [note(10, 'New homepage')] });
-  assert.match(strip(T.html), /Visitors rose 40% after “New homepage” \(Thu, Oct 8\)\.$/);
+  assert.match(strip(T.html), /Visitors rose 40% after your note “New homepage” \(Thu, Oct 8\)\.$/);
 });
 
 test('a note is not cited when the change started at another time', () => {
@@ -691,15 +691,15 @@ test('scroll picture: darker further down, as fewer still read', () => {
 
 test('scroll picture: labels the top, the steepest drop and the end', () => {
   const P = scrollPicture(read(900, .93, .87, .81, .76, .43, .4, .37, .35, .34, .33));
-  assert.equal(P.top, '93%');
+  assert.equal(P.top, '93% at 10%');
   assert.equal(P.end, '33% reach the end');
   assert.deepEqual(P.drop, { at: .45, label: '76% → 43%' });
-  assert.equal(P.aria, 'A picture of the page, darker where fewer read: 93% at the top, 76% → 43% between 40% and 50% of the way down, 33% reach the end.');
+  assert.equal(P.aria, 'A picture of the page, darker where fewer read: 93% still reading at 10% of the way down, 76% → 43% between 40% and 50% of the way down, 33% reach the end.');
   const first = scrollPicture(read(900, .8, .75, .7, .66, .62, .58, .55, .52, .5, .48));
   assert.deepEqual(first.drop, { at: .05, label: '100% → 80%' });
   const even = scrollPicture(read(900, .96, .92, .88, .84, .8, .76, .72, .68, .64, .6));
   assert.equal(even.drop, null, 'no line when no drop stands out');
-  assert.equal(even.aria, 'A picture of the page, darker where fewer read: 96% at the top, 60% reach the end.');
+  assert.equal(even.aria, 'A picture of the page, darker where fewer read: 96% still reading at 10% of the way down, 60% reach the end.');
   assert.equal(P.bands.length, 10);
   assert.equal(P.bands[4], '50% of the way down: 43% still reading');
 });
@@ -713,32 +713,74 @@ test('scroll picture: none under the reads threshold, only the sentence', () => 
 test('scroll numbers: with no picture, the shares either side of the drop and at the end', () => {
   const nums = r => scrollNumbers(r).map(x => [x.value, x.label, x.drop]);
   assert.deepEqual(nums(read(900, .93, .87, .81, .76, .43, .4, .37, .35, .34, .33)),
-    [['76%', 'past 40%', false], ['43%', 'past the middle', true], ['33%', 'reach the end', false]]);
-  assert.deepEqual(nums(read(900, .9, .7, .45, .4, .35, .3, .28, .26, .24, .22)).map(x => x[1]), ['past 20%', 'past 30%', 'reach the end']);
+    [['76%', 'read past 40%', false], ['43%', 'read past the middle', true], ['33%', 'reach the end', false]]);
+  assert.deepEqual(nums(read(900, .9, .7, .45, .4, .35, .3, .28, .26, .24, .22)).map(x => x[1]), ['read past 20%', 'read past 30%', 'reach the end']);
   // A drop in the first tenth: nobody is "past 0%", so the middle comes in instead.
   assert.deepEqual(nums(read(900, .8, .75, .7, .66, .62, .58, .55, .52, .5, .48)),
-    [['80%', 'past 10%', true], ['62%', 'past the middle', false], ['48%', 'reach the end', false]]);
+    [['80%', 'read past 10%', true], ['62%', 'read past the middle', false], ['48%', 'reach the end', false]]);
   // A drop in the last tenth is the end itself.
   assert.deepEqual(nums(read(900, 1, .98, .96, .94, .92, .9, .88, .86, .84, .6)),
-    [['84%', 'past 90%', false], ['60%', 'reach the end', true]]);
+    [['84%', 'read past 90%', false], ['60%', 'reach the end', true]]);
   // No drop stands out: the top, the middle and the end, none in violet.
   assert.deepEqual(nums(read(900, .96, .92, .88, .84, .8, .76, .72, .68, .64, .6)),
-    [['96%', 'past 10%', false], ['80%', 'past the middle', false], ['60%', 'reach the end', false]]);
+    [['96%', 'read past 10%', false], ['80%', 'read past the middle', false], ['60%', 'reach the end', false]]);
   assert.equal(scrollNumbers(read(12, .5, .4, .3, .2, .1, .1, .1, .1, .1, .1)), null, 'too few reads: the sentence alone');
 });
 
 test('scroll picture: the caption says what the picture is and when it was taken', () => {
-  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'shot' }), 'Picture of /owls taken today. Readers counted over 30 days.');
-  assert.equal(pictureCaption({ path: '/', days: 7, kind: 'shot' }), 'Picture of the home page taken today. Readers counted over 7 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'shot' }), 'Picture of /owls taken today. Readers counted over the last 30 days.');
+  assert.equal(pictureCaption({ path: '/', days: 7, kind: 'shot' }), 'Picture of the home page taken today. Readers counted over the last 7 days.');
   assert.equal(pictureCaption({ path: '/owls', days: 1, kind: 'shot' }), 'Picture of /owls taken today. Readers counted today.');
-  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'budget' }), 'Picture of the page tomorrow. Readers counted over 30 days.');
-  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'failed' }), 'Picture of the page tomorrow. Readers counted over 30 days.');
-  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'budget' }), 'The picture /owls shows when shared, until a picture of the page tomorrow. Readers counted over 30 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'budget' }), 'No picture of the page yet; Lede takes one tomorrow. Readers counted over the last 30 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'failed' }), 'Cloudflare couldn’t take a picture of this page. Readers counted over the last 30 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'budget' }),
+    'This is the picture /owls shows when shared on social sites, not the page itself. Lede takes a picture of the page tomorrow. Readers counted over the last 30 days.');
   // Waiting won't help when the token can't take pictures, so it says what to do.
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'permission' }),
-    'To show a picture of the page here, give Lede’s Cloudflare token the Browser Run permission. Readers counted over 30 days.');
+    'To show a picture of the page here, give Lede’s Cloudflare token the Browser Run permission. Readers counted over the last 30 days.');
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'permission' }),
-    'The picture /owls shows when shared. For a picture of the page, give Lede’s Cloudflare token the Browser Run permission. Readers counted over 30 days.');
-  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'wait' }), 'Readers counted over 30 days.', 'while the picture is on its way');
-  assert.equal(pictureCaption({ path: '/a<b', days: 30, kind: 'shot' }), 'Picture of /a&lt;b taken today. Readers counted over 30 days.', 'escaped');
+    'This is the picture /owls shows when shared on social sites, not the page itself. For a picture of the page, give Lede’s Cloudflare token the Browser Run permission. Readers counted over the last 30 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'wait' }), 'Readers counted over the last 30 days.', 'while the picture is on its way');
+  assert.equal(pictureCaption({ path: '/a<b', days: 30, kind: 'shot' }), 'Picture of /a&lt;b taken today. Readers counted over the last 30 days.', 'escaped');
+});
+
+/* ---------- claims that must match the numbers ---------- */
+
+test('the page the lead sent its visitors to is named with the lead, not with the source that moved the other way', () => {
+  const rows = [ref('news.ycombinator.com', 1400, 1000), ref('google.com', 2800, 3000)];
+  const flows = [{ source: 'news.ycombinator.com', page: '/pricing', visitors: 600 }, { source: 'google.com', page: '/', visitors: 2800 }];
+  const prevFlows = [{ source: 'news.ycombinator.com', page: '/pricing', visitors: 200 }, { source: 'google.com', page: '/', visitors: 3000 }];
+  const pages = [{ key: '/pricing', visitors: 600, prev: { visitors: 200 } }, { key: '/', visitors: 2800, prev: { visitors: 3000 } }];
+  const { T } = story({ rows, ser: series(150), flows, prevFlows, pages });
+  assert.equal(strip(T.html), 'Hacker News sent 400 more visitors, mostly to /pricing, while google.com sent 200 fewer.');
+});
+
+test('a source that sent a tenth of what it did before is not said to have stopped', () => {
+  const rows = [ref('google.com', 10200, 10000), ref('bing.com', 15, 200), ref('', 5000, 5000)];
+  const { T } = story({ rows, ser: series(540) });
+  assert.equal(strip(T.html), 'About as many visitors as the 28 days before (+15). bing.com sent only 15 visitors, down from 200.');
+});
+
+test('the fastest rise is told in the past, as a rise, not as a trend', () => {
+  const rows = [ref('news.ycombinator.com', 4000, 1000), ref('google.com', 6000, 6000), ref('perplexity.ai', 300, 80)];
+  const { T } = story({ rows, ser: series(300) });
+  assert.equal(strip(T.html), 'Hacker News sent 3,000 of the 3,220 extra visitors. perplexity.ai went from 80 to 300 visitors, the fastest rise of any source.');
+});
+
+test('a new source is told as having sent visitors where there were none before', () => {
+  const rows = [ref('news.ycombinator.com', 4000, 1000), ref('google.com', 6000, 6000), ref('claude.ai', 300, null)];
+  const { T } = story({ rows, ser: series(300) });
+  assert.equal(strip(T.html), 'Hacker News sent 3,000 of the 3,300 extra visitors. claude.ai sent 300 visitors, none in the 28 days before.');
+});
+
+test('countries whose English name takes "the" get it', () => {
+  for (const [k, name] of [['PH', 'the Philippines'], ['AE', 'the United Arab Emirates'], ['BS', 'the Bahamas'], ['VG', 'the British Virgin Islands']]) {
+    const up = steady({ country: [ar('US', 500, 520), ar('GB', 200, 210), ar(k, 84, 40)] });
+    assert.equal(strip(audienceStory(up, 30).html), `Readers from ${name} doubled, from 40 to 84.`);
+  }
+});
+
+test('one person here, from a named source, reads as a sentence of its own', () => {
+  const live = { now: 1, recent: 1, visitors: [{ referrer: 'news.ycombinator.com', path: '/a', seconds: 30, active: true, ago: 10 }] };
+  assert.equal(strip(onlineStory(live, new Set(['news.ycombinator.com']), '/a')), 'One person is here now. They came from Hacker News and are reading /a. They arrived in the last minute.');
 });

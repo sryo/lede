@@ -174,11 +174,11 @@ test('next sentence: everyone leaving, and nobody leaving, are said plainly', ()
 
 test('next sentence: a small number of views is told as counts, never as shares', () => {
   const s = nextStory({ path: '/a', cur: period(7, 4, { '/b': 2, '/c': 1 }), prev: period(0, 0, {}) });
-  assert.equal(strip(s.html), 'Only 7 views so far: 4 left the site after this page and 2 went on to /b.');
+  assert.equal(strip(s.html), 'Only 7 views of this page so far: 4 ended the visit here and 2 went on to /b.');
   assert.ok(!/%/.test(s.html));
   assert.equal(s.told, null, 'nothing is singled out on a small sample');
-  assert.equal(strip(nextStory({ path: '/a', cur: period(1, 1, {}), prev: period(0, 0, {}) }).html), 'Only 1 view so far: it left the site after this page.');
-  assert.equal(strip(nextStory({ path: '/a', cur: period(2, 0, { '/b': 2 }), prev: period(0, 0, {}) }).html), 'Only 2 views so far: 2 went on to /b.');
+  assert.equal(strip(nextStory({ path: '/a', cur: period(1, 1, {}), prev: period(0, 0, {}) }).html), 'Only 1 view of this page so far: it ended the visit here.');
+  assert.equal(strip(nextStory({ path: '/a', cur: period(2, 0, { '/b': 2 }), prev: period(0, 0, {}) }).html), 'Only 2 views of this page so far: 2 went on to /b.');
 });
 
 test('next sentence: nothing to say when nobody viewed the page', () => {
@@ -187,8 +187,8 @@ test('next sentence: nothing to say when nobody viewed the page', () => {
 });
 
 test('next sentence: a clear change in how many leave is told; noise is not', () => {
-  const big = nextStory({ path: '/a', cur: period(400, 120, { '/b': 280 }), prev: period(400, 200, { '/b': 200 }) });
-  assert.match(strip(big.html), /In the period before, 50% left\.$/);
+  const big = nextStory({ path: '/a', cur: period(400, 120, { '/b': 280 }), prev: period(400, 200, { '/b': 200 }) }, 30);
+  assert.match(strip(big.html), /In the 30 days before, 50% left\.$/);
   const noise = nextStory({ path: '/a', cur: period(30, 12, { '/b': 18 }), prev: period(30, 15, { '/b': 15 }) });
   assert.ok(!/before/.test(noise.html));
   const fewBefore = nextStory({ path: '/a', cur: period(400, 120, { '/b': 280 }), prev: period(10, 9, { '/b': 1 }) });
