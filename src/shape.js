@@ -279,14 +279,16 @@ export function pickVisits(rows, keep) {
 // Views are put in time order first, and the same page viewed again straight after (a reload) is one view.
 // views: views of the page, left: views nothing followed, visits: visits that viewed it,
 // next: the pages that followed, most first.
-export function pairNext(rows, path) {
+// goals: pages that count as reaching a goal; with any, each period also counts the visits that viewed one after the page.
+export function pairNext(rows, path, goals = []) {
   const visits = new Map();
   for (const r of rows) {
     const k = `${num(r.p) === 1 ? 1 : 0}|${r.v}`;
     if (!visits.has(k)) visits.set(k, []);
     visits.get(k).push(r);
   }
-  const tally = () => ({ views: 0, left: 0, visits: 0, to: new Map() });
+  const tally = () => ({ views: 0, left: 0, visits: 0, reached: 0, to: new Map() });
+  const goal = new Set(goals);
   const out = { 1: tally(), 0: tally() };
   for (const [k, list] of visits) {
     list.sort((a, b) => num(a.t) - num(b.t));
@@ -294,6 +296,8 @@ export function pairNext(rows, path) {
     for (const r of list) if (seq.at(-1) !== (r.path ?? '')) seq.push(r.path ?? '');
     const t = out[k[0]];
     let seen = false;
+    const first = seq.indexOf(path);
+    if (first >= 0 && seq.slice(first + 1).some(p => goal.has(p))) t.reached++;
     seq.forEach((p, i) => {
       if (p !== path) return;
       seen = true;
@@ -303,8 +307,8 @@ export function pairNext(rows, path) {
     });
     if (seen) t.visits++;
   }
-  const done = ({ views, left, visits, to }) => ({
-    views, left, visits, next: [...to].map(([key, n]) => ({ key, views: n })).sort((a, b) => b.views - a.views || (a.key < b.key ? -1 : 1)),
+  const done = ({ views, left, visits, reached, to }) => ({
+    views, left, visits, ...(goals.length && { reached }), next: [...to].map(([key, n]) => ({ key, views: n })).sort((a, b) => b.views - a.views || (a.key < b.key ? -1 : 1)),
   });
   return { cur: done(out[1]), prev: done(out[0]) };
 }

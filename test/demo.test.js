@@ -203,3 +203,12 @@ test('the build stops when the page points at its own files in a way it does not
   // The path / in the page's code, a tag's closing /> and the tracker line for the Worker's own origin are not its files.
   rewrite("f.path==='/'; '<path d=\"M0\"/>'; `${location.origin}/t.js`; public/story.js" + routes, '/lede/', ['story.js']);
 });
+
+test('the sample’s last half hour is about as busy as its hours say a usual one is', async () => {
+  const { demoStore } = await import('../src/demo.js');
+  const { parseQuery } = await import('../src/api.js');
+  const { onlinePace } = await import('../public/story.js');
+  const q = parseQuery(new URL('https://x/api/hourly?site=example.com&days=30&tz=0'), ['example.com']);
+  const P = onlinePace(await demoStore.live(q), await demoStore.hourly(q), Date.now() / 1000);
+  if (P) assert.ok(P.ratio > .6 && P.ratio < 1.75, `ratio ${P.ratio.toFixed(2)}`);
+});

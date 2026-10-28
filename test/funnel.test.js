@@ -222,6 +222,12 @@ test('the funnel chart: violet for visits that go on, a pale neutral for visits 
   assert.ok(funnelBars([12, 4, 1], -1, 200).every(b => !b.hot && (b.lostFill === 'var(--lost-p)' || !b.lost)), 'too few to say: no drop picked out');
 });
 
+test('the funnel chart says how many left before each step, and each step’s share of the first', () => {
+  const bars = funnelBars([42242, 3801, 2356], 1, 200);
+  assert.deepEqual(bars.map(b => b.said), [null, '38,441 left', '1,445 left']);
+  assert.deepEqual(bars.map(b => b.share), ['', '9%', '6%'], 'every share is of the first step, as the sentence counts');
+});
+
 test('the funnel chart scales to the first step, and the bar with the lost visits on it reaches the step before', () => {
   const [a, b, c] = funnelBars([100, 50, 25], 1, 200);
   assert.equal(a.h, 200);
@@ -256,7 +262,7 @@ test('the dashboard has no funnels view: funnels are a card on the Overview', ()
   assert.ok(!/v:'funnels'|case 'funnels'/.test(html), 'nothing opens a funnels view');
   assert.ok(!html.includes('where visits drop off on the way here'), 'the goal card has no funnels row');
   assert.ok(!html.includes('class="link">Funnels<'), 'the goal line has no Funnels link');
-  assert.match(html, /By weekday and hour[\s\S]*funnels-card[\s\S]*data-group="pages"/, 'the card sits after By weekday and hour, before Pages');
+  assert.match(html, /By weekday and hour[\s\S]*funnels-card/, 'the card sits after By weekday and hour, near the end');
 });
 
 /* ---------- address ---------- */

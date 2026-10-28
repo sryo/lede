@@ -30,7 +30,7 @@ test('the sheet is candidates Lede worked out, each joining two kinds of facts, 
   assert.match(facts, /Summary the owner already reads \(don’t repeat it\)|Summary the owner already reads \(don't repeat it\): Hacker News sent .+/);
   assert.match(facts, /\n\d\. Visits from Hacker News \(news\.ycombinator\.com\) that began on \/pricing: 250 visitors this week, 40 the week before; \/pricing had 400 visitors in all, 100 before\./, 'a source and where its visits began');
   assert.match(facts, /\. Visits from google\.com bounce 30%, against 47% for all visits; most of them began on \/, 500 visitors\./, 'a source that bounces unlike the site');
-  assert.match(facts, /\. \/pricing: the slowest of the top pages to load, LCP 4\.7 s \(poor\), INP 560 ms \(poor\); readers stay 0m 20s/, 'speed and reading time; INP from 20 taps on / is too few');
+  assert.match(facts, /\. \/pricing: the slowest of the top pages to load, LCP 4\.7 s \(poor\), INP 560 ms \(poor\); readers stay 20s/, 'speed and reading time; INP from 20 taps on / is too few');
   assert.match(facts, /\. “pricing” was searched on the site by 12 visitors this week, 4 the week before; \/pricing had 400 visitors/, 'a search word and the page it names');
   assert.match(facts, /\. After your note on Sat, Oct 24 \(“Posted on Hacker News”\): 400 visitors that day, against 150 on a usual day/);
   assert.doesNotMatch(facts, /https?:|visitor id/i);
@@ -242,4 +242,16 @@ test('a failed try is kept for an hour, and one instance asks once at a time', a
     await lineFor(env, 'k2', other, T0 + 1.5 * H);
     assert.equal(runs, 2, 'an hour on, with new facts');
   } finally { console.error = error; }
+});
+
+test('the sample’s second line gives the numbers it rests on, true for either period', async () => {
+  const { demoStore } = await import('../src/demo.js');
+  const { parseQuery } = await import('../src/api.js');
+  const { fmtDur, fmtVital } = await import('../public/story.js');
+  for (const days of [7, 30]) {
+    const q = parseQuery(new URL(`https://x/api/engagement?site=example.com&days=${days}&tz=0`), ['example.com']);
+    const owls = (await demoStore.engagement(q)).rows.find(r => r.key === '/owls');
+    assert.ok(DEMO_INSIGHT.includes(fmtDur(owls.median / 1000)), `read time for ${days} days`);
+    assert.ok(DEMO_INSIGHT.includes(`LCP ${fmtVital('lcp', owls.lcp)}`), `load time for ${days} days`);
+  }
 });

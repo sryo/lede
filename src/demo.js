@@ -2,6 +2,7 @@
 // store, returning the same raw row fields, so the dashboard can't tell the difference.
 import { metrics, toSeries, toFlows, toFirsts, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience } from './shape.js';
 import { hourlyStart, BANDS } from './queries.js';
+import { usualHalfHour } from '../public/story.js';
 
 // A field guide to birds. w: traffic weight, vpv: views per visit, br: bounce rate, dur: seconds, en/ex: entry & exit weighting
 const PATHS = [
@@ -87,8 +88,8 @@ const LEFT_BEFORE = { '/feeders': .2 };
 // most of those who do go on to the nest boxes, so the first step is where nearly everyone is lost.
 export const DEMO_FUNNEL = ['/', '/feeders', '/nests'];
 // The line Workers AI would add under the sentence; the demo never asks it. True of the sample whatever the
-// day: /owls is read longest (READ) and loads slowest (VITALS).
-export const DEMO_INSIGHT = 'Readers spend longer on /owls than on any other page, and it is also the slowest page to load. Worth checking: what /owls loads before its words.';
+// day and either period: /owls is read longest (READ) and loads slowest (VITALS), and the numbers are those its view shows.
+export const DEMO_INSIGHT = 'Readers stay longest on /owls, 1m 37s, and it is also the slowest page to load, LCP 4.7 s. Worth checking: what /owls loads before its words.';
 // Of the visits at one step, the share that go on to the next. Other pairs follow the next page's traffic.
 const NEXT = { '/>/feeders': [.09, .08], '/feeders>/nests': [.62, .55] };
 const N = 90;
@@ -239,8 +240,9 @@ function demoFlows(f, [d0, d1]) {
   SOURCES.forEach((S, si) => {
     if (f.referrer != null && S.key !== f.referrer) return;
     if (f.channel != null && S.ch !== f.channel) return;
-    // Of a page's visitors from this source, the share that landed there, by the page's entry weighting;
-    // the most-entered page gets 90%, so a page never has more visitors landing on it than viewing it.
+    // Of a page's visitors from this source, the share that landed there, by the page's entry weighting: from 90% on
+    // the most-entered page down to 70%, so a page never has more visitors landing on it than viewing it, and a
+    // source's landings stay close to its visitors, as they are in real data, where each visit lands somewhere.
     const by = PATHS.map((P, pi) => {
       let v = 0;
       for (let d = Math.max(0, d0); d < d1; d++) v += data()[d][si][pi];
@@ -252,7 +254,7 @@ function demoFlows(f, [d0, d1]) {
       if (pi >= 0) rows.push({ src: S.key, landing: f.path, visitors: Math.round(by[pi]) });
       return;
     }
-    PATHS.forEach((P, pi) => rows.push({ src: S.key, landing: P.key, visitors: Math.round(by[pi] * .9 * P.en / maxEn) }));
+    PATHS.forEach((P, pi) => rows.push({ src: S.key, landing: P.key, visitors: Math.round(by[pi] * (.7 + .2 * P.en / maxEn)) }));
   });
   return toFlows(rows.filter(r => r.visitors > 0).sort((a, b) => b.visitors - a.visitors));
 }
@@ -454,9 +456,13 @@ export const demoStore = {
     };
     return { path, sampled: false, prevSampled: false, cur: one(w.cur, false), prev: one(w.prev, true) };
   },
-  async live() {
-    const now = Math.floor(Date.now() / 1000);
-    return shapeLive(LIVE.map(v => ({ ...v, first: now - v.ago - v.span, last: now - v.ago })), now);
+  // The people listed, and as many more who left earlier in the half hour as a usual half hour at this time of day
+  // has in the sample's own hours, so the Online view's "usual" is true of the sample at any hour.
+  async live(q) {
+    const now = Math.floor(Date.now() / 1000), usual = q ? Math.round(usualHalfHour(await this.hourly(q), now) ?? 0) : 0;
+    const more = Array.from({ length: Math.max(0, usual - LIVE.length) }, (_, i) => ({ path: PATHS[i % PATHS.length].key, referrer: SOURCES[i % SOURCES.length].key,
+      country: ['US', 'GB', 'DE', 'BR', 'IN', 'JP', 'CA', 'AU'][i % 8], ago: 400 + (i * 97) % 1380, span: 20 + (i * 53) % 400 }));
+    return shapeLive([...LIVE, ...more].map(v => ({ ...v, first: now - v.ago - v.span, last: now - v.ago })), now);
   },
 };
 

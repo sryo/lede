@@ -239,3 +239,24 @@ test('next items: one other page is singular, and nothing is listed for empty pa
   assert.deepEqual(nextItems(period(0, 0, {}), null), []);
   assert.deepEqual(nextItems(period(3, 3, {}), null).map(i => i.label), ['Left the site']);
 });
+
+test('next: with goals, it counts the visits that reached one after the page', () => {
+  const rows = [
+    view('a', '/pricing', 10), view('a', '/signup', 20),
+    view('b', '/signup', 5), view('b', '/pricing', 6),
+    view('c', '/pricing', 1), view('c', '/docs', 2), view('c', '/thanks', 3),
+    view('d', '/docs', 1),
+  ];
+  const { cur } = pairNext(rows, '/pricing', ['/signup', '/thanks']);
+  assert.equal(cur.visits, 3);
+  assert.equal(cur.reached, 2, 'b saw the goal only before the page, and d never saw the page');
+  assert.equal(pairNext(rows, '/pricing').cur.reached, undefined, 'no goals, no count');
+});
+
+test('SQL store: goals asked for are counted from the same rows, with no query more', async () => {
+  const calls = [];
+  const rows = [view('aaaaaaaaaaaa', '/pricing', 10), view('aaaaaaaaaaaa', '/signup', 20), view('bbbbbbbbbbbb', '/pricing', 5)];
+  const out = await sqlStore(ENV, fakeNext(calls, rows)).next(parseQuery(url('next?path=/pricing'), SITES), ['/signup']);
+  assert.equal(calls.length, 2);
+  assert.equal(out.cur.reached, 1);
+});

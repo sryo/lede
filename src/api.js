@@ -116,7 +116,7 @@ export function sqlStore(env, fetchImpl = fetch) {
     // Where readers of the page went next; see Q.NEXT for why it takes two queries. When the first fills
     // its limit, a period with no more than keep of its visits in it may have been cut short by the
     // other, so it's asked for on its own.
-    async next(q) {
+    async next(q, goals = []) {
       const path = q.filters.path;
       let found = await run(Q.nextVisitsSql(ds, q));
       if (found.length >= Q.NEXT.both) {
@@ -129,7 +129,7 @@ export function sqlStore(env, fetchImpl = fetch) {
       // Rows come in visit order, so a full answer may have cut the last visit short, which would read as leaving.
       if (rows.length >= Q.NEXT.rows) rows = rows.filter(r => r.v !== rows.at(-1).v);
       rows = rows.filter(r => picked.keep.has(`${Number(r.p) === 1 ? 1 : 0}|${r.v}`));
-      return { path, sampled: picked.sampled.cur, prevSampled: picked.sampled.prev, ...pairNext(rows, path) };
+      return { path, sampled: picked.sampled.cur, prevSampled: picked.sampled.prev, ...pairNext(rows, path, goals) };
     },
     async live(q, nowSec = Math.floor(Date.now() / 1000)) {
       return shapeLive(await run(Q.liveSql(ds, q.site)), nowSec);
@@ -326,8 +326,10 @@ async function shares(req, url, env) {
 async function route(name, url, env, store, req, ask, shared) {
   const demo = env.DEMO === 'true';
   if (name === 'sites') {
-    // insight: whether to ask for the line under home's sentence; without Workers AI there's none.
-    const answer = sites => ({ sites, demo, insight: demo || !!env.AI, ...(shared && { shared: true }) });
+    // insight: whether to ask for the line under home's sentence; without Workers AI there's none. For the owner's
+    // site menu, whether messages are on (ALERT_WEBHOOK) and whether there is a password to sign out of.
+    const answer = sites => ({ sites, demo, insight: demo || !!env.AI,
+      ...(shared ? { shared: true } : { messages: !!env.ALERT_WEBHOOK, password: !!env.DASHBOARD_PASSWORD?.trim() }) });
     if (shared) return answer([shared]);
     if (req.method === 'POST') return answer(await addSite(env, (await req.json().catch(() => ({}))).site));
     return answer(await getSites(env, { fresh: true }));
@@ -364,7 +366,8 @@ async function route(name, url, env, store, req, ask, shared) {
     case 'audience': return store.audience(q);
     case 'next':
       if (q.filters.path == null) throw new HttpError(400, 'Say which page with ?path=.');
-      return store.next(q);
+      // With ?goal=, it also counts the visits that went on to one, from the same rows.
+      return store.next(q, url.searchParams.has('goal') ? parseGoals(url.searchParams.getAll('goal')) : []);
     case 'funnel': return store.funnel(q, parseFunnel(url.searchParams.getAll('steps')));
     case 'conversions': {
       const list = url.searchParams.getAll('goal');
