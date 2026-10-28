@@ -4,7 +4,7 @@ import { parseQuery, sqlStore, handleApi, runSql } from '../src/api.js';
 import { ranges, where, hexOf, breakdownSql, flowSql, hourlySql, firstSeenSql, conversionsSql, engagementSql, linksSql, liveSql, summarySql, seriesSql, topSourceSql, DAY } from '../src/queries.js';
 import { demoStore } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
-import { mergeRows, shapeLive } from '../src/shape.js';
+import { mergeRows, shapeLive , toEngagement} from '../src/shape.js';
 
 const SITES = ['example.com'];
 const ENV = { ACCOUNT_ID: 'acc', ANALYTICS_TOKEN: 'tok', DATASET: 'lede' };
@@ -59,6 +59,8 @@ test('flows key each visit by its first referrer and first page; hours count fro
 
 // A fake SQL API that answers by recognizing which query it was sent. Queries that compare the two
 // periods read both at once and label each row with p (1 = this period).
+// Page views that got at least 10%, 20%... 100% of the way down, as the SQL API names them.
+const bands = (...n) => Object.fromEntries(n.map((v, i) => [`r${(i + 1) * 10}`, String(v)]));
 function fakeSql(calls) {
   return async (endpoint, init) => {
     calls.push({ endpoint, init });
@@ -68,6 +70,7 @@ function fakeSql(calls) {
     else if (sql.includes('AS landing')) data = [{ p: 1, src: 'news.ycombinator.com', landing: '/blog', visitors: '12' }, { p: 0, src: 'news.ycombinator.com', landing: '/blog', visitors: '6' }, { p: 1, src: '', landing: '/', visitors: '5' }, { p: 0, src: '', landing: '/', visitors: '5' }];
     else if (sql.includes('AS d, count(DISTINCT visitor)')) data = [{ p: 1, d: '3', visitors: '5', visits: '6', views: '9', bounces: '3', total_time: '120' }, { p: 1, d: '5', visitors: '1', visits: '1', views: '1', bounces: '1', total_time: '0' }, { p: 0, d: '1', visitors: '7', visits: '7', views: '7', bounces: '7', total_time: '0' }];
     else if (sql.includes('AS ref')) data = [{ d: '0', ref: 'google.com', visitors: '4' }, { d: '0', ref: '', visitors: '1' }];
+    else if (sql.includes('AS r10')) data = [{ p: 1, key: '/docs', n: '20', ms: '900000', depth: '1000', ...bands(20, 18, 16, 14, 8, 7, 6, 5, 4, 2) }, { p: 0, key: '/docs', n: '10', ms: '300000', depth: '500', ...bands(10, 10, 9, 8, 7, 6, 5, 5, 5, 5) }];
     else if (sql.includes('AS ms')) data = [{ p: 1, key: '/docs', n: '20', ms: '900000', depth: '1500' }, { p: 1, key: '/new', n: '1', ms: '2000', depth: '100' }, { p: 0, key: '/docs', n: '10', ms: '300000', depth: '500' }];
     else if (sql.includes('AS kind')) data = [{ p: 1, kind: 'outbound', key: 'github.com/acme', visitors: '6', clicks: '9' }, { p: 1, kind: 'download', key: 'example.com/guide.pdf', visitors: '2', clicks: '2' },
       { p: 0, kind: 'outbound', key: 'github.com/acme', visitors: '3', clicks: '4' }];
@@ -289,6 +292,44 @@ test('SQL store averages engagement per page and splits links from downloads', a
   const links = await store.links(q);
   assert.deepEqual(links.outbound, [{ key: 'github.com/acme', visitors: 6, clicks: 9, prev: 3 }]);
   assert.deepEqual(links.downloads, [{ key: 'example.com/guide.pdf', visitors: 2, clicks: 2, prev: null }]);
+});
+
+test('the engagement query for one page also counts how many got 10%, 20%... 100% of the way down, in the same query', () => {
+  const page = engagementSql('lede', parseQuery(url('engagement?days=7&path=%2Fdocs'), SITES));
+  for (let d = 10; d <= 100; d += 10) assert.ok(page.includes(`sumIf(_sample_interval, double2 >= ${d}) AS r${d}`), `band ${d}`);
+  assert.match(page, /^SELECT if\(timestamp >= toDateTime\(\d+\), 1, 0\) AS p, /, 'both periods at once');
+  const all = engagementSql('lede', parseQuery(url('engagement?days=7'), SITES));
+  assert.ok(!all.includes('AS r10'), 'the list of every page has no use for them');
+});
+
+test('scroll bands become the share of readers still there at each tenth of the page', async () => {
+  const { rows: [r] } = toEngagement([{ key: '/a', n: '40', ms: '0', depth: '0', ...bands(40, 40, 30, 30, 20, 20, 10, 10, 10, 4) }], []);
+  assert.deepEqual(r.reach, [1, 1, .75, .75, .5, .5, .25, .25, .25, .1]);
+  assert.equal(toEngagement([{ key: '/a', n: '4', ms: '0', depth: '0' }], []).rows[0].reach, undefined, 'only a single page asks for them');
+  assert.deepEqual(toEngagement([{ key: '/a', n: '0', ...bands(0, 0, 0, 0, 0, 0, 0, 0, 0, 0) }], []).rows[0].reach, Array(10).fill(0));
+  const calls = [];
+  const store = sqlStore(ENV, fakeSql(calls));
+  const { rows } = await store.engagement(parseQuery(url('engagement?days=7&path=%2Fdocs'), SITES));
+  assert.equal(calls.length, 1, 'no query of its own');
+  assert.deepEqual(rows[0].reach, [1, .9, .8, .7, .4, .35, .3, .25, .2, .1]);
+  assert.deepEqual(rows[0].prev.reach, [1, 1, .9, .8, .7, .6, .5, .5, .5, .5]);
+});
+
+test('demo: /owls loses a third of its readers halfway down; other pages fade gently', async () => {
+  const q = parseQuery(url('engagement?days=30'), SITES);
+  const page = async k => (await demoStore.engagement({ ...q, filters: { path: k } })).rows[0];
+  const owls = await page('/owls');
+  assert.equal(owls.reach.length, 10);
+  assert.ok(owls.reach.every((x, i) => x > 0 && x <= 1 && (!i || x <= owls.reach[i - 1])), 'nobody gets further by scrolling less');
+  const drops = owls.reach.map((x, i) => (i ? owls.reach[i - 1] : 1) - x);
+  assert.equal(drops.indexOf(Math.max(...drops)), 4, 'the drop comes between 40% and 50%');
+  assert.ok(Math.max(...drops) > .25 && owls.reach[4] < .5);
+  assert.ok(owls.prev.reach, 'last period too');
+  const robin = await page('/robin');
+  assert.ok(Math.max(...robin.reach.map((x, i) => (i ? robin.reach[i - 1] : 1) - x)) < .15);
+  assert.ok(Math.abs(owls.scroll - (owls.reach.reduce((a, b) => a + b) - owls.reach[9] / 2 + .5) / 10) < .06, 'the average agrees with the bands');
+  const all = await demoStore.engagement(q);
+  assert.ok(all.rows.every(r => !r.reach), 'the list of every page leaves them out');
 });
 
 test('demo: pages are read for a plausible time, and links and downloads follow the page filter', async () => {

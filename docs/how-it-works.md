@@ -37,7 +37,7 @@ Every view has its own address, so refresh and the back button work and a link o
 
 Who is here now refreshes every minute, and when you come back to the tab: on home, and on the Online view while it's showing.
 
-A page's view shows how long the page is read on average and how far down people scroll. It and the overview end with the links people clicked: links to other sites, and files they downloaded. Neither shows until the tracker has sent some.
+A page's view shows how long the page is read on average and how far down people scroll, then how many readers are still there at each tenth of the page, with a sentence saying where half of them have stopped and naming the tenth where the most stop. Under 50 reads it says there are too few to tell. It and the overview end with the links people clicked: links to other sites, and files they downloaded. Neither shows until the tracker has sent some.
 
 Keywords (`/keywords`, from the Keywords link under the Sources list) shows what can be known about search, and says what can't: Google doesn't pass on what people searched for to find a site, so those words never reach Lede, and the page says so. What it shows instead:
 
@@ -123,7 +123,7 @@ Days run from local midnight to local midnight in `tzName`, so the day the clock
 - `GET /api/hourly` → visitors per hour of the period, counted in whole days back from today's local midnight, so today's hours match the clock even after a daylight-saving change earlier in the period
 - `GET /api/live` → visitors in the last 30 minutes, with who is active in the last 5
 - `GET /api/conversions?goal=/signup&goal=/thanks` → visits per source, and how many of them viewed a goal page
-- `GET /api/engagement` → per page: page views that sent an engagement event, average seconds on the page and share scrolled, with last period's
+- `GET /api/engagement` → per page: page views that sent an engagement event, average seconds on the page and share scrolled, with last period's. With `path`, the page also gets `reach`: the share of those views that got at least 10%, 20%... 100% of the way down, counted in the same query
 - `GET /api/links` → `outbound` links and `downloads`, each with visitors, clicks and last period's visitors
 - `GET /api/keywords` → `site` (words searched on the site) and `paid` (ad keywords), each a list of `{key, visitors, prev}` with last period's visitors (`null` when no one used the word then), most used first, up to 100
 - `GET /api/sites` → the sites Lede counts; `POST /api/sites` with `{"site": "example.com"}` adds one

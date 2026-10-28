@@ -180,9 +180,13 @@ export const firstSeenSql = (ds, q, dim) =>
 
 // Per page: page views that sent an engagement event (n), and their engaged milliseconds and scroll
 // percentages summed, each weighted by the views a sampled row stands for. Averages are taken in shape.js.
+// For one page it also counts the views that got at least 10%, 20%... 100% of the way down (r10...r100),
+// so the page's view can show where readers stop without a query of its own.
+export const BANDS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 export const engagementSql = (ds, q, only) =>
-  `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, sum(_sample_interval) AS n, sum(_sample_interval * ${COL.engaged}) AS ms, sum(_sample_interval * ${COL.scroll}) AS depth `
-  + `FROM ${ds} WHERE ${within(q, only, ['engagement'])} GROUP BY p, key ORDER BY n DESC ${limit(LISTS.pages, only)}`;
+  `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, sum(_sample_interval) AS n, sum(_sample_interval * ${COL.engaged}) AS ms, sum(_sample_interval * ${COL.scroll}) AS depth`
+  + (q.filters.path == null ? '' : BANDS.map(d => `, sumIf(_sample_interval, ${COL.scroll} >= ${d}) AS r${d}`).join(''))
+  + ` FROM ${ds} WHERE ${within(q, only, ['engagement'])} GROUP BY p, key ORDER BY n DESC ${limit(LISTS.pages, only)}`;
 
 // Links to other sites and files, by the visitors who clicked them.
 export const linksSql = (ds, q, only) =>

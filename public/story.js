@@ -450,6 +450,23 @@ export function pageStory(totals, flows, label) {
   return s;
 }
 
+// How far down one page is read, from r.reach: the share of its readers still there 10%, 20%... 100% of the way
+// down. It says where half have stopped and names the tenth that loses clearly the most (drop, from 0).
+// Under 50 reads a tenth is a handful of people, so it says only that.
+export function scrollStory(r) {
+  const reach = r?.reach, n = Math.round(r?.views || 0), half = '<b>Half</b> your readers ';
+  if (!reach || !n) return null;
+  if (n < 50) return { few: true, drop: -1, sub: null, html: `Only ${n > 1 ? n + ' reads' : 'one read'} of this page so far, too few to say where people stop.` };
+  const at = (reach.findIndex(x => x < .5) + 1) * 10, end = reach[9];
+  const html = !at ? (end >= .85 ? '<b>Nearly all</b> readers ' : end > .5 ? '<b>Most</b> readers ' : half) + 'reach the end.'
+    : half + (at === 50 ? 'stop before <b>the middle</b> of this page.' : at === 100 ? 'stop just short of the end.' : `stop before they're <b>${at}%</b> of the way down this page.`);
+  // An even fade loses a few points every tenth; a drop loses clearly more.
+  const drops = reach.map((x, i) => (reach[i - 1] ?? 1) - x), most = maxOf(drops);
+  const drop = most >= .1 && most >= 1.5 * median(drops) ? drops.indexOf(most) : -1;
+  const where = drop ? `between ${drop}0% and ${drop === 9 ? 'the end' : `${drop + 1}0% of the way down`}` : 'in the first 10% of the page';
+  return { few: false, drop, html, sub: drop < 0 ? null : `The steepest drop comes ${where}, where <b>${fmtPct(most)}</b> of readers stop.` };
+}
+
 const COUNT_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
 export function eventsSentence(events, days) {
   if (!events.length) return `Nothing unusual in the last ${days} days.`;

@@ -295,6 +295,15 @@ button.tile-title:hover{color:var(--ink)}
 .steps{position:relative;min-height:196px;height:20vh}
 .steps .step{all:unset;position:absolute;cursor:pointer;border-radius:6px}
 .steps .step:focus-visible{outline:2px solid var(--focus);outline-offset:0}
+.reach-body{display:flex;align-items:center;gap:16px 48px;flex-wrap:wrap}
+.reach-body>div:first-child{flex:0 1 480px}
+.reach-say{margin:0;font-size:var(--fs-m);line-height:1.4}
+/* the page as a column, a bar per tenth */
+.reach{position:relative;display:grid;grid:repeat(10,14px)/auto 132px 32px;gap:3px 10px;align-items:center;font-size:var(--fs-xs);line-height:1;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+.reach::before{content:"";position:absolute;grid-area:1/2/-1/3;inset:-6px;border-radius:6px;box-shadow:0 0 0 1px var(--line)}
+.reach i{height:100%;display:flex}
+.reach b{background:var(--page-t)} .reach u{background:var(--page-p)} .reach .on u{background:var(--page)}
+.on+span{color:var(--ink);font-weight:600}
 .landed{position:relative;min-height:276px;height:28vh}
 .landed .lbl{all:unset;position:absolute;transform:translateY(-50%);font-size:var(--fs-xs);line-height:1.3;cursor:pointer;white-space:nowrap;max-width:calc(40% - 18px);overflow:hidden;text-overflow:ellipsis}
 .landed .lbl span{color:var(--muted)}
@@ -412,7 +421,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 <script type="module">
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, spikeSegment, waterfall, waterfallCaption, bounceSplit, bounceCaption,
-  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, pageStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, keywordsStory, KEYWORDS_EMPTY,
+  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, pageStory, scrollStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, keywordsStory, KEYWORDS_EMPTY,
   dayHint, ribbonHint, sourceHint, pageHint } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -1124,8 +1133,19 @@ async function renderFilter(body,f){
     body.querySelector('.nums').insertAdjacentHTML('beforeend',
       n('Time on page',fmtDur(r.time),r.prev?changeWord(r.time,r.prev.time):'new','On average, counting only while the page was on screen and in front')
       +n('Scrolled',fmtPct(r.scroll),r.prev?pts(r.scroll,r.prev.scroll):'new','How far down the page people got, on average'));
+    drawReach(body,r);
   },()=>{});
   if(overview||f.path!=null)api('links',p).then(L=>{if(!stale(body,gen))drawLinks(body,L,c.visitors)},()=>{});
+}
+
+// How far down the page is read: a bar per tenth of the page, as wide as the share still reading, then, paler,
+// those who stopped in that tenth; solid where the sentence names the drop. Too few reads get the sentence alone.
+function drawReach(body,r){
+  const S=scrollStory(r),R=r.reach;if(!S)return;
+  const sec=document.createElement('section');sec.className='card';
+  sec.innerHTML=`<div class="card-title">How far down people read</div><div class="reach-body"><div><p class="reach-say">${S.html}</p>${S.sub?`<p class="say-sub">${S.sub}</p>`:''}</div>${S.few?'':`<div class="reach" role="img" aria-label="Still reading at each tenth of the page: ${R.map(fmtPct).join(', ')}">`
+    +R.map((x,i)=>`<span>${['Top',,,,'Middle',,,,,'End'][i]||''}</span><i title="${i+1}0% of the way down: ${fmtPct(x)} still reading"${i===S.drop?' class="on"':''}><b style="width:${x*100}%"></b><u style="width:${((R[i-1]??1)-x)*100}%"></u></i><span>${fmtPct(x)}</span>`).join('')+'</div>'}</div>`;
+  body.querySelector('.nums').after(sec);
 }
 
 // Links to other sites and files people clicked, as a share of the visitors; a switch when there are both.

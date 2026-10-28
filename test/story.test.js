@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readStory, tellStory, bounceSplit, bounceCaption, waterfall, waterfallCaption, spikeSegment,
-  flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory } from '../public/story.js';
+  flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -437,4 +437,52 @@ test('the online sentence says how many are here before saying "of them"', () =>
   assert.equal(strip(onlineStory(live, new Set(['google.com']), '/x')), '3 people are here now; 2 of them came from google.com. Everyone here now arrived in the last 2 minutes.');
   const one = { now: 1, recent: 1, visitors: [v('', '/a', 30)] };
   assert.equal(strip(onlineStory(one, new Set(), null)), 'One person is here now, on /a. They arrived in the last minute.');
+});
+
+/* ---------- how far down a page is read ---------- */
+
+const read = (views, ...reach) => ({ views, reach });
+
+test('scroll: says where half the readers have stopped', () => {
+  const say = r => strip(scrollStory(r).html);
+  assert.equal(say(read(400, .95, .85, .75, .6, .45, .4, .35, .3, .25, .2)), 'Half your readers stop before the middle of this page.');
+  assert.equal(say(read(400, .9, .7, .45, .4, .35, .3, .25, .2, .15, .1)), "Half your readers stop before they're 30% of the way down this page.");
+  assert.equal(say(read(400, 1, .98, .95, .9, .85, .8, .7, .6, .55, .3)), 'Half your readers stop just short of the end.');
+  assert.equal(say(read(400, 1, .98, .95, .9, .85, .8, .78, .75, .72, .7)), 'Most readers reach the end.');
+  assert.equal(say(read(400, 1, 1, 1, 1, 1, 1, 1, 1, 1, .95)), 'Nearly all readers reach the end.');
+  assert.equal(say(read(400, 1, 1, .9, .8, .7, .6, .6, .5, .5, .5)), 'Half your readers reach the end.');
+});
+
+test('scroll: names the steepest drop, when one stands out', () => {
+  const owls = scrollStory(read(900, .93, .87, .81, .76, .43, .4, .37, .35, .34, .33));
+  assert.equal(owls.drop, 4);
+  assert.equal(strip(owls.sub), 'The steepest drop comes between 40% and 50% of the way down, where 33% of readers stop.');
+  const first = scrollStory(read(900, .8, .75, .7, .66, .62, .58, .55, .52, .5, .48));
+  assert.equal(strip(first.sub), 'The steepest drop comes in the first 10% of the page, where 20% of readers stop.');
+  const last = scrollStory(read(900, 1, .98, .96, .94, .92, .9, .88, .86, .84, .6));
+  assert.equal(strip(last.sub), 'The steepest drop comes between 90% and the end, where 24% of readers stop.');
+  const even = scrollStory(read(900, .96, .92, .88, .84, .8, .76, .72, .68, .64, .6));
+  assert.equal(even.drop, -1, 'a page read evenly has no drop worth naming');
+  assert.equal(even.sub, null);
+  const all = scrollStory(read(900, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1));
+  assert.deepEqual([all.drop, all.sub], [-1, null], 'a page that fits on one screen');
+});
+
+test('scroll: too few readers is said plainly, with no chart to read into', () => {
+  const few = scrollStory(read(12, .5, .4, .3, .2, .1, .1, .1, .1, .1, .1));
+  assert.equal(strip(few.html), 'Only 12 reads of this page so far, too few to say where people stop.');
+  assert.deepEqual([few.few, few.drop, few.sub], [true, -1, null]);
+  assert.equal(strip(scrollStory(read(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)).html), 'Only one read of this page so far, too few to say where people stop.');
+  assert.equal(scrollStory(read(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)), null);
+  assert.equal(scrollStory(read(49, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)).few, true);
+  assert.equal(scrollStory({ views: 50 }), null, 'no bands, nothing to say');
+  assert.equal(scrollStory(undefined), null);
+});
+
+test('scroll: the demo /owls page tells its drop', async () => {
+  const q = parseQuery(new URL('https://w.test/api/engagement?days=30&path=%2Fowls'), ['example.com']);
+  const { rows: [r] } = await demoStore.engagement(q);
+  const S = scrollStory(r);
+  assert.equal(strip(S.html), 'Half your readers stop before the middle of this page.');
+  assert.match(strip(S.sub), /^The steepest drop comes between 40% and 50% of the way down, where \d+% of readers stop\.$/);
 });

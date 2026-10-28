@@ -1,7 +1,7 @@
 // Sample data for local development (DEMO="true"). It answers the same questions as the SQL
 // store, returning the same raw row fields, so the dashboard can't tell the difference.
 import { metrics, toSeries, toFlows, toFirsts, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords } from './shape.js';
-import { hourlyStart } from './queries.js';
+import { hourlyStart , BANDS} from './queries.js';
 
 // A field guide to birds. w: traffic weight, vpv: views per visit, br: bounce rate, dur: seconds, en/ex: entry & exit weighting
 const PATHS = [
@@ -33,11 +33,18 @@ const SOURCES = [
   { key: 'claude.ai', ch: 'ai', w: 1.6, vf: 1.2, bm: .75, dm: 1.4 },
   { key: 'bsky.app', ch: 'social', w: 1.4, vf: 1.1, bm: 1.1, dm: .95 },
 ];
-// Seconds a page view is read, and how far down (%): the long guides hold people, the home page is a crossroads.
+// Seconds a page view is read, then how far down: the share of readers still there at the very end, and
+// for /owls a point (%) where a share of them stop at once, where its long table of owl calls begins.
+// The long guides hold people, the home page is a crossroads.
 const READ = {
-  '/': [28, 52], '/robin': [64, 71], '/by-song': [112, 63], '/feeders': [58, 68], '/owls': [121, 77], '/migration': [83, 58],
-  '/heron': [41, 66], '/wren': [44, 70], '/nests': [52, 61], '/swift': [76, 72], '/kingfisher': [36, 64], '/about': [22, 81],
+  '/': [28, .2], '/robin': [64, .52], '/by-song': [112, .38], '/feeders': [58, .47], '/owls': [121, .55, [40, .4]], '/migration': [83, .3],
+  '/heron': [41, .43], '/wren': [44, .5], '/nests': [52, .35], '/swift': [76, .53], '/kingfisher': [36, .4], '/about': [22, .68],
 };
+// The share still reading 10%, 20%... 100% of the way down: everyone at the top, fading to the end's share.
+const REACH = Object.fromEntries(Object.entries(READ).map(([k, [, end, cliff]]) =>
+  [k, BANDS.map(d => (end + (1 - end) * (1 - d / 100) ** 1.5) * (cliff && d > cliff[0] ? 1 - cliff[1] : 1))]));
+// How far down on average (%), from those shares.
+const DEPTH = Object.fromEntries(Object.entries(REACH).map(([k, r]) => [k, (.5 + r.reduce((a, b) => a + b) - r[9] / 2) * 10]));
 // Links off the site and files to download: the page they're on, and the share of its visitors who click.
 // Files live on the site itself, so their host is filled in per site.
 const LINKS = [
@@ -302,19 +309,19 @@ export const demoStore = {
   async engagement(q) {
     const w = windows(q), f = q.filters, m = data();
     // Four in five page views send one; the rest are glances or tabs the browser closed first.
-    // Sources whose visitors stay longer read longer and further.
+    // Sources whose visitors stay longer read longer. One page also gets how many got each tenth of the way down.
     const rows = ([d0, d1]) => PATHS.map((P, pi) => {
       const r = { key: P.key, n: 0, ms: 0, depth: 0 };
       if (f.path != null && P.key !== f.path) return r;
-      const [secs, pct] = READ[P.key];
       SOURCES.forEach((S, si) => {
         if ((f.referrer != null && S.key !== f.referrer) || (f.channel != null && S.ch !== f.channel)) return;
         let n = 0;
         for (let d = Math.max(0, d0); d < d1; d++) n += m[d][si][pi] * S.vf * P.vpv * .8;
         r.n += n;
-        r.ms += n * secs * 1000 * S.dm;
-        r.depth += n * Math.min(100, pct * (.85 + .15 * S.dm));
+        r.ms += n * READ[P.key][0] * 1000 * S.dm;
+        r.depth += n * DEPTH[P.key];
       });
+      if (f.path != null) BANDS.forEach((d, i) => { r[`r${d}`] = r.n * REACH[P.key][i]; });
       return r;
     }).filter(r => r.n >= 1).sort((a, b) => b.n - a.n);
     return toEngagement(rows(w.cur), rows(w.prev));

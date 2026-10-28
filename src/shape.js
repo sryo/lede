@@ -1,6 +1,6 @@
 // Turns raw aggregate rows (from SQL or the demo store) into the JSON the dashboard reads.
 // The SQL API returns 64-bit counts as strings, hence the Number() everywhere.
-import { SEARCH_PARAMS } from './queries.js';
+import { SEARCH_PARAMS , BANDS} from './queries.js';
 
 const num = v => Number(v) || 0;
 
@@ -101,10 +101,12 @@ export function shapeLive(rows, nowSec) {
 }
 
 // Engagement rows carry sums (see engagementSql). Each page gets the page views that sent one, how many
-// seconds they were read on average, and how far down, as a share of the page.
+// seconds they were read on average, and how far down, as a share of the page. A single page also gets
+// reach: the share of those views still there 10%, 20%... 100% of the way down.
 const reading = r => {
-  const n = num(r.n);
-  return { views: n, time: n ? num(r.ms) / n / 1000 : 0, scroll: n ? num(r.depth) / n / 100 : 0 };
+  const n = num(r.n), out = { views: n, time: n ? num(r.ms) / n / 1000 : 0, scroll: n ? num(r.depth) / n / 100 : 0 };
+  if (r.r10 != null) out.reach = BANDS.map(d => n ? num(r[`r${d}`]) / n : 0);
+  return out;
 };
 export function toEngagement(cur, prev) {
   const before = new Map(prev.map(r => [r.key ?? '', reading(r)]));
