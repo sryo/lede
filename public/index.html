@@ -310,6 +310,19 @@ button.tile-title:hover{color:var(--ink)}
 .reach-body{display:flex;align-items:center;gap:16px 48px;flex-wrap:wrap}
 .reach-body>div:first-child{flex:0 1 480px}
 .card-say{margin:0;font-size:var(--fs-m);line-height:1.4}
+/* A page's speed as a visit: hatched while readers wait for the main content (a tick marks the period
+   before), then solid while they read. Waiting gets 16px a second (up to 10 s), far more than reading, so a few
+   seconds still show next to minutes. */
+.wr{display:grid;grid-template-columns:var(--wait) 1fr;gap:6px 4px;margin-top:14px}
+.wr-k{font-size:var(--fs-xs);white-space:nowrap}
+.wr-k+.wr-k{padding-left:max(0px,calc(64px - var(--wait)))}
+.wr-wait,.wr-read{height:28px;border-radius:6px}
+.wr-wait{position:relative;overflow:visible;background:repeating-linear-gradient(45deg,var(--page-t) 0 2.5px,var(--page-p) 2.5px 6px)}
+.wr-was{position:absolute;top:-4px;bottom:-4px;left:calc(var(--was) - 1px);border-left:2px solid var(--ink)}
+.wr-read{background:var(--page)}
+.wr-v{display:flex;flex-direction:column;font-size:var(--fs-xs);color:var(--muted);white-space:nowrap}
+.wr-v b{font-size:var(--fs-s);color:var(--ink)}
+.wr-v+.wr-v{align-items:flex-end}
 /* the page itself, darker further down where fewer still read; a plain page-shaped column until its picture comes */
 .reach-fig{margin:0;display:flex;flex-direction:column;gap:12px}
 .shotwrap{position:relative;display:flex;gap:12px} .shotwrap[hidden]{display:none}
@@ -454,7 +467,7 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, spikeSegment, waterfall, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, VITALS_HINT } from '/story.js';
+  dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
 
@@ -1221,8 +1234,9 @@ async function renderFilter(body,f){
       n('Time on page',fmtDur(t),!r.prev?'new':was==null?'':changeWord(t,was),mid?'Half the views had this page open and in view for longer than this':'Average time people had this page open and in view')
       +n('How far down',fmtPct(r.scroll),r.prev?pts(r.scroll,r.prev.scroll):'new','How far down the page people got, on average'));
     drawReach(body,r,f.path);
-    const V=vitalsLine(r);
-    if(V)body.querySelector('.nums').insertAdjacentHTML('afterend',`<p class="say-sub vitals" title="${esc(VITALS_HINT)}">${V.html}</p>`);
+    const S=speedStory(r,f.path),V=!S&&vitalsLine(r);
+    if(S)drawSpeed(body,S,f.path);
+    else if(V)body.querySelector('.nums').insertAdjacentHTML('afterend',`<p class="say-sub vitals" title="${esc(VITALS_HINT)}">${V.html}</p>`);
   },()=>{});
   if(overview)api('audience').then(A=>{if(!stale(body,gen))drawAudience(body.querySelector('.aud'),A)},()=>{});
   if(overview)api('keywords').then(K=>{if(!stale(body,gen))drawKeywords(body.querySelector('.kw'),K)},()=>{});
@@ -1244,6 +1258,19 @@ function drawReach(body,r,path){
     <figcaption class="say-sub">${pictureCaption({path,days:DAYS,kind:'wait'})}</figcaption></figure>`}</div>`;
   body.querySelector('.nums').after(sec);
   if(P)showPicture(sec,path);
+}
+
+// How fast the page loads, as a visit: waiting, then reading (see .wr). After the reading card when there is one.
+function drawSpeed(body,S,path){
+  const px=t=>Math.round(Math.min(10,t)*16)+'px',sec=document.createElement('section');sec.className='card speed-card';
+  const aria=`Readers wait ${S.wait.toFixed(1)} seconds for the main content${S.moved?`, ${S.was.toFixed(1)} before`:''}, then read for ${fmtDur(S.read)}.`;
+  sec.innerHTML=`<div class="card-title">How fast ${esc(pageName(path))} loads</div><p class="card-say">${S.html}</p>
+    <div class="wr" role="img" aria-label="${esc(aria)}" title="${esc(VITALS_HINT)}" style="--wait:${px(S.wait)};--was:${S.was!=null?px(S.was):'0px'}">
+      <span class="wr-k">Waiting</span><span class="wr-k">Reading</span>
+      <i class="wr-wait">${S.was!=null?'<i class="wr-was"></i>':''}</i><i class="wr-read"></i>
+      <span class="wr-v"><b>${S.wait.toFixed(1)} s</b>${S.moved?`<span>${S.was.toFixed(1)} s before</span>`:''}</span><span class="wr-v"><b>${S.read>=1?fmtDur(S.read):'–'}</b></span>
+    </div><p class="say-sub">${S.note}</p>`;
+  (body.querySelector('.reach-card')||body.querySelector('.nums')).after(sec);
 }
 
 // The day's picture of the page, kept by the Worker (src/shot.js). It keeps the page's shape: as tall as the

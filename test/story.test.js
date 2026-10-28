@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readStory, tellStory, bounceSplit, bounceCaption, waterfall, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
   scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
-  unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding } from '../public/story.js';
+  unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding, speedStory } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -932,4 +932,26 @@ test('speed finding: the busiest page slow for many readers, never a small one',
   assert.equal(strip(both.html), '/app is slow for many of its 600 visitors: of the views measured, 1 in 4 took 4.5 s or longer to load, and 1 in 4 waited 700 ms or longer for a tap or click to answer.');
   const answer = vitalsFinding([{ key: '/', views: 500, inp: 650, inpN: 120 }], [{ key: '/', value: 600 }], 1000);
   assert.equal(strip(answer.html), 'The home page is slow for many of its 600 visitors: of the views measured, 1 in 4 waited 650 ms or longer for a tap or click to answer.');
+});
+
+test('a page’s speed reads as a visit: the wait for its main content, then how long people read', () => {
+  const strip = h => h.replace(/<[^>]+>/g, '');
+  const owls = { key: '/owls', views: 3200, median: 100000, lcp: 4700, inp: 560, cls: .09, lcpN: 3000, inpN: 900, clsN: 3000,
+    prev: { views: 2800, median: 96000, lcp: 3100, inp: 300, cls: .12, lcpN: 2600, inpN: 700, clsN: 2600 } };
+  const S = speedStory(owls, '/owls');
+  assert.equal(strip(S.html), 'Readers wait 4.7 s for /owls, up from 3.1 s, then stay 1m 40s.');
+  assert.equal(strip(S.note), 'Each tap then waits 560 ms (poor); the layout holds steady (0.09). Times are for 3 in 4 views; the rest took longer.');
+  assert.deepEqual([S.wait, S.was, S.read, S.rating], [4.7, 3.1, 100, 'poor']);
+  // A small change isn't one, and the home page has its name.
+  const home = speedStory({ ...owls, key: '/', lcp: 1800, prev: { ...owls.prev, lcp: 1750 } }, '/');
+  assert.equal(strip(home.html), 'Readers wait 1.8 s for the home page, then stay 1m 40s.');
+  assert.equal(home.was, 1.75, 'the period before is still drawn');
+  // Few taps measured, or no reading time: say only what is known.
+  const fewTaps = speedStory({ ...owls, inpN: 12, cls: .3, prev: null }, '/owls');
+  assert.equal(strip(fewTaps.html), 'Readers wait 4.7 s for /owls, then stay 1m 40s.');
+  assert.match(strip(fewTaps.note), /^The layout jumps around \(0\.30\)\./);
+  assert.equal(strip(speedStory({ ...owls, median: 400, prev: null }, '/owls').html), 'Readers wait 4.7 s for /owls, then most leave.');
+  // Too few loads measured: no card, and the one-line summary takes over.
+  assert.equal(speedStory({ ...owls, lcpN: 20 }, '/owls'), null);
+  assert.equal(speedStory({ key: '/x', views: 50, lcp: null }, '/x'), null);
 });

@@ -50,6 +50,8 @@ const VITALS = {
   '/migration': [2300, 150, 50], '/heron': [1700, 90, 20], '/wren': [2000, 130, 0], '/nests': [2200, 160, 70], '/swift': [1950, 100, 40],
   '/kingfisher': [2050, 210, 110],
 };
+// /owls got slower this month (a bigger recording was added), so its view shows the change.
+const VITALS_BEFORE = { '/owls': [3100, 300, 120] };
 // How far down on average (%), from those shares.
 const DEPTH = Object.fromEntries(Object.entries(REACH).map(([k, r]) => [k, (.5 + r.reduce((a, b) => a + b) - r[9] / 2) * 10]));
 // Links off the site and files to download: the page they're on, and the share of its visitors who click.
@@ -370,8 +372,8 @@ export const demoStore = {
     const w = windows(q), f = q.filters, m = data();
     // Four in five page views send one; the rest are glances or tabs the browser closed first.
     // Sources whose visitors stay longer read longer. One page also gets how many got each tenth of the way down.
-    const rows = ([d0, d1]) => PATHS.map((P, pi) => {
-      const [lcp, inp, cls] = VITALS[P.key] || [0, 0, 0];
+    const rows = ([d0, d1], before) => PATHS.map((P, pi) => {
+      const [lcp, inp, cls] = (before && VITALS_BEFORE[P.key]) || VITALS[P.key] || [0, 0, 0];
       // The median read is shorter than the mean: a few long reads pull the mean up.
       const r = { key: P.key, n: 0, ms: 0, depth: 0, median_ms: READ[P.key][0] * 800, lcp, inp, cls, lcp_n: 0, inp_n: 0, cls_n: 0 };
       if (f.path != null && P.key !== f.path) return r;
@@ -388,7 +390,7 @@ export const demoStore = {
       if (f.path != null) BANDS.forEach((d, i) => { r[`r${d}`] = r.n * REACH[P.key][i]; });
       return r;
     }).filter(r => r.n >= 1).sort((a, b) => b.n - a.n);
-    return toEngagement(rows(w.cur), rows(w.prev));
+    return toEngagement(rows(w.cur), rows(w.prev, true));
   },
   async links(q) {
     const w = windows(q), f = q.filters, m = data();

@@ -865,6 +865,23 @@ export function vitalsLine(r) {
   const ratings = Object.fromEntries(enough.map(k => [k, vitalRating(k, r[k])]));
   return { ratings, html: `Of the views measured, 3 in 4 ${listed(enough.map(k => `${VITAL_WORDS[k](`<b>${fmtVital(k, r[k])}</b>`)} (${ratings[k]})`))}.` };
 }
+// One page's speed told as a visit: how long readers wait for its main content (LCP), then how long they read
+// it. The note adds taps (INP) and layout movement (CLS) when enough views measured them. Null without enough
+// LCP; vitalsLine says the rest then.
+const LAYOUT = { good: 'the layout holds steady', 'needs work': 'the layout shifts a little', poor: 'the layout jumps around' };
+export function speedStory(r, path) {
+  if (r?.lcp == null || measured(r, 'lcp') < VITALS_MIN) return null;
+  const read = r.median != null ? r.median / 1000 : r.time, p = r.prev;
+  const was = p?.lcp != null && measured(p, 'lcp') >= VITALS_MIN ? p.lcp : null;
+  const moved = was != null && Math.abs(r.lcp - was) >= Math.max(200, was * .1);
+  const html = `Readers wait <b>${fmtVital('lcp', r.lcp)}</b> for ${esc(pageName(path))}${moved ? `, ${r.lcp > was ? 'up' : 'down'} from ${fmtVital('lcp', was)}` : ''}`
+    + (read >= 1 ? `, then stay <b>${fmtDur(read)}</b>.` : ', then most leave.');
+  const after = [];
+  if (r.inp != null && measured(r, 'inp') >= VITALS_MIN) after.push(`each tap then waits <b>${fmtVital('inp', r.inp)}</b> (${vitalRating('inp', r.inp)})`);
+  if (r.cls != null && measured(r, 'cls') >= VITALS_MIN) after.push(`${LAYOUT[vitalRating('cls', r.cls)]} (${fmtVital('cls', r.cls)})`);
+  const note = (after.length ? `${after.join('; ')}. `.replace(/^./, c => c.toUpperCase()) : '') + 'Times are for 3 in 4 views; the rest took longer.';
+  return { html, note, moved, rating: vitalRating('lcp', r.lcp), wait: r.lcp / 1000, was: was == null ? null : was / 1000, read };
+}
 export const VITALS_HINT = 'Good is within 2.5 s to load, 200 ms to answer and 0.1 of layout movement; poor is over 4 s, 500 ms and 0.25.';
 
 // The busiest page that is slow for many of its readers: poor loading or answering, at least 50 visitors and
