@@ -6,6 +6,7 @@
     "dev": "wrangler dev --var DEMO:true --test-scheduled",
     "deploy": "wrangler deploy",
     "test": "node --test",
+    "tracker": "node scripts/tracker.mjs",
     "bench": "node scripts/bench.mjs",
     "bench:compare": "node scripts/compare.mjs"
   },

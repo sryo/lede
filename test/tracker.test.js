@@ -1,9 +1,18 @@
-import { test } from 'node:test';
+import { test as nodeTest } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-const SOURCE = readFileSync(new URL('../public/t.js', import.meta.url), 'utf8');
+// Every test runs on the readable tracker and on public/t.js, the copy without comments that sites
+// receive, so stripping it can't change what it does.
+const FILES = ['src/tracker.js', 'public/t.js'];
+let SOURCE;
+const test = (name, fn) => {
+  for (const file of FILES) {
+    const source = readFileSync(new URL('../' + file, import.meta.url), 'utf8');
+    nodeTest(`${name} [${file}]`, () => { SOURCE = source; return fn(); });
+  }
+};
 
 // Runs the tracker against a stand-in page and returns what it sent, plus handles to navigate.
 // sent holds the page views; events holds everything else (engagement, outbound links, downloads).
