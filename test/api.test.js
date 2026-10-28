@@ -6,6 +6,7 @@ import { demoStore } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
 import { mergeRows, shapeLive, toEngagement, toAudience } from '../src/shape.js';
 import { audienceSql } from '../src/queries.js';
+import { vitalsLine } from '../public/story.js';
 
 const SITES = ['example.com'];
 const ENV = { ACCOUNT_ID: 'acc', ANALYTICS_TOKEN: 'tok', DATASET: 'lede' };
@@ -415,12 +416,20 @@ test('SQL store averages engagement per page and splits links from downloads', a
   calls.prevStart = q.prevStart;
   const store = sqlStore(ENV, fakeSql(calls));
   const { rows } = await store.engagement(q);
-  const none = { median: 0, lcp: null, inp: null, cls: null };
+  const none = { median: 0, lcp: null, inp: null, cls: null, lcpN: 0, inpN: 0, clsN: 0 };
   assert.deepEqual(rows[0], { key: '/docs', views: 20, time: 45, scroll: .75, ...none, prev: { views: 10, time: 30, scroll: .5, ...none } });
   assert.equal(rows[1].prev, null);
   const links = await store.links(q);
   assert.deepEqual(links.outbound, [{ key: 'github.com/acme', visitors: 6, clicks: 9, prev: 3 }]);
   assert.deepEqual(links.downloads, [{ key: 'example.com/guide.pdf', visitors: 2, clicks: 2, prev: null }]);
+});
+
+test('engagement rows say how many views measured each speed, so INP is told once enough taps measured it', () => {
+  const row = n => ({ key: '/a', n: '100', ms: '0', depth: '0', median_ms: '0', lcp: '2000', lcp_n: '80', inp: '600', inp_n: String(n), cls: '50', cls_n: '80' });
+  const [r] = toEngagement([row(40)], []).rows;
+  assert.deepEqual([r.lcpN, r.inpN, r.clsN], [80, 40, 80]);
+  assert.equal(vitalsLine(r).ratings.inp, 'poor');
+  assert.equal(vitalsLine(toEngagement([row(10)], []).rows[0]).ratings.inp, undefined, 'ten taps are too few');
 });
 
 test('the engagement query for one page also counts how many got 10%, 20%... 100% of the way down, in the same query', () => {

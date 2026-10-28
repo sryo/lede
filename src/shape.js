@@ -152,7 +152,8 @@ export function shapeLive(rows, nowSec) {
 // Engagement rows carry sums (see engagementSql). Each page gets the page views that sent one, how many
 // seconds they were read on average, and how far down, as a share of the page; the median engaged ms
 // (one long read doesn't move it); and the 75th percentile of LCP and INP in ms and of CLS as its score
-// (stored ×1000), each null when no view measured it. A single page also gets reach: the share of those
+// (stored ×1000), each null when no view measured it, with lcpN, inpN and clsN, the views each was measured
+// on (INP only comes from views with a tap or click). A single page also gets reach: the share of those
 // views still there 10%, 20%... 100% of the way down.
 const vital = (r, k, scale = 1) => num(r[`${k}_n`]) > 0 ? num(r[k]) / scale : null;
 const reading = r => {
@@ -161,6 +162,7 @@ const reading = r => {
   out.lcp = vital(r, 'lcp');
   out.inp = vital(r, 'inp');
   out.cls = vital(r, 'cls', 1000);
+  for (const k of ['lcp', 'inp', 'cls']) out[`${k}N`] = num(r[`${k}_n`]);
   if (r.r10 != null) out.reach = BANDS.map(d => n ? num(r[`r${d}`]) / n : 0);
   return out;
 };
