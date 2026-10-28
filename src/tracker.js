@@ -68,23 +68,27 @@
   // took to draw; only the first view has one, and only when the page loaded in sight. INP: the slowest
   // response to a tap, click or key (which is what INP is until a page has had 50). CLS: the worst burst
   // of the layout moving on its own (shifts less than a second apart, over at most 5 seconds). Each is
-  // left out until the browser has measured it. CLS goes times 1000, and the server rounds them all.
-  var vitals = {}, burst = 0, burstStart = 0, lastShift = 0;
+  // left out until the browser has measured it, except CLS, which is 0 until the layout moves wherever
+  // the browser watches for it, so a page that never shifts says so. CLS goes times 1000, and the
+  // server rounds them all.
+  var vitals = {}, shifts, burst = 0, burstStart = 0, lastShift = 0;
   function watch(type, fn) {
     try {
       new PerformanceObserver(function (list) { list.getEntries().forEach(fn); }).observe({ type: type, buffered: true, durationThreshold: 16 });
+      return true;
     } catch (e) {}
   }
   if (engage) {
     if (!document.prerendering && document.visibilityState === 'visible') watch('largest-contentful-paint', function (e) { vitals.lcp = e.startTime; });
     watch('event', function (e) { if (e.interactionId && !(e.duration <= vitals.inp)) vitals.inp = e.duration; });
-    watch('layout-shift', function (e) {
+    shifts = watch('layout-shift', function (e) {
       if (e.hadRecentInput) return;
       if (e.startTime - lastShift < 1000 && e.startTime - burstStart < 5000) burst += e.value;
       else { burst = e.value; burstStart = e.startTime; }
       lastShift = e.startTime;
       if (!(burst * 1e3 <= vitals.cls)) vitals.cls = burst * 1e3;
     });
+    if (shifts) vitals.cls = 0;
   }
 
   // Engaged time only runs while the tab is visible and its window has focus.
@@ -144,7 +148,7 @@
     if (page === last) return;
     last = page;
     if (engage) end(true);
-    if (view) vitals = {};
+    if (view) vitals = shifts ? { cls: 0 } : {};
     var src = source(), v = visit(1), shown;
     shown = view = { u: location.href, r: src.r, l: src.l, h: v.h, ms: 0, since: 0, depth: 0, box: document.querySelector('[data-lede-page="' + location.pathname + '"]') };
     post({ u: view.u, r: view.r, l: view.l, h: view.h, k: Math.min(v.n, 3) });

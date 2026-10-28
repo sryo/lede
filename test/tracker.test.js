@@ -434,6 +434,13 @@ test('tracker: the engagement event carries the page view\'s Web Vitals', () => 
   assert.ok(!('lcp' in next) && !('inp' in next), 'what wasn\'t measured is left out, not sent as null');
 });
 
+test('tracker: a page that never shifts sends a CLS of 0 where the browser watches for shifts', () => {
+  const p = page('https://example.com/a', { vitals: true });
+  p.wait(2000); p.push('/b');
+  p.wait(2000); p.leave();
+  assert.deepEqual(engaged(p).map(e => e.cls), [0, 0]);
+});
+
 test('tracker: no Web Vitals without engagement, and no LCP for a page that loaded out of sight', () => {
   assert.deepEqual(page('https://example.com/', { vitals: true, engagement: 'false' }).observed(), []);
   assert.deepEqual(page('https://example.com/', { vitals: true, hidden: true }).observed(), ['event', 'layout-shift']);
