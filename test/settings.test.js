@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeSite, getSites, addSite, getSalt, getAccountId } from '../src/settings.js';
+import { normalizeSite, getSites, addSite, getSalt, getAccountId, makeShare, stopShare, sharedSite } from '../src/settings.js';
 import { handleApi } from '../src/api.js';
 import { collect } from '../src/collect.js';
 
@@ -256,4 +256,16 @@ test('stats explain a missing token instead of failing silently', async () => {
   const res = await call('summary', { STORE: memoryKV({ sites: '["example.com"]' }) });
   assert.equal(res.status, 503);
   assert.match((await res.json()).error, /ANALYTICS_TOKEN/);
+});
+
+test('a share link is 24 random bytes in base64url, kept with its site in one KV key', async () => {
+  const env = { STORE: memoryKV({ sites: '["a.com"]' }) };
+  const share = await makeShare(env, 'a.com');
+  assert.match(share.token, /^[A-Za-z0-9_-]{32}$/);
+  assert.equal(share.site, 'a.com');
+  assert.notEqual((await makeShare(env, 'a.com')).token, share.token);
+  assert.equal(Object.keys(JSON.parse(env.STORE.m.get('shares'))).length, 2);
+  assert.equal(await sharedSite(env, share.token), 'a.com');
+  await stopShare(env, share.token);
+  assert.equal(await sharedSite(env, share.token), null);
 });

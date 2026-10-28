@@ -6,9 +6,9 @@
   "assets": {
     "directory": "./public",
     "binding": "ASSETS",
-    // Only the stats, the beacon and signing in run the Worker. The dashboard page and the tracker
-    // are plain assets: free, and the page asks for the password itself.
-    "run_worker_first": ["/api/*", "/lede"],
+    // Only the stats, the beacon, signing in and read-only links (/s/<token>) run the Worker. The
+    // dashboard page and the tracker are plain assets: free, and the page asks for the password itself.
+    "run_worker_first": ["/api/*", "/lede", "/s/*"],
     // Every view has its own address (/bounce, /sources/google.com…); those all load the dashboard.
     "not_found_handling": "single-page-application"
   },

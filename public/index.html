@@ -81,9 +81,20 @@ h1,h2,h3{margin:0;font:inherit}
 /* Home fills the window and grows past it when its tiles need the room; the page scrolls instead of tiles squeezing. */
 .home{position:relative;flex:1 0 auto;display:flex;flex-direction:column;gap:16px;padding:16px}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
-.site{display:flex;align-items:baseline;gap:12px;min-width:0}
+.site{position:relative;display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;min-width:0}
 .site b,.site select{font-size:var(--fs-l);font-weight:700;letter-spacing:-.02em}
 .hint,.card-title{font-size:var(--fs-s);color:var(--muted)}
+/* Share: a quiet button beside the site's name, opening a small card of read-only links */
+.share-b{height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:var(--fs-s);cursor:pointer}
+.share-b[aria-expanded="true"]{color:var(--ink)}
+.share-panel{position:absolute;top:calc(100% + 8px);left:0;z-index:5;width:min(380px,calc(100vw - 32px));font-size:var(--fs-s);box-shadow:0 0 0 1px var(--line),0 8px 24px rgb(0 0 0/.12)}
+.share-panel p{margin:0} .share-panel b{font-size:inherit;font-weight:650;letter-spacing:normal;color:var(--ink)}
+.share-panel ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.share-panel li{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.share-panel code{font:12px var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.share-panel .retry{align-self:flex-start}
+.share-panel li .share-b{flex:none;height:28px}
+.share-panel .msg:empty{display:none}
 .pick{position:relative;display:inline-flex;align-items:center}
 .pick select{appearance:none;border:0;background:transparent;cursor:pointer;padding:0 20px 0 0}
 .pick svg{position:absolute;right:0;pointer-events:none;color:var(--muted)}
@@ -427,7 +438,8 @@ button.lrow:hover{background:var(--line)}
 <main class="win" id="win">
   <div class="home" id="home">
     <div class="topbar">
-      <div class="site"><h1 id="site"></h1><span class="hint" id="hint"></span></div>
+      <div class="site"><h1 id="site"></h1><button type="button" class="share-b" id="share" aria-expanded="false" aria-controls="share-panel" hidden>Share</button><span class="hint" id="hint"></span>
+        <section class="card share-panel" id="share-panel" aria-label="Share" hidden></section></div>
       <div class="period" role="group" aria-label="Show the last" id="period">
         <button type="button" data-days="7">7 days</button><button type="button" data-days="30">30 days</button>
       </div>
@@ -450,8 +462,9 @@ const $=(s,r=document)=>r.querySelector(s);
 const motion=matchMedia('(prefers-reduced-motion: reduce)');
 const TZ=new Date().getTimezoneOffset(),TZNAME=Intl.DateTimeFormat().resolvedOptions().timeZone||'';
 const store={get(k){try{return localStorage.getItem(k)}catch{return null}},set(k,v){try{localStorage.setItem(k,v)}catch{}}};
-// INSIGHT: home may get Workers AI's line under its sentence.
-let SITE='',SITES=[],DEMO=false,INSIGHT=false,DAYS=30;
+// INSIGHT: home may get Workers AI's line under its sentence. SHARED: opened from a read-only link, so nothing
+// can be changed and sharing is left out.
+let SITE='',SITES=[],DEMO=false,INSIGHT=false,SHARED=false,DAYS=30;
 // What the home screen worked out, for the views that open from it. homeDrawn settles when the latest home
 // draw has: views fetch their own data first and wait for it only to read HOME.
 let HOME=null,homeDrawn=Promise.resolve(false);
@@ -488,7 +501,7 @@ let GOALS=[],NOTES=[],FUNNELS=[],goalsReady=Promise.resolve();
 // longer showing is dropped, so one site's goals are never saved over another's.
 function loadGoals(){
   const site=SITE;
-  return goalsReady=api('goals',{},true).catch(()=>({})).then(b=>{if(site===SITE){GOALS=b.goals||[];NOTES=b.notes||[];FUNNELS=b.funnels||[]}});
+  return goalsReady=api('goals',{},true).catch(()=>({})).then(b=>{if(site===SITE){GOALS=SHARED?[]:b.goals||[];NOTES=b.notes||[];FUNNELS=b.funnels||[]}});
 }
 async function saveGoals(list){
   const before=GOALS;GOALS=list;
@@ -505,6 +518,7 @@ const FLAG=on=>`<svg class="flag${on?' on':''}" width="14" height="14" viewBox="
 // Under the home sentence: how many visits reached a goal, or, with none set, an offer to track a page that looks like one.
 async function drawGoalLine(){
   const el=$('#goal-line');if(!el||!HOME||HOME.empty)return;
+  if(SHARED){el.hidden=true;return}
   if(!GOALS.length){
     const g=suggestGoal(HOME.pageRows||[]);
     if(!g||store.get(`lede_goal_no:${SITE}`)===g){el.hidden=true;return}
@@ -544,6 +558,7 @@ function paintGoalToggle(b){
 
 // At the foot of a page's view: what the page would show as a goal, before deciding.
 async function drawGoalCard(card,path){
+  if(SHARED)return;
   const on=GOALS.includes(path),no=!on&&store.get(`lede_not_goal:${SITE}:${path}`)==='1';
   let text='';
   try{text=goalStory(await api('conversions',{goal:[path]}),[path],HOME?.S?.lead?.key)||''}catch{text='Couldn’t load this. Check your connection, then reopen the page.'}
@@ -1008,7 +1023,7 @@ function rowsInto(group,rows,{fmt=fmtInt,total,inverse=false,onClick,subj='time'
   const head=document.createElement('div');head.className='lrow lhead';head.setAttribute('aria-hidden','true');
   head.innerHTML='<span></span><span></span><span>visitors</span><span>share</span><span>change</span><span></span>';
   const flagged=el=>{
-    if(!goalable)return el;
+    if(!goalable||SHARED)return el;
     const w=document.createElement('div');w.className='lwrap';
     const t=document.createElement(el===head?'span':'button');
     if(el!==head){t.type='button';t.className='goal-t';t.dataset.path=el.dataset.key;paintGoalToggle(t);t.onclick=()=>toggleGoal(t.dataset.path)}
@@ -1334,12 +1349,14 @@ async function drawFunnels(body,gen){
   const sec=body.querySelector('.funnels-card');
   await goalsReady;
   const funnels=FUNNELS;let data;
+  // A shared link shows the owner's funnels, but adds or removes none.
+  if(SHARED&&!funnels.length){sec.hidden=true;return}
   try{data=await Promise.all(funnels.map(steps=>api('funnel',{steps})))}catch{return}
   if(stale(body,gen))return;
   const stories=data.map(f=>funnelStory(f,DAYS));
   sec.innerHTML=`<div class="card-title">Funnels</div><p class="card-say">${stories[0]?.html||FUNNEL_EMPTY}</p>
-    ${data.map((f,i)=>`<div class="card-head fun-head"><span class="goal-text">${esc(funnelName(f.steps))}</span><button type="button" class="link goal-text">Remove</button></div>${i?`<p class="goal-text">${stories[i].html}</p>`:''}<div class="steps"></div>`).join('')}
-    ${funnels.length<5?`<form novalidate><div class="add"><input name="steps" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="/pricing, /signup, /thanks" aria-label="Pages, in order"><button class="retry">Save</button></div><span class="err" role="alert"></span></form>`:''}`;
+    ${data.map((f,i)=>`<div class="card-head fun-head"><span class="goal-text">${esc(funnelName(f.steps))}</span>${SHARED?'':'<button type="button" class="link goal-text">Remove</button>'}</div>${i?`<p class="goal-text">${stories[i].html}</p>`:''}<div class="steps"></div>`).join('')}
+    ${funnels.length<5&&!SHARED?`<form novalidate><div class="add"><input name="steps" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="/pricing, /signup, /thanks" aria-label="Pages, in order"><button class="retry">Save</button></div><span class="err" role="alert"></span></form>`:''}`;
   sec.hidden=false;
   // Resolves to null once saved, else what went wrong: the server's reason, or a connection that failed.
   const save=async(list,done)=>{
@@ -1914,6 +1931,7 @@ function drawMarks(el,events,ser,pick=null){
 // The overview's daily chart takes notes: click a day, or focus the chart, pick a day with the arrow keys and press Enter.
 // The ring around the picked day is drawn by CSS from --i and --n, so it survives the chart redrawing itself.
 function noteDays(el,ser){
+  if(SHARED)return;
   const n=ser.cur.visitors.length;
   let at=n-1;
   el.classList.add('notable');el.tabIndex=0;el.setAttribute('role','group');
@@ -1940,6 +1958,7 @@ function noteDays(el,ser){
 let closeNote=()=>{};
 function editNote(i,anchor,at){
   closeNote();
+  if(SHARED)return;
   const d=dayDate(HOME.ser.start,i),day=dayKey(d),note=NOTES.find(x=>x.day===day),when=fmtDate(d,'long');
   const f=document.createElement('form');f.className='note-edit';f.noValidate=true;
   f.setAttribute('role','dialog');f.setAttribute('aria-label',`Note for ${when}`);
@@ -2022,11 +2041,53 @@ function renderTopbar(){
   const site=$('#site');
   if(SITES.length>1){
     site.innerHTML=`<label class="pick"><select aria-label="Site">${SITES.map(s=>`<option value="${esc(s)}"${s===SITE?' selected':''}>${esc(displayHost(s))}</option>`).join('')}</select><svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true"><path d="M1 1l3.5 3.5L8 1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></label>`;
-    site.querySelector('select').onchange=e=>{SITE=e.target.value;store.set('lede_site',SITE);document.title=`${displayHost(SITE)} · Lede`;history.replaceState({depth:0},'',urlFor(null));loadGoals();renderHome(`Showing ${displayHost(SITE)}`)};
+    site.querySelector('select').onchange=e=>{SITE=e.target.value;store.set('lede_site',SITE);document.title=`${displayHost(SITE)} · Lede`;history.replaceState({depth:0},'',urlFor(null));showShare(false);loadGoals();renderHome(`Showing ${displayHost(SITE)}`)};
   }else site.innerHTML=`<b>${esc(displayHost(SITE))}</b>`;
-  $('#hint').textContent=DEMO?'Sample site':'';
+  $('#hint').textContent=SHARED?'Shared with you by the owner. You can look around but not change anything.':DEMO?'Sample site':'';
+  const share=$('#share');
+  share.hidden=SHARED;share.onclick=()=>showShare($('#share-panel').hidden);
+  showShare(false);
   bindPeriod($('#period'));
 }
+
+/* ---------- sharing ---------- */
+// Read-only links to one site's stats. Copy link copies the site's newest link, making one when there is none.
+// Each isolate keeps the list for a minute, so a stopped link can keep working that long.
+const shareUrl=t=>`${location.origin}/s/${t}`;
+async function shares(method,{site,token}={}){
+  const r=await fetch(`/api/shares${token?`?token=${encodeURIComponent(token)}`:''}`,{method,body:site?JSON.stringify({site}):undefined});
+  const body=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(body.error||"Couldn't reach Lede. Try again.");
+  return body;
+}
+function showShare(open){
+  const panel=$('#share-panel');
+  panel.hidden=!open;$('#share').setAttribute('aria-expanded',open);
+  if(open)drawShare();
+}
+async function drawShare(msg=''){
+  const panel=$('#share-panel'),site=SITE;
+  let list;
+  try{list=(await shares('GET')).shares.filter(s=>s.site===site)}
+  catch(e){panel.innerHTML=`<p class="muted">${esc(e.message)}</p>`;return}
+  if(site!==SITE||panel.hidden)return;
+  panel.innerHTML=`<p>Anyone with this link can see <b>${esc(displayHost(site))}</b>'s stats. They can't change anything.</p>
+    <button type="button" class="retry" data-a="copy">Copy link</button>
+    ${list.length?`<ul>${list.map(s=>`<li><code>${esc(shareUrl(s.token))}</code><button type="button" class="share-b" data-stop="${esc(s.token)}">Stop sharing</button></li>`).join('')}</ul>`:''}
+    <p class="muted msg" role="status">${esc(msg)}</p>`;
+  panel.querySelector('[data-a="copy"]').onclick=async()=>{
+    try{
+      const token=list[0]?.token??(await shares('POST',{site})).share.token;
+      await navigator.clipboard.writeText(shareUrl(token)).then(()=>drawShare('Copied'),()=>drawShare());
+    }catch(e){panel.querySelector('.msg').textContent=e.message}
+  };
+  panel.querySelectorAll('[data-stop]').forEach(b=>b.onclick=async()=>{
+    try{await shares('DELETE',{token:b.dataset.stop});drawShare('This link stops working within a minute.')}
+    catch(e){panel.querySelector('.msg').textContent=e.message}
+  });
+}
+// A click anywhere else closes the card.
+document.addEventListener('pointerdown',e=>{if(!$('#share-panel').hidden&&!e.target.closest('.site'))showShare(false)});
 
 // No visit has ever arrived: the whole home is one card that says how to start, and checks again every minute.
 function showOnboarding(){
@@ -2049,6 +2110,7 @@ function showSignIn(){
   // A sub-page is open: start over from its address, which asks for the password on the way.
   if(stack.length>1){location.reload();return}
   $('#site').textContent='';$('#hint').textContent='';
+  $('#share').hidden=true;$('#share-panel').hidden=true;
   $('#period').hidden=true;
   $('#story').innerHTML='';
   $('#grid').innerHTML=`<form class="card onboard signin" novalidate><img class="logo" src="/icon.svg" alt=""><b>Enter your password</b>
@@ -2193,7 +2255,7 @@ async function boot(){
   const route=urlToView(location.pathname,location.search),saved=store.get('lede_site');
   const sites=api('sites',{},true);
   if(route.site||saved){SITE=route.site||saved;DAYS=route.days||30;prefetchHome()}
-  try{({sites:SITES,demo:DEMO,insight:INSIGHT}=await sites)}catch(e){showError($('#grid'),e,boot);return}
+  try{({sites:SITES,demo:DEMO,insight:INSIGHT,shared:SHARED=false}=await sites)}catch(e){showError($('#grid'),e,boot);return}
   if(!SITES.length){askForSite();return}
   SITE=SITES.includes(route.site)?route.site:SITES.includes(saved)?saved:SITES[0];
   store.set('lede_site',SITE);

@@ -12,6 +12,7 @@
 //   shot:… og:…    a page's picture for its view, and its share picture; see src/shot.js
 //   insight:<site>:<hash>  the line Workers AI wrote from the sheet of totals with that SHA-256 (src/insight.js);
 //                  deletes itself after 6 hours
+//   shares         JSON object of read-only links, token → { site, created }
 import { HttpError } from './errors.js';
 
 // Every event reads the sites and the salt, so each isolate keeps them for a minute
@@ -81,6 +82,46 @@ export async function addSite(env, input) {
   await store.put('sites', JSON.stringify(next));
   forget(store, 'sites');
   return next;
+}
+
+// A read-only link is /s/<token>, 24 random bytes in base64url. All links live in one key, kept per
+// isolate like the sites, so a stopped link can keep working for up to a minute elsewhere, and a
+// wrong token costs at most one KV read a minute.
+const TOKEN = /^[\w-]{32}$/;
+
+export async function getShares(env, { fresh = false } = {}) {
+  const store = storeOf(env);
+  const read = async () => JSON.parse(await store.get('shares') || '{}');
+  return fresh ? read() : remembered(store, 'shares', read);
+}
+
+async function saveShares(env, shares) {
+  const store = storeOf(env);
+  await store.put('shares', JSON.stringify(shares));
+  forget(store, 'shares');
+}
+
+export async function makeShare(env, site) {
+  const bytes = crypto.getRandomValues(new Uint8Array(24));
+  const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_');
+  const shares = await getShares(env, { fresh: true });
+  shares[token] = { site, created: new Date().toISOString() };
+  await saveShares(env, shares);
+  return { token, ...shares[token] };
+}
+
+export async function stopShare(env, token) {
+  const shares = await getShares(env, { fresh: true });
+  if (!shares[token]) return;
+  delete shares[token];
+  await saveShares(env, shares);
+}
+
+// The site a link shows, or null. A token of the wrong shape is turned away before any KV read.
+export async function sharedSite(env, token) {
+  if (typeof token !== 'string' || !TOKEN.test(token)) return null;
+  const shares = await getShares(env);
+  return Object.hasOwn(shares, token) ? shares[token].site : null;
 }
 
 const hex = bytes => [...new Uint8Array(bytes)].map(b => b.toString(16).padStart(2, '0')).join('');

@@ -1,6 +1,6 @@
 import * as Q from './queries.js';
 import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, firstsOf, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience, pickVisits, pairNext, toFunnel, pagePath } from './shape.js';
-import { getSites, addSite, getAccountId, getSettings, saveSettings } from './settings.js';
+import { getSites, addSite, getAccountId, getSettings, saveSettings, getShares, makeShare, stopShare } from './settings.js';
 import { HttpError } from './errors.js';
 import { demoStore, demoNotes, DEMO_FUNNEL, DEMO_INSIGHT } from './demo.js';
 import { channelFor } from './channels.js';
@@ -301,17 +301,34 @@ async function insightFor(q, env, ask) {
   return facts ? lineFor(env, `insight:${q.site}:${q.days}`, facts) : null;
 }
 
+// The owner's read-only links, newest first. POST makes one for a site, DELETE ?token= stops one.
+async function shares(req, url, env) {
+  let share;
+  if (req.method === 'POST') {
+    const { site } = await req.json().catch(() => ({}));
+    if (!(await getSites(env, { fresh: true })).includes(site)) throw new HttpError(400, `Unknown site "${site}".`);
+    share = await makeShare(env, site);
+  } else if (req.method === 'DELETE') {
+    await stopShare(env, url.searchParams.get('token'));
+  }
+  const list = Object.entries(await getShares(env, { fresh: true })).map(([token, s]) => ({ token, ...s }));
+  return { share, shares: list.sort((a, b) => b.created.localeCompare(a.created)) };
+}
+
 // ask.stat(name, params) answers as /api/<name> would for the same query, sharing its queries when both are
-// asked at once; ask.seen(name) is that answer only when it's already kept, else null.
-async function route(name, url, env, store, req, ask) {
+// asked at once; ask.seen(name) is that answer only when it's already kept, else null. shared: the one site a
+// read-only link shows; src/index.js has already refused every other site and every change.
+async function route(name, url, env, store, req, ask, shared) {
   const demo = env.DEMO === 'true';
   if (name === 'sites') {
     // insight: whether to ask for the line under home's sentence; without Workers AI there's none.
-    const answer = sites => ({ sites, demo, insight: demo || !!env.AI });
+    const answer = sites => ({ sites, demo, insight: demo || !!env.AI, ...(shared && { shared: true }) });
+    if (shared) return answer([shared]);
     if (req.method === 'POST') return answer(await addSite(env, (await req.json().catch(() => ({}))).site));
     return answer(await getSites(env, { fresh: true }));
   }
-  const q = parseQuery(url, await sitesFor(url, env));
+  if (name === 'shares') return shares(req, url, env);
+  const q = parseQuery(url, shared ? [shared] : await sitesFor(url, env));
   if (name === 'insight') {
     if (demo) return { text: DEMO_INSIGHT };
     const text = env.AI ? await insightFor(q, env, ask) : null;
@@ -376,11 +393,11 @@ function remember(key, seconds, answer) {
   return entry.answer;
 }
 
-export async function handleApi(req, env, ctx) {
+export async function handleApi(req, env, ctx, shared = null) {
   const url = new URL(req.url);
   const name = url.pathname.replace(/^\/api\//, '');
   const demo = env.DEMO === 'true';
-  const settings = name === 'goals' || name === 'notes' || name === 'funnels' || name === 'sites';
+  const settings = name === 'goals' || name === 'notes' || name === 'funnels' || name === 'sites' || name === 'shares';
   const maxAge = settings ? 0 : CACHE_SECONDS[name] || CACHE_SECONDS.default;
   // Each stats request runs several SQL queries, so successful answers are cached briefly at the edge.
   const cache = !demo && !settings && typeof caches !== 'undefined' ? caches.default : null;
@@ -403,10 +420,10 @@ export async function handleApi(req, env, ctx) {
       return u;
     };
     const ask = {
-      stat: (other, params) => { const u = at(other, params); return keep(u, () => route(other, u, env, store, req, ask)); },
+      stat: (other, params) => { const u = at(other, params); return keep(u, () => route(other, u, env, store, req, ask, shared)); },
       seen: other => kept(keyOf(at(other)))?.answer.catch(() => null) ?? null,
     };
-    const body = await keep(url, () => route(name, url, env, store, req, ask));
+    const body = await keep(url, () => route(name, url, env, store, req, ask, shared));
     if (body == null) return new Response(null, { status: 204, headers: { 'Cache-Control': BROWSER(maxAge) } });
     const res = json(body, 200, maxAge);
     if (cache) {
