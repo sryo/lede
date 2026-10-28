@@ -17,8 +17,10 @@ const test = (name, fn) => {
 // Runs the tracker against a stand-in page and returns what it sent, plus handles to navigate.
 // sent holds the page views; events holds everything else (engagement, outbound links, downloads).
 // marked gives the elements an endless page marks with data-lede-page: path → [top, height] in the document.
-function page(href, { referrer = '', prerendering = false, hidden = false, ignore = false, engagement, height = 2000, marked = {}, now = Date.parse('2026-10-05T10:50:00Z'), noFetch = false } = {}) {
-  const sent = [], events = [], beacons = [], requests = [], listeners = {}, docListeners = {}, storage = new Map(), timers = [];
+// storage is the tab's sessionStorage, shared to load another page in the same tab. vitals gives the page
+// a PerformanceObserver, whose entries perf() hands to the tracker.
+function page(href, { referrer = '', prerendering = false, hidden = false, ignore = false, engagement, height = 2000, marked = {}, now = Date.parse('2026-10-05T10:50:00Z'), storage = new Map(), vitals = false } = {}) {
+  const sent = [], events = [], beacons = [], requests = [], listeners = {}, docListeners = {}, timers = [], observers = {};
   let focused = true;
   const clock = { now };
   let location = new URL(href);
@@ -37,7 +39,7 @@ function page(href, { referrer = '', prerendering = false, hidden = false, ignor
       removeEventListener: (type, fn) => { docListeners[type] = (docListeners[type] || []).filter(f => f !== fn); },
     },
     navigator: { sendBeacon: (url, body) => { beacons.push(url); record(url, body); return true; } },
-    fetch: noFetch ? undefined : (url, init) => { requests.push(init); record(url, init.body); return Promise.resolve({ status: 204 }); },
+    fetch: (url, init) => { requests.push(init); record(url, init.body); return Promise.resolve({ status: 204 }); },
     scrollY: 0, innerHeight: 800,
     localStorage: { getItem: k => (ignore && k === 'lede_ignore' ? '1' : null) },
     Date: { now: () => clock.now },
@@ -47,7 +49,9 @@ function page(href, { referrer = '', prerendering = false, hidden = false, ignor
     sessionStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
     addEventListener: on(listeners),
     URL,
+    PerformanceObserver: vitals ? class { constructor(cb) { this.cb = cb; } observe(o) { observers[o.type] = this.cb; } } : undefined,
   };
+  if (!vitals) delete window.PerformanceObserver;
   const record = (url, body) => { const b = { to: url, ...JSON.parse(body) }; (b.t ? events : sent).push(b); };
   Object.defineProperty(window, 'location', { get: () => location });
   window.window = window;
@@ -65,8 +69,8 @@ function page(href, { referrer = '', prerendering = false, hidden = false, ignor
     jump: hash => { location = new URL(hash, location); fire(listeners, 'popstate'); },
     restore: () => fire(listeners, 'pageshow', { persisted: true }),
     open: () => { window.document.prerendering = false; fire(docListeners, 'prerenderingchange'); },
-    show: () => { window.document.visibilityState = 'visible'; fire(docListeners, 'visibilitychange'); },
-    hide: () => { window.document.visibilityState = 'hidden'; fire(docListeners, 'visibilitychange'); },
+    show: () => { window.document.visibilityState = 'visible'; fire(listeners, 'visibilitychange'); fire(docListeners, 'visibilitychange'); },
+    hide: () => { window.document.visibilityState = 'hidden'; fire(listeners, 'visibilitychange'); fire(docListeners, 'visibilitychange'); },
     leave: () => fire(listeners, 'pagehide'),
     blur: () => { focused = false; fire(listeners, 'blur'); },
     focus: () => { focused = true; fire(listeners, 'focus'); },
@@ -82,6 +86,10 @@ function page(href, { referrer = '', prerendering = false, hidden = false, ignor
       clock.now = until;
     },
     resize: height => { window.document.documentElement.scrollHeight = height; },
+    key: () => fire(listeners, 'keydown'),
+    perf: (type, entries) => observers[type]?.({ getEntries: () => entries }),
+    observed: () => Object.keys(observers).sort(),
+    storage,
   };
 }
 
@@ -110,9 +118,30 @@ test('tracker: a page restored by the back button counts again', () => {
 
 test('tracker: coming from the www host is the same site, not a new source', () => {
   const p = page('https://example.com/a', { referrer: 'https://news.ycombinator.com/' });
-  assert.equal(p.sent[0].r, 'https://news.ycombinator.com/');
+  assert.equal(p.sent[0].r, 'https://news.ycombinator.com');
   const q = page('https://example.com/b', { referrer: 'https://www.example.com/a' });
   assert.equal(q.sent[0].r, '');
+});
+
+test('tracker: sends only the referring site and the landing page\'s tags, not their whole addresses', () => {
+  const p = page('https://example.com/a?utm_source=news&token=secret&gclid=1&q=owls', { referrer: 'https://news.ycombinator.com/item?id=4242' });
+  assert.deepEqual([p.sent[0].r, p.sent[0].l], ['https://news.ycombinator.com', '?utm_source=news&gclid=1']);
+  assert.equal(p.sent[0].u, 'https://example.com/a?utm_source=news&token=secret&gclid=1&q=owls', 'the page itself is the server\'s to clean');
+  assert.equal(page('https://example.com/', { referrer: 'android-app://com.google.android.gm/' }).sent[0].r, 'android-app://com.google.android.gm');
+  assert.equal(page('https://example.com/?li_fat_id=1&twclid=2&dclid=3&fbclid=4&source=pdf&ref=hn').sent[0].l, '?li_fat_id=1&twclid=2&dclid=3&source=pdf&ref=hn');
+  assert.equal(page('https://example.com/?q=owls&utm_medium=email').sent[0].l, '&utm_medium=email', 'the server reads it as a query all the same');
+  assert.deepEqual([page('https://example.com/?q=owls').sent[0].l, page('https://example.com/').sent[0].r], ['', '']);
+});
+
+test('tracker: a link within the site that carries tags doesn\'t replace where the visit came from', () => {
+  const storage = new Map();
+  page('https://example.com/a', { referrer: 'https://news.ycombinator.com/', storage });
+  const next = page('https://example.com/b?ref=footer', { referrer: 'https://example.com/a', storage });
+  assert.deepEqual([next.sent[0].r, next.sent[0].l], ['https://news.ycombinator.com', '']);
+  const first = page('https://example.com/b?utm_source=news', { referrer: 'https://example.com/a' });
+  assert.equal(first.sent[0].l, '?utm_source=news', 'a tab with no source yet takes the tags');
+  const elsewhere = page('https://example.com/c?utm_source=mail', { storage });
+  assert.deepEqual([elsewhere.sent[0].r, elsewhere.sent[0].l], ['', '?utm_source=mail'], 'tags from outside the site start afresh');
 });
 
 test('tracker: posts to /lede, not the blocklisted /api/event', () => {
@@ -128,12 +157,45 @@ test('tracker: a tab opened in the background counts once it is looked at', () =
 });
 
 test('tracker: a visit keeps the hour it started until half an hour passes without a page', () => {
-  const p = page('https://example.com/a');
+  const p = page('https://example.com/a', { engagement: 'false' });
   const started = Date.parse('2026-10-05T10:00:00Z');
   p.wait(20 * 60e3); p.push('/b');
   p.wait(29 * 60e3); p.push('/c');
-  p.wait(31 * 60e3); p.push('/d');
-  assert.deepEqual(p.sent.map(s => s.h), [started, started, started, started + 2 * 3600e3]);
+  p.hide(); p.wait(31 * 60e3); p.show(); p.push('/d');
+  assert.deepEqual(p.sent.map(s => s.h), [started, started, started, Date.parse('2026-10-05T12:10:00Z')], 'the next visit starts on its minute, so another in the same hour stays apart');
+});
+
+test('tracker: each page view says where it falls in its visit, up to 3', () => {
+  const p = page('https://example.com/a', { engagement: 'false' });
+  for (const path of ['/b', '/c', '/d']) { p.wait(60e3); p.push(path); }
+  p.hide(); p.wait(40 * 60e3); p.show(); p.push('/e');
+  assert.deepEqual(p.sent.map(s => s.k), [1, 2, 3, 3, 1]);
+  const storage = new Map();
+  page('https://example.com/a', { storage });
+  assert.equal(page('https://example.com/b', { storage }).sent[0].k, 2, 'counted across page loads in the tab');
+  assert.equal(page('https://example.com/b').sent[0].k, 1, 'a new tab is a new count');
+});
+
+test('tracker: a visit carries on while someone reads one page for long, and its pings say so', () => {
+  const p = page('https://example.com/a');
+  for (let i = 0; i < 4; i++) { p.wait(10 * 60e3); p.scroll(100 * (i + 1)); }
+  p.push('/b');
+  assert.equal(p.sent[1].h, p.sent[0].h, '40 minutes on one page, still showing, is still the visit');
+  assert.ok(pings(p).every(e => e.h === p.sent[0].h));
+});
+
+test('tracker: pings stop after half an hour without a scroll, a click or a key, and start again with one', () => {
+  const p = page('https://example.com/a');
+  p.wait(60 * 60e3);
+  assert.equal(pings(p).length, 9, 'up to 30 minutes after the page view');
+  p.key();
+  assert.equal(pings(p).length, 10, 'back at once');
+  assert.equal(pings(p).at(-1).h, Date.parse('2026-10-05T11:50:00Z'), 'and, after an hour away, on a new visit');
+  p.wait(9 * 60e3);
+  assert.equal(pings(p).length, 13);
+  p.push('/b');
+  assert.equal(p.sent[1].h, pings(p).at(-1).h);
+  assert.equal(p.sent[1].k, 1, 'the first page view of that visit');
 });
 
 test('tracker: sends with fetch keepalive, since tracker blockers drop sendBeacon pings', () => {
@@ -144,9 +206,6 @@ test('tracker: sends with fetch keepalive, since tracker blockers drop sendBeaco
   assert.equal(p.events.length, 1);
   assert.deepEqual(p.beacons, []);
   assert.ok(p.requests.every(r => r.method === 'POST' && r.keepalive === true));
-  const old = page('https://example.com/a', { noFetch: true });
-  assert.equal(old.sent.length, 1);
-  assert.equal(old.beacons.length, 1);
 });
 
 test('tracker: localStorage.lede_ignore leaves your own visits out', () => {
@@ -241,7 +300,7 @@ test('tracker: a visible tab says it is still here every 3 minutes, so a long re
   assert.equal(pings(p).length, 0);
   p.wait(60e3);
   assert.equal(pings(p).length, 1);
-  assert.deepEqual([pings(p)[0].u, pings(p)[0].r, pings(p)[0].h], ['https://example.com/docs', 'https://news.ycombinator.com/', p.sent[0].h]);
+  assert.deepEqual([pings(p)[0].u, pings(p)[0].r, pings(p)[0].h], ['https://example.com/docs', 'https://news.ycombinator.com', p.sent[0].h]);
   p.wait(6 * 60e3);
   assert.equal(pings(p).length, 3);
   assert.equal(p.sent.length, 1, 'a ping is not another page view');
@@ -351,5 +410,32 @@ test('tracker: clicks on links to other sites and on files are sent, without the
     ['outbound', 'https://github.com/'],
   ]);
   assert.equal(p.events[0].u, 'https://example.com/docs');
-  assert.equal(p.events[0].r, 'https://news.ycombinator.com/', 'credited to the visit\'s source');
+  assert.equal(p.events[0].r, 'https://news.ycombinator.com', 'credited to the visit\'s source');
+});
+
+const engaged = p => p.events.filter(e => e.t === 'engagement');
+
+test('tracker: the engagement event carries the page view\'s Web Vitals', () => {
+  const p = page('https://example.com/a', { vitals: true });
+  assert.deepEqual(p.observed(), ['event', 'largest-contentful-paint', 'layout-shift']);
+  p.perf('largest-contentful-paint', [{ startTime: 900 }, { startTime: 1834.6 }]);
+  p.perf('event', [{ interactionId: 0, duration: 500 }, { interactionId: 7, duration: 120 }, { interactionId: 8, duration: 80 }]);
+  // Two shifts in one burst, a smaller one later on its own, and one right after a tap, which doesn't count.
+  p.perf('layout-shift', [{ startTime: 100, value: 0.05 }, { startTime: 500, value: 0.05 }, { startTime: 3000, value: 0.02 }, { startTime: 3200, value: 0.5, hadRecentInput: true }]);
+  p.wait(2000); p.push('/b');
+  assert.deepEqual([engaged(p)[0].lcp, engaged(p)[0].inp, engaged(p)[0].cls], [1834.6, 120, 100], 'CLS times 1000; the server rounds');
+  p.perf('layout-shift', [{ startTime: 9000, value: 0.08 }, { startTime: 9500, value: 0.08 }]);
+  p.wait(2000); p.leave();
+  const next = engaged(p)[1];
+  assert.deepEqual([next.lcp, next.inp, next.cls], [undefined, undefined, 160], 'a later view has no LCP, and its own INP and CLS');
+  assert.ok(!('lcp' in next) && !('inp' in next), 'what wasn\'t measured is left out, not sent as null');
+});
+
+test('tracker: no Web Vitals without engagement, and no LCP for a page that loaded out of sight', () => {
+  assert.deepEqual(page('https://example.com/', { vitals: true, engagement: 'false' }).observed(), []);
+  assert.deepEqual(page('https://example.com/', { vitals: true, hidden: true }).observed(), ['event', 'layout-shift']);
+  assert.deepEqual(page('https://example.com/', { vitals: true, prerendering: true }).observed(), ['event', 'layout-shift']);
+  const old = page('https://example.com/');
+  old.wait(2000); old.leave();
+  assert.deepEqual(Object.keys(old.events[0]).sort(), ['e', 'h', 'l', 'r', 's', 't', 'to', 'u'], 'a browser without PerformanceObserver sends what it always did');
 });

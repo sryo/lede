@@ -55,6 +55,7 @@ test('without a referrer, the landing page\'s source tag says where the visit ca
   assert.equal(ev('?utm_source=' + encodeURIComponent('me@mail.com hi')).referrer, '', 'only a plain word or host');
   assert.equal(ev('?utm_source=' + 'a'.repeat(80)).referrer, '');
   assert.deepEqual([ev('').referrer, ev('').channel], ['', 'direct']);
+  assert.equal(ev('&utm_medium=email&utm_source=digest').channel, 'email', 'the tags as the tracker sends them, picked out of the query');
 });
 
 test('one search engine, app or mail service is one source, wherever it sends from', () => {
