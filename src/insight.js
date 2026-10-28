@@ -15,8 +15,19 @@ export const plain = html => html.replace(/<[^>]+>/g, '').replace(/‑/g, '-').r
 
 /* ---------- the fact sheet ---------- */
 
-const change = (now, before) => before ? `${fmtSigned(now - before)}, ${now >= before ? '+' : '−'}${Math.round(Math.abs(now - before) / before * 100)}%` : 'new';
+// The sheet is rounded so it changes only when the numbers really move, and so does the line written from
+// it (see lineFor): counts of 100 or more to 2 significant figures, durations to 10 s, speeds to 10 ms.
+export const rough = n => {
+  const r = Math.round(n), p = Math.abs(r) < 100 ? 1 : 10 ** (Math.floor(Math.log10(Math.abs(r))) - 1);
+  return Math.round(r / p) * p;
+};
+const int = n => fmtInt(rough(n));
+// The counts in a sentence, rounded the same way; paths, decimals and the owner's quoted notes stay as they are.
+const roughText = text => text.split(/(“[^”]*”)/).map((part, i) => i % 2 ? part
+  : part.replace(/(?<![\w./-])(\d{1,3}(?:,\d{3})+|\d+)(?![\w/-]|[.,]\d)/g, m => int(Number(m.replace(/,/g, ''))))).join('');
+const change = (now, before) => before ? `${fmtSigned(rough(now - before))}, ${now >= before ? '+' : '−'}${Math.round(Math.abs(now - before) / before * 100)}%` : 'new';
 const source = key => { const label = labelOf('referrer', key); return key && label !== key ? `${label} (${key})` : label; };
+const speed = (k, v) => `${k.toUpperCase()} ${fmtVital(k, k === 'cls' ? v : Math.round(v / 10) * 10)} (${vitalRating(k, v)})`;
 
 // Totals only: no visitor or visit IDs, no addresses beyond paths and hosts, and search words only as the
 // keywords list already shows them (each used by MIN_VISITORS people or more). span is the dashboard's
@@ -25,38 +36,39 @@ const source = key => { const label = labelOf('referrer', key); return key && la
 export function factSheet({ site, span, S, T, ser, pages, flows, notes = [], engagement = null, keywords = null }) {
   const u = S.unit || 'visitors', { c, p } = S, out = [];
   out.push(`Site: ${displayHost(site)}. Compared: ${span.now}, against ${span.before}. Counted in ${u}.`);
-  out.push(`Total: ${fmtInt(c[u])} ${u}; ${span.before}: ${fmtInt(p[u])} (${change(c[u], p[u])}).`);
+  out.push('Counts of 100 or more are rounded to 2 significant figures; say “about” before them.');
+  out.push(`Total: ${int(c[u])} ${u}; ${span.before}: ${int(p[u])} (${change(c[u], p[u])}).`);
   if (c.visits) out.push(`Bounce: ${fmtPct(c.bounce)} of visits${p.visits ? `; before: ${fmtPct(p.bounce)}` : ''}.`);
   const cur = ser.cur.visitors, busiest = cur.indexOf(Math.max(...cur));
   if (busiest >= 0 && cur[busiest]) {
     const top = ser.top[busiest];
-    out.push(`Busiest day: ${fmtDate(dayDate(ser.start, busiest))}, ${fmtInt(cur[busiest])} visitors${top != null ? `, ${fmtInt(ser.topVisitors[busiest])} of them from ${source(top)}` : ''}.`);
+    out.push(`Busiest day: ${fmtDate(dayDate(ser.start, busiest))}, ${int(cur[busiest])} visitors${top != null ? `, ${int(ser.topVisitors[busiest])} of them from ${source(top)}` : ''}.`);
   }
-  out.push(`Summary the owner already reads: ${plain(T.html)}`);
+  out.push(`Summary the owner already reads: ${roughText(plain(T.html))}`);
   const more = findings(S, T.told, span.before).slice(0, 4);
-  if (more.length) out.push('Other findings, not in the summary:', ...more.map(f => `- ${plain(f.html)}`));
+  if (more.length) out.push('Other findings, not in the summary:', ...more.map(f => `- ${roughText(plain(f.html))}`));
 
   const sources = S.sources.filter(s => s.value || s.prev).sort((a, b) => b.value - a.value).slice(0, 8);
-  if (sources.length) out.push(`Sources (${u} now; before; change):`, ...sources.map(s => `- ${source(s.key)}: ${fmtInt(s.value)}; ${fmtInt(s.prev)}; ${change(s.value, s.prev)}`
+  if (sources.length) out.push(`Sources (${u} now; before; change):`, ...sources.map(s => `- ${source(s.key)}: ${int(s.value)}; ${int(s.prev)}; ${change(s.value, s.prev)}`
     + (s.visits >= 30 && s.bounce != null ? `; bounce ${fmtPct(s.bounce)}` : '')));
   const rows = pages.rows.filter(r => r.visitors || r.prev?.visitors).sort((a, b) => b.visitors - a.visitors).slice(0, 8);
-  if (rows.length) out.push('Pages (visitors now; before; change):', ...rows.map(r => `- ${r.key}: ${fmtInt(r.visitors)}; ${fmtInt(r.prev?.visitors || 0)}; ${change(r.visitors, r.prev?.visitors || 0)}`));
+  if (rows.length) out.push('Pages (visitors now; before; change):', ...rows.map(r => `- ${r.key}: ${int(r.visitors)}; ${int(r.prev?.visitors || 0)}; ${change(r.visitors, r.prev?.visitors || 0)}`));
   const before = new Map((flows.prev || []).map(f => [`${f.source}|${f.page}`, f.visitors]));
   const landed = flows.flows.slice().sort((a, b) => b.visitors - a.visitors).slice(0, 8);
   if (landed.length) out.push('Where visits began (source → first page: visitors now; before):',
-    ...landed.map(f => `- ${source(f.source)} → ${f.page}: ${fmtInt(f.visitors)}; ${fmtInt(before.get(`${f.source}|${f.page}`) || 0)}`));
+    ...landed.map(f => `- ${source(f.source)} → ${f.page}: ${int(f.visitors)}; ${int(before.get(`${f.source}|${f.page}`) || 0)}`));
 
   if (engagement?.rows?.length) {
     const rank = new Map(rows.map((r, i) => [r.key, i]));
     const read = engagement.rows.filter(r => rank.has(r.key) && r.views >= 20).sort((a, b) => rank.get(a.key) - rank.get(b.key)).slice(0, 6);
     if (read.length) out.push('Reading time (median per view) and speed (75th percentile, from 30 views or more):', ...read.map(r => {
-      const speed = r.views >= 30 ? ['lcp', 'inp', 'cls'].filter(k => r[k] != null).map(k => `${k.toUpperCase()} ${fmtVital(k, r[k])} (${vitalRating(k, r[k])})`) : [];
-      return `- ${r.key}: ${fmtDur(r.median / 1000)}${speed.length ? `; ${speed.join(', ')}` : ''}`;
+      const fast = ['lcp', 'inp', 'cls'].filter(k => r[k] != null && r[`${k}N`] >= 30).map(k => speed(k, r[k]));
+      return `- ${r.key}: ${fmtDur(Math.round(r.median / 10000) * 10)}${fast.length ? `; ${fast.join(', ')}` : ''}`;
     }));
   }
   for (const [k, what] of [['site', 'Words searched on the site'], ['paid', 'Ad keywords']]) {
     const words = keywords?.[k]?.slice(0, 5) || [];
-    if (words.length) out.push(`${what} (visitors now; before): ${words.map(w => `“${w.key}” ${fmtInt(w.visitors)}; ${fmtInt(w.prev || 0)}`).join(', ')}.`);
+    if (words.length) out.push(`${what} (visitors now; before): ${words.map(w => `“${w.key}” ${int(w.visitors)}; ${int(w.prev || 0)}`).join(', ')}.`);
   }
 
   // The owner's notes on days in either period, with that day's visitors.
@@ -65,7 +77,7 @@ export function factSheet({ site, span, S, T, ser, pages, flows, notes = [], eng
   const noted = notes.filter(x => days.has(x.day)).slice(-6);
   if (noted.length) out.push('The owner’s notes:', ...noted.map(x => {
     const i = days.get(x.day), v = i >= 0 ? cur[i] : ser.prev.visitors[i + n];
-    return `- ${fmtDate(dayDate(ser.start, i))}: “${x.text}” (${fmtInt(v || 0)} visitors that day)`;
+    return `- ${fmtDate(dayDate(ser.start, i))}: “${x.text}” (${int(v || 0)} visitors that day)`;
   }));
   return out.join('\n');
 }
@@ -102,7 +114,7 @@ function numbersIn(text) {
 }
 
 // Why the line can't be shown, or '' when it can: every number, page and host in it must be in the facts
-// (a number as written there or rounded from one), it never says why something happened, and it's at most
+// (as written there, or rounded from it), it never says why something happened, and it's at most
 // two sentences and MAX_CHARS characters.
 export function problem(text, facts) {
   if (!text) return 'it’s empty';
@@ -118,7 +130,7 @@ export function problem(text, facts) {
   const host = [...text.matchAll(HOST)].map(m => m[0].toLowerCase()).find(h => !hosts.has(h));
   if (host) return `it names a site that isn’t in the facts (${host})`;
   const known = numbersIn(facts);
-  const made = numbersIn(text).find(o => !known.some(f => f.kind === o.kind && Math.abs(f.v - o.v) <= f.tol + o.tol));
+  const made = numbersIn(text).find(o => !known.some(f => f.kind === o.kind && Math.abs(f.v - o.v) <= o.tol + 1e-9));
   if (made) return `it has a number that isn’t in the facts (${made.v}${made.kind === 'pct' ? '%' : made.kind === 'time' ? ' s' : ''})`;
   return '';
 }
@@ -170,6 +182,35 @@ export async function insight(env, facts) {
   if (!text || /^nothing to add/i.test(text)) return null;
   const why = problem(text, facts);
   if (why) { once('check', `Workers AI wrote a line that didn’t pass Lede’s checks (${why}), so it wasn’t shown. Nothing to do: the sentence above it stands on its own.`); return null; }
+  return text;
+}
+
+/* ---------- keeping a line ---------- */
+
+const HOUR = 3600_000;
+const making = new Map(), failedAt = new Map();
+
+// One KV entry per site and period (key), {text, hash, at, tried}, so each costs at most one Workers AI
+// request and one KV write an hour. A line kept under 6 hours is shown while it still passes the checks
+// against today's sheet; a new one is asked for only when there's none, or when the sheet has changed and
+// the last try was an hour or more ago. A try that came to nothing is kept too, so it isn't asked again
+// on every load, and each instance asks once at a time.
+export async function lineFor(env, key, facts, now = Date.now()) {
+  const hash = await hashOf(facts);
+  let entry = null;
+  try { entry = JSON.parse(await env.STORE.get(key) || 'null'); } catch {}
+  if (entry?.text && check(entry.text, facts) && (entry.hash === hash || now - entry.at < 6 * HOUR)) return entry.text;
+  if (now - (failedAt.get(key) ?? -Infinity) < HOUR) return null;
+  if (entry && (entry.hash === hash || now - (entry.tried ?? entry.at) < HOUR)) return null;
+  if (!making.has(key)) making.set(key, make(env, key, facts, hash, entry, now).finally(() => making.delete(key)));
+  return making.get(key);
+}
+
+async function make(env, key, facts, hash, entry, now) {
+  const text = await insight(env, facts);
+  if (!text) failedAt.set(key, now);
+  const next = text ? { text, hash, at: now } : entry?.text ? entry : { text: null, hash, at: now };
+  await env.STORE.put(key, JSON.stringify({ ...next, tried: now }), { expirationTtl: 24 * 3600 }).catch(() => {});
   return text;
 }
 

@@ -4,7 +4,7 @@ import { getSites, addSite, getAccountId, getSettings, saveSettings } from './se
 import { HttpError } from './errors.js';
 import { demoStore, demoNotes, DEMO_FUNNEL, DEMO_INSIGHT } from './demo.js';
 import { channelFor } from './channels.js';
-import { factSheet, insight, hashOf, MIN_VISITORS } from './insight.js';
+import { factSheet, lineFor, MIN_VISITORS } from './insight.js';
 import { readStory, tellStory } from '../public/story.js';
 
 export { HttpError };
@@ -288,9 +288,6 @@ async function sitesFor(url, env) {
   return sites.length && (!want || sites.includes(want)) ? sites : getSites(env, { fresh: true });
 }
 
-// A line from Workers AI is kept 6 hours, in the instance and in KV, under a hash of the facts it was made from.
-const INSIGHT_SECONDS = 6 * 3600;
-
 // The line under home's sentence (src/insight.js), or null. It reads the answers home just asked for, so a
 // home load that ran them costs no query; engagement and keywords come in only when a view already asked.
 async function insightFor(q, env, ask) {
@@ -301,14 +298,7 @@ async function insightFor(q, env, ask) {
   const S = readStory({ totals, ser, pages, refs, flows, notes }), T = tellStory(S, ser, q.days);
   const facts = factSheet({ site: q.site, span: { now: `in the last ${q.days} days`, before: `the ${q.days} days before` },
     S, T, ser, pages, flows, notes, engagement: await ask.seen('engagement'), keywords: await ask.seen('keywords') });
-  const key = `insight:${q.site}:${await hashOf(facts)}`;
-  return remember(key, INSIGHT_SECONDS, async () => {
-    const stored = await env.STORE.get(key).catch(() => null);
-    if (stored) return stored;
-    const text = await insight(env, facts);
-    if (text) await env.STORE.put(key, text, { expirationTtl: INSIGHT_SECONDS }).catch(() => {});
-    return text;
-  });
+  return lineFor(env, `insight:${q.site}:${q.days}`, facts);
 }
 
 // ask.stat(name, params) answers as /api/<name> would for the same query, sharing its queries when both are
