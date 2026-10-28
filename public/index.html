@@ -304,7 +304,7 @@ button.tile-title:hover{color:var(--ink)}
 .steps .step:focus-visible{outline:2px solid var(--focus);outline-offset:0}
 .reach-body{display:flex;align-items:center;gap:16px 48px;flex-wrap:wrap}
 .reach-body>div:first-child{flex:0 1 480px}
-.reach-say{margin:0;font-size:var(--fs-m);line-height:1.4}
+.card-say{margin:0;font-size:var(--fs-m);line-height:1.4}
 /* the page as a column, a bar per tenth */
 .reach{position:relative;display:grid;grid:repeat(10,14px)/auto 132px 32px;gap:3px 10px;align-items:center;font-size:var(--fs-xs);line-height:1;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
 .reach::before{content:"";position:absolute;grid-area:1/2/-1/3;inset:-6px;border-radius:6px;box-shadow:0 0 0 1px var(--line)}
@@ -353,7 +353,6 @@ button.lrow:hover{background:var(--line)}
 button.lrow:hover .name{text-decoration:underline}
 button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .lrow .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kw .lrow .name{white-space:normal;overflow-wrap:break-word}
 .lrow .name small{color:var(--muted);font-size:var(--fs-xs);margin-left:8px}
 .lrow .bar{height:8px;border-radius:4px;overflow:hidden}
 .lrow.rate .bar{background:var(--line)}
@@ -409,7 +408,6 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
     .two{grid-template-columns:1fr}
   .lrow{grid-template-columns:minmax(0,1fr) 44px 56px 56px 10px;gap:8px}
   .lrow .pct,.lrow.lhead:not(.rate):not(.online)>span:nth-child(4){display:none}
-  .kw .lrow{grid-template-columns:minmax(0,1fr) 56px 56px 10px}.kw .lrow .bar,.kw .lhead>span:nth-child(2){display:none}
   /* phones: the crowd above already shows the figures, so the table keeps page, source and time */
   .lrow.online{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) max-content 10px;column-gap:8px}
   .lrow.online .cty,.lrow.online>.ppl,.lrow.lhead.online>span:nth-child(2){display:none}
@@ -440,7 +438,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, spikeSegment, waterfall, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, keywordsStory, KEYWORDS_EMPTY, nextStory, nextItems,
-  dayHint, ribbonHint, sourceHint, pageHint, dayKey } from '/story.js';
+  dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
 
@@ -1026,7 +1024,6 @@ function viewOptions(vw){
     case 'bounce':return {title:'Bounce',render:b=>view(b,renderBounce)};
     case 'online':return {title:'Online',chip:'Live',render:b=>view(b,renderOnline)};
     case 'sources':case 'pages':return {title:vw.v[0].toUpperCase()+vw.v.slice(1),render:b=>view(b,x=>renderDim(x,vw.v))};
-    case 'keywords':return {title:'Keywords',render:b=>view(b,renderKeywords)};
     case 'events':return HOME?.events?{title:'What happened',render:x=>renderEvents(x,vw.pick?HOME.events.filter(vw.pick):HOME.events,HOME.ser)}:null;
     case 'filter':{
       const f=vw.f,source=(f.referrer!=null)!==(f.channel!=null)&&f.path==null;
@@ -1049,16 +1046,22 @@ const openBounce=src=>openView({v:'bounce'},src);
 const openOnline=src=>openView({v:'online'},src);
 
 // A card listing pages or sources for filter f; the full view adds a switch between ways of counting.
+// A card's switch between lists: names, the one on at first; pick(i) runs on a press.
+const segHTML=(label,names,on=0)=>`<div class="seg" role="group" aria-label="${label}">${names.map((l,i)=>`<button type="button" data-i="${i}" aria-pressed="${i===on}">${l}</button>`).join('')}</div>`;
+function onSeg(sec,pick){
+  const bs=[...sec.querySelectorAll('.seg button')];
+  bs.forEach(bt=>bt.onclick=()=>{bs.forEach(x=>x.setAttribute('aria-pressed',x===bt));pick(+bt.dataset.i)});
+}
+
 // boldKeys: the keys the page's sentence names (channels as ch:key, like the home sentence's).
 function dimSection(sec,group,f,compact,boldKeys=null){
   const modes=group==='pages'?[['Viewed','path'],['Landed on','entry'],['Left from','exit']]:[['Sites','referrer'],['Channels','channel']];
   let mode=modes[0][1];
   sec.className='card';
   sec.innerHTML=`<div class="card-head">${compact?`<div class="card-title">${group==='pages'?'Pages':'Sources'}</div>`:''}
-    ${compact?'':`<div class="seg" role="group" aria-label="Breakdown">${modes.map(([l,m])=>`<button data-m="${m}" aria-pressed="${m===mode}">${l}</button>`).join('')}</div>`}</div>
-    <div class="dim-body"></div>${compact||group!=='sources'?'':`<button type="button" class="more-link"><span>Keywords</span>${CHEV}</button>`}`;
+    ${compact?'':segHTML('Breakdown',modes.map(m=>m[0]))}</div>
+    <div class="dim-body"></div>`;
   const body=sec.querySelector('.dim-body');
-  sec.querySelector('.more-link')?.addEventListener('click',e=>openView({v:'keywords'},e.currentTarget));
   let gen=0;
   const draw=()=>{const g=++gen;return view(body,async b=>{
     const data=await api('breakdown',{...filterParams(f),dim:mode});
@@ -1078,11 +1081,7 @@ function dimSection(sec,group,f,compact,boldKeys=null){
       b.appendChild(more);
     }
   })};
-  sec.querySelectorAll('.seg button').forEach(bt=>bt.onclick=()=>{
-    mode=bt.dataset.m;
-    sec.querySelectorAll('.seg button').forEach(x=>x.setAttribute('aria-pressed',x===bt));
-    draw();
-  });
+  onSeg(sec,i=>{mode=modes[i][1];draw()});
   return draw();
 }
 
@@ -1116,7 +1115,7 @@ async function renderFilter(body,f){
     ${f.path!=null?'<section class="card"><div class="card-title">Where readers came from, and where they went next</div><p class="cross-say"></p><div class="landed cross"></div><p class="say-sub landed-note"></p></section>':''}
     ${f.path!=null?'<section class="card goal-card" hidden></section>':''}
     ${f.path==null?'<section data-group="pages"></section>':''}
-    ${f.referrer==null&&f.path==null?'<section data-group="sources"></section>':''}
+    ${f.referrer==null&&f.path==null?'<section data-group="sources"></section>':''}${overview?'<section class="card kw" hidden></section>':''}
     ${overview?'<section class="card aud" hidden></section>':''}`;
   bindLinks(body.querySelector('.say'));
   const cur=ser.cur.visitors,busiest=cur.indexOf(maxOf(cur));
@@ -1171,6 +1170,7 @@ async function renderFilter(body,f){
     drawReach(body,r);
   },()=>{});
   if(overview)api('audience').then(A=>{if(!stale(body,gen))drawAudience(body.querySelector('.aud'),A)},()=>{});
+  if(overview)api('keywords').then(K=>{if(!stale(body,gen))drawKeywords(body.querySelector('.kw'),K)},()=>{});
   if(overview||f.path!=null)api('links',p).then(L=>{if(!stale(body,gen))drawLinks(body,L,c.visitors)},()=>{});
 }
 
@@ -1179,7 +1179,7 @@ async function renderFilter(body,f){
 function drawReach(body,r){
   const S=scrollStory(r),R=r.reach;if(!S)return;
   const sec=document.createElement('section');sec.className='card';
-  sec.innerHTML=`<div class="card-title">How far down people read</div><div class="reach-body"><div><p class="reach-say">${S.html}</p>${S.sub?`<p class="say-sub">${S.sub}</p>`:''}</div>${S.few?'':`<div class="reach" role="img" aria-label="Still reading at each tenth of the page: ${R.map(fmtPct).join(', ')}">`
+  sec.innerHTML=`<div class="card-title">How far down people read</div><div class="reach-body"><div><p class="card-say">${S.html}</p>${S.sub?`<p class="say-sub">${S.sub}</p>`:''}</div>${S.few?'':`<div class="reach" role="img" aria-label="Still reading at each tenth of the page: ${R.map(fmtPct).join(', ')}">`
     +R.map((x,i)=>`<span>${['Top',,,,'Middle',,,,,'End'][i]||''}</span><i title="${i+1}0% of the way down: ${fmtPct(x)} still reading"${i===S.drop?' class="on"':''}><b style="width:${x*100}%"></b><u style="width:${((R[i-1]??1)-x)*100}%"></u></i><span>${fmtPct(x)}</span>`).join('')+'</div>'}</div>`;
   body.querySelector('.nums').after(sec);
 }
@@ -1202,15 +1202,34 @@ function drawLinks(body,L,visitors){
   if(!modes.length)return;
   const sec=document.createElement('section');sec.className='card';
   sec.innerHTML=`<div class="card-head"><div class="card-title">${modes.length>1?'Links clicked':modes[0][0]==='Downloads'?'Downloads':'Links to other sites'}</div>
-    ${modes.length>1?`<div class="seg" role="group" aria-label="Links">${modes.map(([l],i)=>`<button type="button" data-i="${i}" aria-pressed="${!i}">${l}</button>`).join('')}</div>`:''}</div><div></div>`;
+    ${modes.length>1?segHTML('Links',modes.map(m=>m[0])):''}</div><div></div>`;
   // Files on the site itself go by their path, as pages do.
   const draw=i=>rowsInto(sec.lastElementChild,modes[i][1].slice(0,8).map(r=>({key:r.key,label:r.key.startsWith(SITE+'/')?r.key.slice(SITE.length):r.key,value:r.visitors,prev:r.prev})),{total:visitors,subj:'muted'});
-  sec.querySelectorAll('.seg button').forEach(bt=>bt.onclick=()=>{
-    sec.querySelectorAll('.seg button').forEach(x=>x.setAttribute('aria-pressed',x===bt));
-    draw(+bt.dataset.i);
-  });
+  onSeg(sec,draw);
   draw(0);
   body.append(sec);
+}
+
+// Words searched on the site or paid for in ads: a sentence, the top 5 (the rest open in place), what can't be known.
+function drawKeywords(sec,K){
+  const ks=['site','paid'],k0=keywordsCard(K).k;
+  sec.hidden=false;
+  sec.innerHTML=`<div class="card-head"><div class="card-title">Keywords</div>${segHTML('Keywords',['On your site','From ads'],ks.indexOf(k0))}</div>
+    <p class="card-say"></p><div></div><p class="say-sub"></p>`;
+  const [,say,list,note]=sec.children;
+  const draw=(k,open)=>{
+    const C=keywordsCard(K,k,open);
+    say.innerHTML=C.say;say.hidden=!C.say;
+    list.innerHTML=C.empty?`<p class="muted" style="margin:0">${esc(C.empty)}</p>`:'<div></div>';
+    if(!C.empty)rowsInto(list.firstChild,C.rows,{total:C.total,subj:k==='site'?'muted':'src'});
+    if(C.all){
+      list.insertAdjacentHTML('beforeend',`<button type="button" class="more-link" aria-expanded="false"><span>All ${C.all} words</span>${CHEV}</button>`);
+      list.lastChild.onclick=()=>{draw(k,1);const r=list.firstChild.children[6];r.tabIndex=-1;r.focus()};
+    }
+    note.textContent='Google doesn’t share what people searched for to find you.'+(k==='site'&&!C.empty?' Words only one person used, emails and phone numbers are left out.':'');
+  };
+  onSeg(sec,i=>draw(ks[i]));
+  draw(k0);
 }
 
 // Sources open with where the change came from; pages with the page that moved most.
@@ -1223,21 +1242,6 @@ function renderDim(body,group){
   if(W)drawGrowth(body.querySelector('.steps'),W);
   // The list bolds whatever this page's sentence names.
   return dimSection(body.lastElementChild,group,{},false,new Set(cap?.key!=null?[cap.key]:[]));
-}
-
-// Words searched on the site and words ads paid for: what can be known about search, and a plain word on what can't.
-async function renderKeywords(body){
-  const gen=body._gen,K=await api('keywords');
-  if(stale(body,gen))return;
-  const card=(k,title,note)=>`<section class="card kw"><div class="card-title">${title}</div><div data-k="${k}"></div>${K[k].length&&note?`<p class="say-sub">${note}</p>`:''}</section>`;
-  body.innerHTML=`<div><p class="say">${keywordsStory(K)}</p><p class="say-sub">Google doesn’t share what people searched for to find you.</p></div>
-    ${card('site','Searched on your site','Words only one person searched are left out, and so is anything that looks like an email or a phone number.')}
-    ${card('paid','Words your ads paid for')}`;
-  for(const [k,subj] of [['site','muted'],['paid','src']]){
-    const el=body.querySelector(`[data-k="${k}"]`),rows=K[k];
-    if(!rows.length){el.innerHTML=`<p class="muted" style="margin:0">${esc(KEYWORDS_EMPTY[k])}</p>`;continue}
-    rowsInto(el,rows.map(r=>({key:r.key,label:r.key,value:r.visitors,prev:r.prev})),{total:sum(rows.map(r=>r.visitors)),subj});
-  }
 }
 
 // The link to the bounce page says what bounce did overall, not what it did for this slice.

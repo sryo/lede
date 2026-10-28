@@ -5,7 +5,7 @@ import { parseQuery, sqlStore, handleApi } from '../src/api.js';
 import { siteSearchSql, paidWordsSql, SEARCH_PARAMS } from '../src/queries.js';
 import { keyword, searchWord, toKeywords } from '../src/shape.js';
 import { demoStore } from '../src/demo.js';
-import { keywordsStory, KEYWORDS_EMPTY } from '../public/story.js';
+import { keywordsStory, keywordsCard, KEYWORDS_EMPTY } from '../public/story.js';
 import { viewToUrl, urlToView } from '../public/routes.js';
 
 const SITES = ['example.com'];
@@ -198,9 +198,49 @@ test('the empty lists say what to do', () => {
   assert.match(KEYWORDS_EMPTY.paid, /utm_term/);
 });
 
+/* ---------- the card on the overview ---------- */
+
+const many = n => Array.from({ length: n }, (_, i) => w(`word ${i}`, 50 - i, 40));
+
+test('the card opens on site searches, or on ads when nobody searched the site', () => {
+  assert.equal(keywordsCard({ site: [w('pricing', 40)], paid: [w('bird feeder', 40)] }).k, 'site');
+  assert.equal(keywordsCard({ site: [], paid: [w('bird feeder', 40)] }).k, 'paid');
+  assert.equal(keywordsCard({ site: [], paid: [] }).k, 'site', 'with nothing, the site search empty state says how to get words');
+});
+
+test('the card leads with the sentence for the list it shows', () => {
+  const K = { site: [w('pricing', 90, 30)], paid: [w('bird feeder', 40, 20)] };
+  assert.equal(strip(keywordsCard(K, 'site').say), 'People searched your site for pricing most, 3× more than before.');
+  assert.equal(strip(keywordsCard(K, 'paid').say), 'Of the words your ads paid for, bird feeder brought the most visitors, 2× more than before.');
+});
+
+test('an empty list says what to do instead of a sentence', () => {
+  const c = keywordsCard({ site: [], paid: [w('bird feeder', 40)] }, 'site');
+  assert.equal(c.say, '');
+  assert.equal(c.empty, KEYWORDS_EMPTY.site);
+  assert.deepEqual(c.rows, []);
+  assert.equal(keywordsCard({ site: [w('pricing', 40)], paid: [] }, 'paid').empty, KEYWORDS_EMPTY.paid);
+  assert.equal(keywordsCard({ site: [w('pricing', 40)], paid: [] }).empty, '');
+});
+
+test('the card shows the top 5 words, and all of them when asked', () => {
+  const K = { site: many(12), paid: many(5) };
+  const c = keywordsCard(K, 'site');
+  assert.deepEqual(c.rows.map(r => r.key), ['word 0', 'word 1', 'word 2', 'word 3', 'word 4']);
+  assert.equal(c.all, 12);
+  assert.equal(c.total, K.site.reduce((a, r) => a + r.visitors, 0), 'share is of everyone who used a word in the list');
+  assert.equal(keywordsCard(K, 'site', true).rows.length, 12);
+  assert.equal(keywordsCard(K, 'site', true).all, 0, 'once open, no row asks for more');
+  assert.equal(keywordsCard(K, 'paid').all, 0, 'five words need no more');
+});
+
+test('the card rows are list rows: key, label, value, last period', () => {
+  assert.deepEqual(keywordsCard({ site: [w('pricing', 40, 12)], paid: [] }).rows, [{ key: 'pricing', label: 'pricing', value: 40, prev: 12 }]);
+});
+
 /* ---------- the address ---------- */
 
-test('the keywords view has its own address', () => {
-  assert.equal(viewToUrl({ v: 'keywords' }, { days: 7 }), '/keywords?days=7');
-  assert.deepEqual(urlToView('/keywords', ''), { view: { v: 'keywords' }, days: null, site: null });
+test('keywords have no view of their own; an old link opens the overview, where their card is', () => {
+  assert.equal(viewToUrl({ v: 'keywords' }), '/');
+  assert.deepEqual(urlToView('/keywords', '?days=7'), { view: { v: 'overview' }, days: 7, site: null });
 });

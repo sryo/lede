@@ -169,7 +169,7 @@ async function settle(server) {
   }
 }
 
-const VIEWS = ['/', '/sources', '/pages', '/bounce', '/sources/google.com', '/page/blog'];
+const VIEWS = ['/', '/overview', '/sources', '/pages', '/bounce', '/sources/google.com', '/page/blog'];
 
 // Counts are exact, so they come from one pass on a fresh server per view (nothing cached).
 async function countsOf(root, chrome) {

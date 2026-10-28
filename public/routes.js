@@ -1,7 +1,6 @@
 // Every view the dashboard can zoom into has an address, so a refresh or a shared link opens the same view.
 //   /                          home              /overview, /bounce, /online, /events
 //   /sources, /pages           the full lists
-//   /keywords                  words searched on the site and words ads paid for
 //   /sources/google.com        one source (/sources/direct for visits with no referrer)
 //   /channels/ai               one channel
 //   /page/docs/install         one page (/page/ is the site's home page)
@@ -9,7 +8,7 @@
 
 import { displayHost } from './hosts.js';
 
-const SIMPLE = ['overview', 'bounce', 'online', 'sources', 'pages', 'events', 'keywords'];
+const SIMPLE = ['overview', 'bounce', 'online', 'sources', 'pages', 'events'];
 const DIRECT = 'direct';
 
 export function viewToUrl(view, { days = 30, site = null } = {}) {
@@ -45,6 +44,8 @@ export function urlToView(pathname, search) {
   const parts = pathname.split('/');
   let view = null;
   if (parts.length === 2 && SIMPLE.includes(parts[1])) view = { v: parts[1] };
+  // Keywords were once a view of their own; they are a card on the overview now.
+  else if (pathname === '/keywords') view = { v: 'overview' };
   else if (parts[1] === 'page' && parts.length >= 3) {
     const f = { path: decodeURI('/' + parts.slice(2).join('/')) };
     if (q.has('referrer')) f.referrer = q.get('referrer');

@@ -692,6 +692,13 @@ export function keywordsStory({ site, paid }) {
   return parts.join(' ') || 'No search words yet.';
 }
 
+// The overview's Keywords card on list k (ads when only they have words): sentence or what to do, the top 5 rows.
+export function keywordsCard(K, k = !K.site.length && K.paid.length ? 'paid' : 'site', open = false) {
+  const list = K[k], rows = (open ? list : list.slice(0, 5)).map(r => ({ key: r.key, label: r.key, value: r.visitors, prev: r.prev }));
+  return { k, rows, all: open || list.length <= 5 ? 0 : list.length, total: list.reduce((a, r) => a + r.visitors, 0),
+    say: list.length ? keywordsStory({ site: [], paid: [], [k]: list }) : '', empty: list.length ? '' : KEYWORDS_EMPTY[k] };
+}
+
 // What an empty list tells the owner to do.
 export const KEYWORDS_EMPTY = {
   site: 'No searches yet. Lede reads the words after ?q= or ?s= in your search page’s address, so a search box that puts them there shows up here.',
