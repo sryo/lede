@@ -1,6 +1,7 @@
 import { unwanted, isSpam } from './bots.js';
 import { channelFor, referrerHost } from './channels.js';
 import { toDataPoint } from './schema.js';
+import { keyword } from './shape.js';
 import { getSites, getSalt } from './settings.js';
 
 const TRACKING_PARAMS = /^(utm_\w+|gclid|gbraid|wbraid|msclkid|fbclid|ttclid|twclid|li_fat_id|dclid|mc_cid|mc_eid|_ga)$/;
@@ -75,6 +76,8 @@ export function parseEvent(body, sites) {
     utmSource: clip((landing.get('utm_source') || landing.get('ref') || '').toLowerCase()),
     utmMedium: clip((landing.get('utm_medium') || '').toLowerCase()),
     utmCampaign: clip(landing.get('utm_campaign') || ''),
+    // The ad keyword, cleaned as search words are (see keyword), since it can carry what someone typed.
+    utmTerm: keyword(landing.get('utm_term')),
   };
 }
 

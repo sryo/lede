@@ -332,6 +332,7 @@ button.lrow:hover{background:var(--line)}
 button.lrow:hover .name{text-decoration:underline}
 button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .lrow .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kw .lrow .name{white-space:normal;overflow-wrap:break-word}
 .lrow .name small{color:var(--muted);font-size:var(--fs-xs);margin-left:8px}
 .lrow .bar{height:8px;border-radius:4px;overflow:hidden}
 .lrow.rate .bar{background:var(--line)}
@@ -382,6 +383,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
     .two,.two.even{grid-template-columns:1fr}
   .lrow{grid-template-columns:minmax(0,1fr) 44px 56px 56px 10px;gap:8px}
   .lrow .pct,.lrow.lhead:not(.rate):not(.online)>span:nth-child(4){display:none}
+  .kw .lrow{grid-template-columns:minmax(0,1fr) 56px 56px 10px}.kw .lrow .bar,.kw .lhead>span:nth-child(2){display:none}
   /* phones: the crowd above already shows the figures, so the table keeps page, source and time */
   .lrow.online{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) max-content 10px;column-gap:8px}
   .lrow.online .cty,.lrow.online>.ppl,.lrow.lhead.online>span:nth-child(2){display:none}
@@ -408,9 +410,9 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 <div class="sr" id="status" role="status"></div>
 
 <script type="module">
-import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtStep, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
+import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, spikeSegment, waterfall, waterfallCaption, bounceSplit, bounceCaption,
-  flowShare, flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, pageStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate,
+  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, pageStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, keywordsStory, KEYWORDS_EMPTY,
   dayHint, ribbonHint, sourceHint, pageHint } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -938,7 +940,6 @@ async function view(body,fn){
   try{await fn(body)}catch(e){if(!stale(body,gen))showError(body,e,()=>view(body,fn))}
 }
 
-// subj colours the bar behind each row (its length is the value): page or src; neutral without one.
 // subj colours the bar after each name (its length is the value against the largest row).
 // goalable: rows are pages, and each gets a flag to track it as a goal.
 // named: keys this page's own sentence names; they are bold, as in every list.
@@ -993,6 +994,7 @@ function viewOptions(vw){
     case 'bounce':return {title:'Bounce',render:b=>view(b,renderBounce)};
     case 'online':return {title:'Online',chip:'Live',render:b=>view(b,renderOnline)};
     case 'sources':case 'pages':return {title:vw.v[0].toUpperCase()+vw.v.slice(1),render:b=>view(b,x=>renderDim(x,vw.v))};
+    case 'keywords':return {title:'Keywords',render:b=>view(b,renderKeywords)};
     case 'events':return HOME?.events?{title:'What happened',render:x=>renderEvents(x,vw.pick?HOME.events.filter(vw.pick):HOME.events,HOME.ser)}:null;
     case 'filter':{
       const f=vw.f,source=(f.referrer!=null)!==(f.channel!=null)&&f.path==null;
@@ -1022,8 +1024,9 @@ function dimSection(sec,group,f,compact,boldKeys=null){
   sec.className='card';
   sec.innerHTML=`<div class="card-head">${compact?`<div class="card-title">${group==='pages'?'Pages':'Sources'}</div>`:''}
     ${compact?'':`<div class="seg" role="group" aria-label="Breakdown">${modes.map(([l,m])=>`<button data-m="${m}" aria-pressed="${m===mode}">${l}</button>`).join('')}</div>`}</div>
-    <div class="dim-body"></div>`;
+    <div class="dim-body"></div>${compact||group!=='sources'?'':`<button type="button" class="more-link"><span>Keywords</span>${CHEV}</button>`}`;
   const body=sec.querySelector('.dim-body');
+  sec.querySelector('.more-link')?.addEventListener('click',e=>openView({v:'keywords'},e.currentTarget));
   let gen=0;
   const draw=()=>{const g=++gen;return view(body,async b=>{
     const data=await api('breakdown',{...filterParams(f),dim:mode});
@@ -1152,6 +1155,21 @@ function renderDim(body,group){
   if(W)drawGrowth(body.querySelector('.steps'),W);
   // The list bolds whatever this page's sentence names.
   return dimSection(body.lastElementChild,group,{},false,new Set(cap?.key!=null?[cap.key]:[]));
+}
+
+// Words searched on the site and words ads paid for: what can be known about search, and a plain word on what can't.
+async function renderKeywords(body){
+  const gen=body._gen,K=await api('keywords');
+  if(stale(body,gen))return;
+  const card=(k,title,note)=>`<section class="card kw"><div class="card-title">${title}</div><div data-k="${k}"></div>${K[k].length&&note?`<p class="say-sub">${note}</p>`:''}</section>`;
+  body.innerHTML=`<div><p class="say">${keywordsStory(K)}</p><p class="say-sub">Google doesn’t share what people searched for to find you.</p></div>
+    ${card('site','Searched on your site','Words only one person searched are left out, and so is anything that looks like an email or a phone number.')}
+    ${card('paid','Words your ads paid for')}`;
+  for(const [k,subj] of [['site','muted'],['paid','src']]){
+    const el=body.querySelector(`[data-k="${k}"]`),rows=K[k];
+    if(!rows.length){el.innerHTML=`<p class="muted" style="margin:0">${esc(KEYWORDS_EMPTY[k])}</p>`;continue}
+    rowsInto(el,rows.map(r=>({key:r.key,label:r.key,value:r.visitors,prev:r.prev})),{total:sum(rows.map(r=>r.visitors)),subj});
+  }
 }
 
 // The link to the bounce page says what bounce did overall, not what it did for this slice.

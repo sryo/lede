@@ -1,5 +1,6 @@
 // Turns raw aggregate rows (from SQL or the demo store) into the JSON the dashboard reads.
 // The SQL API returns 64-bit counts as strings, hence the Number() everywhere.
+import { SEARCH_PARAMS } from './queries.js';
 
 const num = v => Number(v) || 0;
 
@@ -120,4 +121,60 @@ export function toLinks(cur, prev) {
     list?.push({ key: r.key ?? '', visitors: num(r.visitors), clicks: num(r.clicks), prev: before.get(id(r)) ?? null });
   }
   return out;
+}
+
+/* ---------- keywords ---------- */
+
+// Search words are typed by people, so anything that could name one of them is left out: an email
+// address, or 6 or more digits in a row (a phone, an order or an account number). The check runs on the
+// whole word, before it's cut to 80 characters, so an address past the cut is caught too.
+const PRIVATE = /[^\s@]@[^\s@]+\.[^\s@]|\d{6}/;
+export function keyword(s) {
+  const w = String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return PRIVATE.test(w) ? '' : w.slice(0, 80).trim();
+}
+
+// The words searched for on a page address such as /search?q=owl+calls&page=2. Parsing the query decodes
+// + and %20, and every other parameter (the result page) is dropped, so all pages of one search are one word.
+export function searchWord(url) {
+  const at = String(url ?? '').indexOf('?');
+  if (at < 0) return '';
+  let params;
+  try { params = new URLSearchParams(url.slice(at + 1)); } catch { return ''; }
+  for (const p of SEARCH_PARAMS) {
+    const v = params.get(p);
+    if (!v) continue;
+    // URLSearchParams turns a broken escape into U+FFFD; that's not a word anyone typed.
+    return v.includes('�') ? '' : keyword(v);
+  }
+  return '';
+}
+
+// A word seen by fewer than this many visitors isn't shown, so a list can't point at one person.
+export const MIN_VISITORS = 2;
+const KEEP_WORDS = 100;
+
+function wordList(cur, prev) {
+  return [...cur].filter(([, n]) => n >= MIN_VISITORS).sort((a, b) => b[1] - a[1]).slice(0, KEEP_WORDS)
+    .map(([key, visitors]) => ({ key, visitors, prev: prev.get(key) || null }));
+}
+
+// site: rows of { p, url, visitor }, one per visitor and search address, so a visitor who paged through
+// the results or typed the word twice is counted once. paid: rows of { p, key, visitors } per ad keyword,
+// already cleaned when collected; cleaning again merges what older rows spelled differently.
+export function toKeywords(site, paid) {
+  const seen = [new Map(), new Map()];
+  for (const r of site) {
+    const word = searchWord(r.url), m = seen[num(r.p) === 1 ? 1 : 0];
+    if (!word) continue;
+    if (!m.has(word)) m.set(word, new Set());
+    m.get(word).add(r.visitor);
+  }
+  const people = seen.map(m => new Map([...m].map(([k, s]) => [k, s.size])));
+  const ads = [new Map(), new Map()];
+  for (const r of paid) {
+    const word = keyword(r.key), m = ads[num(r.p) === 1 ? 1 : 0];
+    if (word) m.set(word, (m.get(word) || 0) + num(r.visitors));
+  }
+  return { site: wordList(people[1], people[0]), paid: wordList(ads[1], ads[0]) };
 }

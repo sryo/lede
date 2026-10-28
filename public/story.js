@@ -10,8 +10,6 @@ export const fmtN = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? (n /
 export const fmtInt = n => Math.round(n).toLocaleString('en-US');
 export const count = n => n < 1e5 ? fmtInt(n) : fmtN(n);
 export const fmtSigned = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + fmtInt(Math.abs(n));
-// +2.9k, −0.1k: one decimal of thousands, for labels on top of bars.
-export const fmtStep = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + (Math.abs(n) >= 1000 ? (Math.abs(n) / 1e3).toFixed(1) + 'k' : fmtInt(Math.abs(n)));
 
 // Hover hints on the charts.
 const visitors = n => `${fmtInt(n)} ${Math.round(n) === 1 ? 'visitor' : 'visitors'}`;
@@ -506,3 +504,31 @@ const GOAL_LIKE = /^\/(sign-?up|register|thank|checkout|subscribe|contact|demo|t
 export function suggestGoal(rows) {
   return rows.filter(r => GOAL_LIKE.test(r.key)).sort((a, b) => b.value - a.value)[0]?.key ?? null;
 }
+
+/* ---------- keywords ---------- */
+
+// A word's change, unless too few used it to call it a trend. any: the list had words before, so "new" means something.
+function wordChange(r, any) {
+  if (r.visitors < 20 || (r.prev && r.prev < 10)) return '';
+  if (!r.prev) return any ? ', new this period' : '';
+  const x = r.visitors / r.prev, pct = Math.round((x - 1) * 100);
+  return x >= 2 ? `, ${Math.round(x)}× more than before` : Math.abs(pct) >= 15 ? `, ${pct > 0 ? 'up' : 'down'} ${Math.abs(pct)}%` : '';
+}
+
+// "People searched your site for pricing most, 3× more than before." Then the ads' top word.
+export function keywordsStory({ site, paid }) {
+  const say = (list, few, most) => {
+    const r = list[0], w = `<b>${esc(r.key)}</b>`;
+    return r.visitors < 20 ? few(w) : most(w) + wordChange(r, list.some(x => x.prev)) + '.';
+  };
+  const parts = [];
+  if (site.length) parts.push(say(site, w => `A few people searched your site, most often for ${w}.`, w => `People searched your site for ${w} most`));
+  if (paid.length) parts.push(say(paid, w => `A few visitors came from your ads; ${w} brought the most.`, w => `Of the words your ads paid for, ${w} brought the most visitors`));
+  return parts.join(' ') || 'No search words yet.';
+}
+
+// What an empty list tells the owner to do.
+export const KEYWORDS_EMPTY = {
+  site: 'No searches yet. Lede reads the words after ?q= or ?s= in your search page’s address, so a search box that puts them there shows up here.',
+  paid: 'No ad words yet. Add utm_term={keyword} to your ads’ links, and the words people searched to see the ad show up here.',
+};

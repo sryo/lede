@@ -33,11 +33,18 @@ Lede reads your account ID from the token. If the token works for more than one 
 
 Home tells the period's story: the visitor total, a sentence saying what changed and why, a small crowd of who is here now, then four tiles that each answer one question: when (daily visitors against the previous period), from where to where (a Sankey from source to landing page), did they stay (bounce as rows of ten squares) and what they read (a page treemap). Click any tile, block, flow or underlined name to zoom in; Esc zooms out. Colour says what kind of thing a mark is: visitors over time are blue, sources amber, pages violet, bounce red, people here now green.
 
-Every view has its own address, so refresh and the back button work and a link opens the same view: `/overview`, `/bounce`, `/online`, `/events`, `/sources`, `/pages`, `/sources/google.com` (`/sources/direct` for no referrer), `/channels/ai`, `/page/docs/install` (`/page/` is the home page). `?days=7` and, with more than one site, `?site=` ride along. See `public/routes.js`. A source's address with a channel on it (`/sources/google.com?channel=search`) opens the source's own view; the channel is dropped.
+Every view has its own address, so refresh and the back button work and a link opens the same view: `/overview`, `/bounce`, `/online`, `/events`, `/sources`, `/pages`, `/keywords`, `/sources/google.com` (`/sources/direct` for no referrer), `/channels/ai`, `/page/docs/install` (`/page/` is the home page). `?days=7` and, with more than one site, `?site=` ride along. See `public/routes.js`. A source's address with a channel on it (`/sources/google.com?channel=search`) opens the source's own view; the channel is dropped.
 
 Who is here now refreshes every minute, and when you come back to the tab: on home, and on the Online view while it's showing.
 
 A page's view shows how long the page is read on average and how far down people scroll. It and the overview end with the links people clicked: links to other sites, and files they downloaded. Neither shows until the tracker has sent some.
+
+Keywords (`/keywords`, from the Keywords link under the Sources list) shows what can be known about search, and says what can't: Google doesn't pass on what people searched for to find a site, so those words never reach Lede, and the page says so. What it shows instead:
+
+- **Searched on your site:** the words people typed into the site's own search box, read from the page address of the results page (`?q=`, `?s=`, `?search=`, `?query=`, `?keyword=`, `?keywords=` or `?k=`). A search box that sends its words some other way (in a form post, or only to a script) doesn't show up.
+- **Words your ads paid for:** the `utm_term` on the link a visit landed from. Google Ads fills it in when an ad's link ends in `utm_term={keyword}`; other ad networks have their own placeholder.
+
+Each word counts the visitors who used it, against the period before. Words are lowercased and trimmed, `+` and `%20` read as spaces, the result pages of one search (`?q=owls&page=2`) count once, and words are cut at 80 characters. A word only one visitor used is left out, and so is anything that looks like an email address or holds 6 or more digits in a row (a phone, an order or an account number), so a list can't point at one person.
 
 A goal is a page that means a visitor did something, such as `/signup`. Flag it from the Pages list or a page's view, or answer the question on home when a page looks like one. Click the flag again to stop tracking it.
 
@@ -72,8 +79,8 @@ To see the messages without a webhook, run `npm run dev` and open http://localho
 | Sample data | `src/demo.js`, used when `DEMO="true"` (`npm run dev` sets it). |
 
 Each event is one data point, indexed by site. The blob order is defined once in `src/schema.js`:
-site, path, url, referrer, channel, visitor, visit, type, country, utm_source, utm_medium, utm_campaign, target.
-New fields only go at the end, so rows already stored keep their meaning. `type` is `pageview`, `engagement`, `outbound` or `download`; rows from before there were other types are all page views, and every page-view stat filters on it. Engagement figures are doubles: `double1` is engaged milliseconds, `double2` scroll depth in percent. `target` is the clicked link's host and path, without its query.
+site, path, url, referrer, channel, visitor, visit, type, country, utm_source, utm_medium, utm_campaign, target, device, browser, utm_term.
+New fields only go at the end, so rows already stored keep their meaning. `type` is `pageview`, `engagement`, `outbound` or `download`; rows from before there were other types are all page views, and every page-view stat filters on it. Engagement figures are doubles: `double1` is engaged milliseconds, `double2` scroll depth in percent. `target` is the clicked link's host and path, without its query. `utm_term` (blob16) is the ad keyword of the page the visit landed on, cleaned as search words are (see Keywords above), and empty on rows from before it was collected; `device` and `browser` are reserved and not filled yet.
 
 ### Metric definitions
 
@@ -118,6 +125,7 @@ Days run from local midnight to local midnight in `tzName`, so the day the clock
 - `GET /api/conversions?goal=/signup&goal=/thanks` → visits per source, and how many of them viewed a goal page
 - `GET /api/engagement` → per page: page views that sent an engagement event, average seconds on the page and share scrolled, with last period's
 - `GET /api/links` → `outbound` links and `downloads`, each with visitors, clicks and last period's visitors
+- `GET /api/keywords` → `site` (words searched on the site) and `paid` (ad keywords), each a list of `{key, visitors, prev}` with last period's visitors (`null` when no one used the word then), most used first, up to 100
 - `GET /api/sites` → the sites Lede counts; `POST /api/sites` with `{"site": "example.com"}` adds one
 - `GET /api/goals` → the site's goals; `PUT /api/goals` with `{"goals": [...]}` saves them
 
@@ -129,6 +137,7 @@ Days run from local midnight to local midnight in `tzName`, so the day the clock
 - At very high volume Analytics Engine samples data. View counts, and engagement averages, are corrected with `_sample_interval`; distinct visitor counts are not. Bounce counts the events stored for a visit, so a sampled single view still counts as one page. When this happens in a period, home says so under the sentence.
 - Each comparison (summary, days, breakdowns, flows, engagement, link clicks) is one SQL query covering both periods, with each row labelled by period. Lists keep each period's top rows (100 for breakdowns, 200 for engagement and links); SQL here has no `LIMIT BY`, so the query asks for more (ten times as many for breakdowns and those lists, twice as many for flows) and Lede trims each period. When one period fills that whole answer, as after a tenfold change in traffic on a site with hundreds of pages, the other period is asked for on its own.
 - Stats answers are kept for 60 s (15 s for live) in each Worker instance and, on a custom domain, in Cloudflare's edge cache too (Cloudflare documents the Cache API for custom domains, not `workers.dev`).
+- SQL here can't take one parameter out of an address, so the site search query sends back each search address once per visitor (up to 20,000 a query, both periods together) and the Worker reads the words. A site with more searches than that in a period gets lists from the first 20,000.
 - Filter values reach SQL hex-encoded (`hex(blob2) = '…'`), because the SQL API documents no string escaping.
 
 ## Measuring changes

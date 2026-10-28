@@ -1,5 +1,5 @@
 import * as Q from './queries.js';
-import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, toFirsts, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks } from './shape.js';
+import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, toFirsts, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords } from './shape.js';
 import { getSites, addSite, getAccountId } from './settings.js';
 import { HttpError } from './errors.js';
 import { demoStore } from './demo.js';
@@ -118,6 +118,10 @@ export function sqlStore(env, fetchImpl = fetch) {
       const { cur, prev } = await lists(only => Q.linksSql(ds, q, only), Q.LISTS.pages);
       return toLinks(cur, prev);
     },
+    async keywords(q) {
+      const [site, paid] = await Promise.all([run(Q.siteSearchSql(ds, q)), run(Q.paidWordsSql(ds, q))]);
+      return toKeywords(site, paid);
+    },
   };
 }
 
@@ -165,6 +169,7 @@ async function route(name, url, env, store, req) {
     case 'live': return store.live(q);
     case 'engagement': return store.engagement(q);
     case 'links': return store.links(q);
+    case 'keywords': return store.keywords(q);
     case 'conversions': {
       const list = url.searchParams.getAll('goal');
       return store.conversions(q, parseGoals(list.length ? list : null));

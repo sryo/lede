@@ -202,3 +202,18 @@ export const usualSql = (ds, site, nowSec, days) => {
     + `WHERE index1 = '${site}' AND (${COL.type} = 'pageview' OR ${COL.type} = 'ping') `
     + `AND timestamp >= toDateTime(${from}) AND timestamp < toDateTime(${nowSec - DAY}) AND ${at} - intDiv(${at}, ${DAY}) * ${DAY} < 300 GROUP BY d`;
 };
+
+// The query parameters site search pages commonly put the words in (WordPress uses s).
+export const SEARCH_PARAMS = ['q', 's', 'search', 'query', 'keyword', 'keywords', 'k'];
+// SQL here can't pull one parameter out of an address, so the query finds the page views whose address
+// holds one and sends each address once per visitor; shape.js reads the words and counts each visitor once.
+// Rows past the limit are dropped, which only a site with tens of thousands of searches a period reaches.
+const SEARCHED = SEARCH_PARAMS.flatMap(p => [`position('?${p}=' IN ${COL.url}) > 0`, `position('&${p}=' IN ${COL.url}) > 0`]).join(' OR ');
+export const siteSearchSql = (ds, q) =>
+  `SELECT ${PERIOD(q)} AS p, ${COL.url} AS url, ${COL.visitor} AS visitor FROM ${ds} WHERE ${within(q)} AND (${SEARCHED}) `
+  + 'GROUP BY p, url, visitor LIMIT 20000';
+
+// Visitors per ad keyword (utm_term on the page a visit landed on).
+export const paidWordsSql = (ds, q) =>
+  `SELECT ${PERIOD(q)} AS p, ${COL.utmTerm} AS key, count(DISTINCT ${COL.visitor}) AS visitors FROM ${ds} `
+  + `WHERE ${within(q)} AND ${COL.utmTerm} != '' GROUP BY p, key ORDER BY visitors DESC LIMIT 1000`;

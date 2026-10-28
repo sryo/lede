@@ -1,6 +1,7 @@
 // Every view the dashboard can zoom into has an address, so a refresh or a shared link opens the same view.
 //   /                          home              /overview, /bounce, /online, /events
 //   /sources, /pages           the full lists
+//   /keywords                  words searched on the site and words ads paid for
 //   /sources/google.com        one source (/sources/direct for visits with no referrer)
 //   /channels/ai               one channel
 //   /page/docs/install         one page (/page/ is the site's home page)
@@ -8,7 +9,7 @@
 
 import { displayHost } from './hosts.js';
 
-const SIMPLE = ['overview', 'bounce', 'online', 'sources', 'pages', 'events'];
+const SIMPLE = ['overview', 'bounce', 'online', 'sources', 'pages', 'events', 'keywords'];
 const DIRECT = 'direct';
 
 export function viewToUrl(view, { days = 30, site = null } = {}) {

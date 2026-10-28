@@ -1,6 +1,6 @@
 // Sample data for local development (DEMO="true"). It answers the same questions as the SQL
 // store, returning the same raw row fields, so the dashboard can't tell the difference.
-import { metrics, toSeries, toFlows, toFirsts, mergeRows, shapeLive, toConversions, toEngagement, toLinks } from './shape.js';
+import { metrics, toSeries, toFlows, toFirsts, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords } from './shape.js';
 import { hourlyStart } from './queries.js';
 
 // A field guide to birds. w: traffic weight, vpv: views per visit, br: bounce rate, dur: seconds, en/ex: entry & exit weighting
@@ -62,6 +62,34 @@ const FIRST_DAY = { '/swift': N - 19, 'bsky.app': N - 16 };
 const BUSY = N - 12, QUIET = N - 25;
 // How much more search traffic /migration gets on day d: none until 30 days ago, then up to 3.5×.
 const season = d => 1 + Math.max(0, d - (N - 30)) / 30 * 2.5;
+
+// What people search the site for, as the addresses the search page leaves (several spellings and result
+// pages of one search, to merge), and the words ads paid for. w: visitors a day. Owl calls grows with the
+// season, the swift page brings its own searches, and a few searches name a person or are made once: those
+// are left out. Ad words arrive cleaned, except an old row in capitals.
+const SEARCHES = [
+  { urls: ['/search?q=Owl+Calls', '/search?q=owl%20calls', '/search?q=owl+calls&page=2'], w: 1.6, grow: 5 },
+  { urls: ['/search?q=feeder+plans', '/search?s=Feeder+Plans'], w: 2.4 },
+  { urls: ['/search?q=robin+eggs'], w: 1.5 },
+  { urls: ['/search?q=nest+box', '/search?q=nest+box&page=2'], w: 1.1 },
+  { urls: ['/search?q=migration+map'], w: .7, grow: 1.5 },
+  { urls: ['/search?q=heron'], w: .6 },
+  { urls: ['/search?q=bird+song+app'], w: .5 },
+  { urls: ['/search?q=swift+nest'], w: .9, from: '/swift' },
+  { urls: ['/search?q=wren'], w: .3 },
+  { urls: ['/search?q=jane%40birds.org'], w: .2 },
+  { urls: ['/search?q=order+0612345678'], w: .2 },
+  { urls: ['/search?q=kestrel+cam'], w: .02 },
+];
+const ADS = [
+  { key: 'bird feeder', w: 1.8 },
+  { key: 'owl box', w: .9, grow: 2 },
+  { key: 'bird seed', w: .4 },
+  { key: 'Bird Seed', w: .2 },
+  { key: 'binoculars for birding', w: .5 },
+  { key: 'suet cakes', w: .02 },
+];
+
 
 function rng(seed) {
   return () => {
@@ -303,6 +331,28 @@ export const demoStore = {
       return { kind: L.kind, key: L.kind === 'download' ? q.site + L.key : L.key, visitors: Math.round(visitors), clicks: Math.round(visitors * 1.2) };
     }).filter(r => r.visitors > 0).sort((a, b) => b.visitors - a.visitors);
     return toLinks(rows(w.cur), rows(w.prev));
+  },
+  async keywords(q) {
+    const w = windows(q);
+    // Visitors over days [d0, d1): w a day, growing by up to grow× over the last 30 days.
+    const over = (it, [d0, d1]) => {
+      let v = 0;
+      for (let d = Math.max(d0, FIRST_DAY[it.from] ?? 0); d < d1; d++) v += it.w * (1 + Math.max(0, d - (N - 30)) / 30 * ((it.grow || 1) - 1));
+      return Math.round(v);
+    };
+    const site = [], paid = [];
+    for (const [p, range] of [[1, w.cur], [0, w.prev]]) {
+      SEARCHES.forEach((it, i) => {
+        // Each visitor searches one spelling; every third one also looks at the next page of results.
+        for (let v = 0; v < over(it, range); v++) {
+          const at = it.urls[v % it.urls.length], visitor = `${p}:${i}:${v}`;
+          site.push({ p, url: at, visitor });
+          if (v % 3 === 0 && it.urls.length > 1) site.push({ p, url: it.urls[(v + 1) % it.urls.length], visitor });
+        }
+      });
+      for (const it of ADS) paid.push({ p, key: it.key, visitors: over(it, range) });
+    }
+    return toKeywords(site, paid);
   },
   async live() {
     const now = Math.floor(Date.now() / 1000);
