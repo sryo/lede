@@ -50,6 +50,8 @@ Keywords (`/keywords`, from the Keywords link under the Sources list) shows what
 
 Each word counts the visitors who used it, against the period before. Words are lowercased and trimmed, `+` and `%20` read as spaces, the result pages of one search (`?q=owls&page=2`) count once, and words are cut at 80 characters. A word only one visitor used is left out, and so is anything that looks like an email address or holds 6 or more digits in a row (a phone, an order or an account number), so a list can't point at one person.
 
+A note marks something you did on a day, such as "Posted on Hacker News" or "New homepage", in up to 80 characters. Open the overview, pick a day on the visitors-per-day chart (click it, or focus the chart, move with the arrow keys and press Enter) and write it; the note shows as a speech bubble under that day, on home too, and in What happened. Click the bubble to change or remove it. Notes are saved for everyone who opens the dashboard, one per day, dated in your time zone. When visitors moved to a new level that lasted, starting on a noted day or the day after, and that move makes at least half of the period's change, home's sentence says so: "Visitors rose 40% after you posted on Hacker News (Wed, Oct 7)." A noted day (or the day after) with at least 1.5 times the visitors of a usual day like it is said too: "Sat, Oct 17 had twice the visitors of a usual Saturday, the day you shared /owls in a Facebook group." Lede only says what came after; it never says your note caused it. A note that starts with something done ("Posted…", "Sent…") is told as what you did; any other is quoted. Where a lasting change starts is the day that best splits both periods into a lower and a higher level, after each weekday is evened out against its own average; today and the last day of the period before aren't over, so they are left out.
+
 A goal is a page that means a visitor did something, such as `/signup`. Flag it from the Pages list or a page's view, or answer the question on home when a page looks like one. Click the flag again to stop tracking it.
 
 ## Get the story by message
@@ -78,7 +80,7 @@ To see the messages without a webhook, run `npm run dev` and open http://localho
 | Stats API (`GET /api/*`) | `src/api.js` and `src/queries.js`. Runs SQL against Analytics Engine through the SQL API and keeps answers for 60 s (15 s for live). Changes (`POST`/`PUT`) are only accepted from the dashboard's own origin. |
 | Dashboard (`/`) | `public/index.html`, with the story logic (what the sentences say, the bounce split, the waterfall, the crowd) in `public/story.js`, which `test/story.test.js` covers. The crowd's figures are [Wee People](https://github.com/propublica/weepeople) by ProPublica (CC BY-NC-ND 3.0), in `public/weepeople.woff2`. |
 | Password (`POST /api/signin`) | `src/index.js`. When `DASHBOARD_PASSWORD` is set, the stats answer only with a cookie that holds a hash of it; the dashboard page shows its own password card until then. Changing the password signs everyone out. |
-| Settings | `src/settings.js`. Sites, each month's visitor salt, the account ID, goals, the dashboard's address (for links in messages) and how many spike messages went out today, kept in the `STORE` KV namespace. |
+| Settings | `src/settings.js`. Sites, each month's visitor salt, the account ID, goals, notes (`notes:<site>`, in `src/api.js`), the dashboard's address (for links in messages) and how many spike messages went out today, kept in the `STORE` KV namespace. |
 | Messages | `src/alerts.js`, run by the Worker's `scheduled` handler on the crons in `wrangler.jsonc`. Tells the week with `readStory` and `tellStory` from `public/story.js`, the same code home uses. |
 | Sample data | `src/demo.js`, used when `DEMO="true"` (`npm run dev` sets it). |
 
@@ -137,7 +139,8 @@ Days run from local midnight to local midnight in `tzName`, so the day the clock
 - `GET /api/links` → `outbound` links and `downloads`, each with visitors, clicks and last period's visitors
 - `GET /api/keywords` → `site` (words searched on the site) and `paid` (ad keywords), each a list of `{key, visitors, prev}` with last period's visitors (`null` when no one used the word then), most used first, up to 100
 - `GET /api/sites` → the sites Lede counts; `POST /api/sites` with `{"site": "example.com"}` adds one
-- `GET /api/goals` → the site's goals; `PUT /api/goals` with `{"goals": [...]}` saves them
+- `GET /api/goals` → the site's goals, and its notes too, so the dashboard reads both with one request; `PUT /api/goals` with `{"goals": [...]}` saves them
+- `GET /api/notes` → the site's notes, `[{day: "2026-10-16", text: "Posted on Hacker News"}]`, oldest first; `PUT /api/notes` with `{"day", "text"}` adds or replaces that day's note; `DELETE /api/notes?day=2026-10-16` removes it. Each answers with the notes as they now are. A change is one KV write, and one that changes nothing writes nothing; the newest 100 notes are kept.
 
 ### Limits
 

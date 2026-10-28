@@ -256,6 +256,15 @@ test('changes are refused when another site sends them with the saved password',
   assert.deepEqual(JSON.parse(kv.get('sites')), ['example.com']);
   assert.equal((await post({ Origin: 'https://lede.test', 'Sec-Fetch-Site': 'same-origin' })).status, 200);
   assert.deepEqual(JSON.parse(kv.get('sites')), ['example.com', 'evil.test']);
+  // Notes too: another site can neither add one nor remove one.
+  const note = (method, headers, q = '') => worker.fetch(new Request(`https://lede.test/api/notes?site=example.com${q}`, {
+    method, headers: { Cookie: cookie, ...headers }, body: method === 'PUT' ? JSON.stringify({ day: '2026-10-16', text: 'Hi' }) : undefined,
+  }), env, { waitUntil() {} });
+  assert.equal((await note('PUT', { Origin: 'https://evil.test' })).status, 403);
+  assert.equal(kv.get('notes:example.com'), undefined);
+  assert.equal((await note('PUT', { Origin: 'https://lede.test' })).status, 200);
+  assert.equal((await note('DELETE', { 'Sec-Fetch-Site': 'cross-site' }, '&day=2026-10-16')).status, 403);
+  assert.equal(JSON.parse(kv.get('notes:example.com')).length, 1);
 });
 
 test('a rate-limited stats query is tried once more', async () => {

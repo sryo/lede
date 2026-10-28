@@ -2,7 +2,7 @@ import * as Q from './queries.js';
 import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, toFirsts, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience, pickVisits, pairNext } from './shape.js';
 import { getSites, addSite, getAccountId } from './settings.js';
 import { HttpError } from './errors.js';
-import { demoStore } from './demo.js';
+import { demoStore, demoNotes } from './demo.js';
 import { channelFor } from './channels.js';
 
 export { HttpError };
@@ -152,15 +152,54 @@ export function parseGoals(list) {
   return [...new Set(list)];
 }
 
-// Goals are kept in KV, so everyone who opens the dashboard sees the same ones.
-async function goals(req, q, env) {
+// Goals are kept in KV, so everyone who opens the dashboard sees the same ones. Reading them also
+// answers with the notes, since the dashboard needs both as it opens: one request instead of two.
+async function goals(req, q, env, demo) {
   const key = `goals:${q.site}`;
   if (req.method === 'PUT') {
     const list = parseGoals((await req.json().catch(() => ({}))).goals);
     await env.STORE.put(key, JSON.stringify(list));
     return { goals: list };
   }
-  return { goals: JSON.parse(await env.STORE.get(key) || '[]') };
+  const [list, saved] = await Promise.all([env.STORE.get(key), readNotes(q, env, demo)]);
+  return { goals: JSON.parse(list || '[]'), notes: saved };
+}
+
+// The owner's notes on days ("Posted on Hacker News"): one per day, YYYY-MM-DD in the owner's time zone.
+// Stats go back three months, so the newest 100 are plenty.
+const NOTE_CHARS = 80;
+const MAX_NOTES = 100;
+// A real date: 2026-02-30 rolls over to March, so it isn't one.
+const isDay = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(Date.parse(d) || 0).toISOString().startsWith(d);
+
+export function parseNote(body) {
+  const day = body?.day, text = typeof body?.text === 'string' ? body.text.trim() : '';
+  if (!isDay(day)) throw new HttpError(400, 'A note needs a day, written like 2026-10-16.');
+  if (!text || [...text].length > NOTE_CHARS) throw new HttpError(400, `A note is a few words, up to ${NOTE_CHARS} characters.`);
+  return { day, text };
+}
+
+// Until the owner changes the demo's notes, it shows the one it comes with.
+async function readNotes(q, env, demo) {
+  const saved = await env.STORE.get(`notes:${q.site}`);
+  return saved ? JSON.parse(saved) : demo ? demoNotes(q) : [];
+}
+
+// Each change is one KV write, and one that changes nothing writes nothing.
+async function notes(req, url, q, env, demo) {
+  const list = await readNotes(q, env, demo);
+  if (req.method === 'GET') return { notes: list };
+  let next;
+  if (req.method === 'PUT') {
+    const note = parseNote(await req.json().catch(() => null));
+    next = [...list.filter(n => n.day !== note.day), note].sort((a, b) => a.day < b.day ? -1 : 1).slice(-MAX_NOTES);
+  } else if (req.method === 'DELETE') {
+    const day = url.searchParams.get('day');
+    if (!isDay(day)) throw new HttpError(400, 'Say which day\'s note to remove, like ?day=2026-10-16.');
+    next = list.filter(n => n.day !== day);
+  } else throw new HttpError(405, 'Notes are read with GET, saved with PUT and removed with DELETE.');
+  if (JSON.stringify(next) !== JSON.stringify(list)) await env.STORE.put(`notes:${q.site}`, JSON.stringify(next));
+  return { notes: next };
 }
 
 // The channel a referrer host falls in when no UTM tags say otherwise.
@@ -173,7 +212,8 @@ async function route(name, url, env, store, req) {
     return { sites: await getSites(env, { fresh: true }), demo };
   }
   const q = parseQuery(url, await getSites(env, { fresh: true }));
-  if (name === 'goals') return goals(req, q, env);
+  if (name === 'goals') return goals(req, q, env, demo);
+  if (name === 'notes') return notes(req, url, q, env, demo);
   switch (name) {
     case 'summary': return store.summary(q);
     case 'series': return store.series(q);
@@ -220,7 +260,7 @@ export async function handleApi(req, env, ctx) {
   const url = new URL(req.url);
   const name = url.pathname.replace(/^\/api\//, '');
   const demo = env.DEMO === 'true';
-  const settings = name === 'goals' || name === 'sites';
+  const settings = name === 'goals' || name === 'notes' || name === 'sites';
   const maxAge = settings ? 0 : CACHE_SECONDS[name] || CACHE_SECONDS.default;
   // Each stats request runs several SQL queries, so successful answers are cached briefly at the edge.
   const cache = !demo && !settings && typeof caches !== 'undefined' ? caches.default : null;

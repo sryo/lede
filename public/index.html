@@ -165,6 +165,17 @@ button.tile-title:hover{color:var(--ink)}
 .m-date{position:absolute;bottom:0;font-size:var(--fs-xs);color:var(--muted)} .m-date.end{right:0}
 .m-day{position:absolute;bottom:0;transform:translateX(-50%);font-size:var(--fs-xs);color:var(--muted)}
 .glyph{flex:none;display:block}
+/* the owner's notes: a day of the overview's chart opens a small form for that day; arrows pick the day */
+.chart.notable{cursor:pointer;border-radius:4px}
+.chart.notable:focus-visible{outline:none}
+.chart.notable:focus-visible::after{content:"";position:absolute;top:8px;bottom:2px;pointer-events:none;border-radius:4px;outline:2px solid var(--focus);
+  width:calc((100% - 40px) / var(--n));left:calc((100% - 40px) * var(--i) / var(--n))}
+.note-edit{position:fixed;z-index:11;width:min(320px,calc(100vw - 32px));box-sizing:border-box;margin:0;padding:12px;border-radius:14px;
+  background:var(--tile);box-shadow:0 0 0 1px var(--line),0 10px 28px -8px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:8px;font-size:var(--fs-s)}
+.note-edit .add{margin:0;max-width:none}
+.note-edit .err{color:var(--bnc);font-size:var(--fs-xs)} .note-edit .err:empty{display:none}
+.note-edit .del{all:unset;cursor:pointer;color:var(--muted);font-size:var(--fs-xs);align-self:flex-start;border-radius:4px}
+.note-edit .del:hover{color:var(--ink);text-decoration:underline} .note-edit .del:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
 /* what happened */
 .event{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px;align-items:start;
@@ -429,7 +440,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, spikeSegment, waterfall, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, keywordsStory, KEYWORDS_EMPTY, nextStory, nextItems,
-  dayHint, ribbonHint, sourceHint, pageHint } from '/story.js';
+  dayHint, ribbonHint, sourceHint, pageHint, dayKey } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
 
@@ -466,12 +477,13 @@ const FILTER_OF={path:'path',entry:'path',exit:'path',referrer:'referrer',channe
 
 /* ---------- goals ---------- */
 // Pages that count as a visitor doing something, saved by the Worker for everyone who opens the dashboard.
-let GOALS=[],goalsReady=Promise.resolve();
-// Runs alongside the stats; whatever needs the goals waits on goalsReady. A reply for a site that is no
+// The same answer carries the owner's notes on days ("Posted on Hacker News").
+let GOALS=[],NOTES=[],goalsReady=Promise.resolve();
+// Runs alongside the stats; whatever needs the goals or notes waits on goalsReady. A reply for a site that is no
 // longer showing is dropped, so one site's goals are never saved over another's.
 function loadGoals(){
   const site=SITE;
-  return goalsReady=api('goals',{},true).then(b=>b.goals,()=>[]).then(list=>{if(site===SITE)GOALS=list});
+  return goalsReady=api('goals',{},true).catch(()=>({})).then(b=>{if(site===SITE){GOALS=b.goals||[];NOTES=b.notes||[]}});
 }
 async function saveGoals(list){
   const before=GOALS;GOALS=list;
@@ -804,17 +816,22 @@ function bindPeriod(el){
     const d=Number(b.dataset.days);if(d===DAYS)return;
     DAYS=d;markPeriods();
     history.replaceState(history.state,'',urlFor(stack[stack.length-1].vw||null));
-    // Sub-pages read what home worked out (its story, its events), so they redraw once home has the new period.
-    const layers=stack.slice(1);
-    layers.forEach(s=>s.el.querySelector('.layer-body').classList.add('busy'));
-    renderHome(stack.length>1?'':`Showing the last ${DAYS} days`).then(current=>{
-      layers.forEach(s=>s.el.querySelector('.layer-body').classList.remove('busy'));
-      if(!current)return;
-      for(const s of stack.slice(1))if(s.render)s.render(s.el.querySelector('.layer-body'));
-      if(stack.length>1)announce(`Showing the last ${DAYS} days`);
-    });
+    redrawAll(`Showing the last ${DAYS} days`);
   });
   markPeriods();
+}
+// Sub-pages read what home worked out (its story, its events), so they redraw once home has.
+// Resolves true when this redraw is still the current one.
+function redrawAll(message){
+  const layers=stack.slice(1);
+  layers.forEach(s=>s.el.querySelector('.layer-body').classList.add('busy'));
+  return renderHome(stack.length>1?'':message).then(async current=>{
+    layers.forEach(s=>s.el.querySelector('.layer-body').classList.remove('busy'));
+    if(!current)return false;
+    await Promise.all(stack.slice(1).map(s=>s.render?.(s.el.querySelector('.layer-body'))));
+    if(stack.length>1&&message)announce(message);
+    return true;
+  });
 }
 const PERIOD='<div class="period" role="group" aria-label="Period"><button type="button" data-days="7">7 days</button><button type="button" data-days="30">30 days</button></div>';
 
@@ -1093,7 +1110,7 @@ async function renderFilter(body,f){
   const say=overview?(HOME?.T.html||''):f.path!=null?pageStory(totals,into,f.path)
     :sourceStory(totals,ser,labelOf('channel',f.channel),DAYS).html+(all?' '+(channelShare(totals,all,labelOf('channel',f.channel))||''):'');
   body.innerHTML=`<p class="say">${say}</p>${heroHTML(c,pr)}
-    <section class="card"><div class="card-title">Visitors per day${pr.visitors?` vs the ${DAYS} days before`:''}</div><div class="chart"></div>${overview&&HOME?'<div class="marks"></div>':own.length?'<div class="marks own"></div>':''}</section>
+    <section class="card"><div class="card-head"><div class="card-title">Visitors per day${pr.visitors?` vs the ${DAYS} days before`:''}</div>${overview&&HOME?'<span class="tile-key">Pick a day to note what you did</span>':''}</div><div class="chart"></div>${overview&&HOME?'<div class="marks"></div>':own.length?'<div class="marks own"></div>':''}</section>
     ${overview&&HOME?`<section class="card"><div class="card-title">What happened</div>${HOME.events.length?'<div class="events-list"></div>':`<p class="muted" style="margin:0">Nothing unusual in the last ${DAYS} days.</p>`}</section>`:''}
     ${overview?'<section class="card"><div class="card-title heat-title">By weekday and hour</div><div class="chart"></div></section>':''}
     ${f.path!=null?'<section class="card"><div class="card-title">Where readers came from, and where they went next</div><p class="cross-say"></p><div class="landed cross"></div><p class="say-sub landed-note"></p></section>':''}
@@ -1105,7 +1122,7 @@ async function renderFilter(body,f){
   const cur=ser.cur.visitors,busiest=cur.indexOf(maxOf(cur));
   // On the overview the markers row carries the dates, as on home.
   const marks=body.querySelector('.marks:not(.own)'),ownMarks=body.querySelector('.marks.own');
-  if(marks)drawDays(body.querySelector('.chart'),HOME.S,HOME.ser,{scale:true});
+  if(marks){drawDays(body.querySelector('.chart'),HOME.S,HOME.ser,{scale:true});noteDays(body.querySelector('.chart'),HOME.ser)}
   else{
     const spike=findSpike(cur,ser.start),usual=median(cur);
     const label=spike>=0?{i:spike,title:`${fmtDate(dayDate(ser.start,spike))} · ${fmtInt(cur[spike])}`,sub:`${Math.round(cur[spike]/(usual||1))}× a usual day`}:null;
@@ -1626,9 +1643,10 @@ function drawPages(el,T,pageRows){
 
 /* ---------- what happened ---------- */
 // One glyph per kind of event, the same in the list and under the daily bars, so shape alone links them.
-const GLYPH={spike:'<path d="M5 .5L9.5 9h-9z"/>',page:'<rect x="1" y="1" width="8" height="8" rx="1"/>',source:'<circle cx="5" cy="5" r="4"/>',
+const GLYPH={note:'<path d="M2 1h6a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5L2.5 9.5V7H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1z"/>',spike:'<path d="M5 .5L9.5 9h-9z"/>',page:'<rect x="1" y="1" width="8" height="8" rx="1"/>',source:'<circle cx="5" cy="5" r="4"/>',
   quiet:'<path d="M5 8.5L1.2 1.5h7.6z" fill="var(--tile)" stroke-width="1.5" stroke-linejoin="round"/>',week:'<path d="M1 5h7M5.5 2L8.5 5l-3 3" fill="none" stroke-width="1.5"/>'};
 // Each glyph takes its subject's colour: days are time, new pages are pages, new sources are sources.
+// The owner's notes, a speech bubble, are in ink: their own words, not something counted.
 const GLYPH_SUBJ={spike:'time',quiet:'time',page:'page',source:'src'};
 const glyph=(kind,told)=>{const c=GLYPH_SUBJ[kind]?`var(--${GLYPH_SUBJ[kind]})`:'var(--ink)';
   return `<svg class="glyph" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" fill="${c}" stroke="${c}">${GLYPH[kind]}</svg>`};
@@ -1661,6 +1679,12 @@ function findEvents(S,T,ser,firsts,pageRows){
     if(f.key&&src&&!src.prev&&f.day>0&&S.p.visitors&&enough(f.visitors))ev.push({day:f.day,kind:'source',key:f.key,told:T.told.has(f.key),name:'New source',title:`New source: ${f.key}`,tag:shorten(f.key,14),
       short:f.key,detail:`${fmtInt(f.visitors)} visitors since`,open:b=>openFilter({referrer:f.key},f.key,b)});
   }
+  // The owner's notes on days of this period. Opening one edits it.
+  cur.forEach((_,i)=>{
+    const note=NOTES.find(x=>x.day===dayKey(dayDate(ser.start,i)));
+    if(note)ev.push({day:i,kind:'note',told:S.note?.note===note,name:'Your note',title:note.text,tag:note.text.length>16?note.text.slice(0,15).trimEnd()+'…':note.text,
+      short:note.text,detail:'your note',open:b=>editNote(i,b)});
+  });
   // The last full week against the one before, unless a spike sits in either (it has its own event).
   if(n>=15){
     const a=sum(cur.slice(n-8,n-1)),b=sum(cur.slice(n-15,n-8)),pct=b?Math.round((a-b)/b*100):0;
@@ -1676,7 +1700,7 @@ function eventButton(e,ser,full){
   const d=dayDate(ser.start,e.day),when=`${fmtWeekday(d)} ${fmtDay(d)}`;
   b.innerHTML=full?`${glyph(e.kind,e.told)}<span><b>${esc(e.title)}</b><span>${fmtDate(d)} · ${esc(e.detail)}</span></span>${CHEV}`
     :`${glyph(e.kind,e.told)}<span><b>${esc(e.name)} · ${when}</b><span>${esc(e.short)}</span></span>`;
-  b.setAttribute('aria-label',`${fmtDate(d)}: ${e.title}. ${e.detail}${/[?.]$/.test(e.detail)?'':'.'} Zoom in.`);
+  b.setAttribute('aria-label',e.kind==='note'?`${fmtDate(d)}, your note: ${e.title}. Edit it.`:`${fmtDate(d)}: ${e.title}. ${e.detail}${/[?.]$/.test(e.detail)?'':'.'} Zoom in.`);
   b.onclick=ev=>{ev.stopPropagation();e.open(b)};
   return b;
 }
@@ -1690,15 +1714,17 @@ function drawMarks(el,events,ser,pick=null){
   el.innerHTML=n<=7?Array.from({length:n},(_,i)=>`<span class="m-day" style="left:${((i+.5)/n*100).toFixed(2)}%">${fmtWeekday(dayDate(ser.start,i))}</span>`).join('')
     :`<span class="m-date">${day(0)}</span><span class="m-date end">${day(n-1)}</span>`;
   [...byDay].sort((a,b)=>a[0]-b[0]).forEach(([d,list])=>{
-    const b=document.createElement('button');b.type='button';b.className='mark';
+    const b=document.createElement('button');b.type='button';b.className='mark';b.dataset.day=d;
     b.style.left=((d+.5)/n*100).toFixed(2)+'%';
-    const tag=list.some(e=>e.kind==='spike')?'big day':list.find(e=>e.tag)?.tag;
+    // The owner's own words name the day best; then a big day, then whatever else has a name.
+    const note=list.find(e=>e.kind==='note'),only=list.every(e=>e.kind==='note');
+    const tag=note?.tag||(list.some(e=>e.kind==='spike')?'big day':list.find(e=>e.tag)?.tag);
     b.innerHTML=`<span class="g">${list.map(e=>glyph(e.kind,e.told)).join('')}</span>${tag?`<span class="tag">${esc(tag)}</span>`:''}`;
     const when=fmtDate(dayDate(ser.start,d));
     b.title=`${when}: ${list.map(e=>e.title).join('; ')}`;
-    b.setAttribute('aria-label',`${when}: ${list.map(e=>e.title).join('; ')}. Show what happened`);
-    // Any marker opens the list of what happened; each item there opens the view that explains it.
-    b.onclick=ev=>{ev.stopPropagation();openView({v:'events',pick},b)};
+    b.setAttribute('aria-label',`${when}: ${list.map(e=>e.title).join('; ')}. ${only?'Edit your note':'Show what happened'}`);
+    // A day with only a note opens the note; any other marker opens the list of what happened, where each item opens what explains it.
+    b.onclick=ev=>{ev.stopPropagation();only?editNote(d,b):openView({v:'events',pick},b)};
     el.appendChild(b);
   });
   // Names that would run into each other or into the dates at either end are left to the tooltip.
@@ -1716,8 +1742,80 @@ function drawMarks(el,events,ser,pick=null){
   });
 }
 
+/* ---------- the owner's notes ---------- */
+// The overview's daily chart takes notes: click a day, or focus the chart, pick a day with the arrow keys and press Enter.
+// The ring around the picked day is drawn by CSS from --i and --n, so it survives the chart redrawing itself.
+function noteDays(el,ser){
+  const n=ser.cur.visitors.length;
+  let at=n-1;
+  el.classList.add('notable');el.tabIndex=0;el.setAttribute('role','group');
+  el.setAttribute('aria-label','Visitors per day. Pick a day with the arrow keys, then press Enter to write a note on it.');
+  el.style.setProperty('--n',n);
+  const pick=i=>{at=Math.max(0,Math.min(n-1,i));el.style.setProperty('--i',at)};
+  el._pick=pick;pick(at);
+  el.onclick=e=>{
+    const r=el.getBoundingClientRect(),i=Math.floor((e.clientX-r.left)/(r.width-40)*n);
+    if(i>=0&&i<n){pick(i);editNote(i,el,e)}
+  };
+  el.onkeydown=e=>{
+    const step={ArrowLeft:-1,ArrowRight:1,Home:-n,End:n}[e.key];
+    if(step){
+      e.preventDefault();pick(at+step);
+      const note=NOTES.find(x=>x.day===dayKey(dayDate(ser.start,at)));
+      announce(`${fmtDate(dayDate(ser.start,at),'long')}: ${fmtInt(ser.cur.visitors[at])} visitors${note?`. Your note: ${note.text}`:''}`);
+    }else if(e.key==='Enter'||e.key===' '){e.preventDefault();editNote(at,el)}
+  };
+}
+
+// A small form over day i: a few words on what the owner did, saved for everyone who opens the dashboard.
+// Saving nothing removes the note. Esc or a click elsewhere closes it unsaved.
+let closeNote=()=>{};
+function editNote(i,anchor,at){
+  closeNote();
+  const d=dayDate(HOME.ser.start,i),day=dayKey(d),note=NOTES.find(x=>x.day===day),when=fmtDate(d,'long');
+  const f=document.createElement('form');f.className='note-edit';f.noValidate=true;
+  f.setAttribute('role','dialog');f.setAttribute('aria-label',`Note for ${when}`);
+  f.innerHTML=`<b>${esc(when)}</b><div class="add"><input name="text" maxlength="80" autocomplete="off" placeholder="What did you do that day?" aria-label="What you did on ${esc(when)}"><button class="retry">Save</button></div>
+    <span class="err" role="alert"></span>${note?'<button type="button" class="del">Remove note</button>':''}`;
+  const input=f.querySelector('input');input.value=note?.text||'';
+  document.body.append(f);
+  // Above the day when there is room, else below; always inside the window.
+  const r=at?{left:at.clientX,width:0,top:at.clientY,bottom:at.clientY}:anchor.getBoundingClientRect(),w=f.offsetWidth,h=f.offsetHeight;
+  f.style.left=Math.min(innerWidth-16-w,Math.max(16,r.left+r.width/2-w/2))+'px';
+  f.style.top=(r.top-h-8>=16?r.top-h-8:Math.min(innerHeight-16-h,r.bottom+8))+'px';
+  const outside=e=>{if(!f.contains(e.target))closeNote(false)};
+  closeNote=(back=true)=>{f.remove();document.removeEventListener('pointerdown',outside,true);closeNote=()=>{};if(back&&anchor.isConnected)anchor.focus()};
+  document.addEventListener('pointerdown',outside,true);
+  // Esc closes the form, not the view under it.
+  f.onkeydown=e=>{if(e.key==='Escape'){e.stopPropagation();closeNote()}};
+  // inert while saving, so a second press can't send it twice.
+  const save=async text=>{
+    if(f.inert)return;
+    if(text===(note?.text||'')){closeNote();return}
+    f.inert=true;
+    const url=`/api/notes?site=${encodeURIComponent(SITE)}`;
+    try{
+      const r=await fetch(text?url:`${url}&day=${day}`,text?{method:'PUT',body:JSON.stringify({day,text})}:{method:'DELETE'});
+      const b=await r.json().catch(()=>({}));
+      if(!r.ok)throw new Error(b.error);
+      NOTES=b.notes;
+    }catch(e){f.inert=false;f.querySelector('.err').textContent=e.message||"Couldn't save the note. Try again.";input.focus();return}
+    closeNote(false);
+    // The sentence and the markers may change with the note, so everything open redraws.
+    if(await redrawAll(text?(note?'Note changed':'Note saved'):'Note removed')){
+      const top=stack[stack.length-1].el,chart=top.querySelector('.chart.notable');
+      if(chart){chart._pick(i);chart.focus({preventScroll:true})}
+      else(top.querySelector(`.mark[data-day="${i}"]`)||top.querySelector('.t-days .tile-title'))?.focus({preventScroll:true});
+    }
+  };
+  f.onsubmit=e=>{e.preventDefault();save(input.value.trim())};
+  f.querySelector('.del')?.addEventListener('click',()=>save(''));
+  input.focus();
+}
+
 function renderEvents(body,events,ser){
-  body.innerHTML=`<p class="say">${eventsSentence(events,DAYS)}</p>${events.length?'<section class="card"><div class="events-list"></div></section>':''}`;
+  // The owner's notes are listed with the rest, but they aren't something that stood out.
+  body.innerHTML=`<p class="say">${eventsSentence(events.filter(e=>e.kind!=='note'),DAYS)}</p>${events.length?'<section class="card"><div class="events-list"></div></section>':''}`;
   if(events.length)body.querySelector('.events-list').replaceChildren(...events.map(e=>eventButton(e,ser,true)));
 }
 
@@ -1843,12 +1941,14 @@ async function renderHome(message){
     [sumR,ser,pages,refs,flows,firsts,live,hourly]=await Promise.all([api('summary'),api('series'),api('breakdown',{dim:'path'}),
       api('breakdown',{dim:'referrer'}),api('flows'),api('firsts'),api('live',{},true).catch(()=>null),api('hourly').catch(()=>null)]);
   }catch(e){if(gen===homeRender){done();release(grid);$('#story').innerHTML='';HOME=null;showError(grid,e,()=>renderHome(message));announce("Couldn't load the stats")}return false}
+  // The sentence ties a change to the owner's notes; they come with the goals, which load alongside.
+  await goalsReady;
   // A newer render (another period or site) started while this one was loading.
   if(gen!==homeRender)return false;
   done();release(grid);
   if(sumR.cur.views===0&&sumR.prev.views===0){HOME={empty:true};showOnboarding();return true}
   $('#period').hidden=false;
-  const S=readStory({totals:sumR,ser,pages,refs,flows}),T=tellStory(S,ser,DAYS);
+  const S=readStory({totals:sumR,ser,pages,refs,flows,notes:NOTES}),T=tellStory(S,ser,DAYS);
   HOME={S,T,ser,pace:todayPace(hourly,Date.now()/1000)};
   renderStory(S,T,live);
   // At very high volume Analytics Engine keeps only some of the views; views are scaled back up, visitors aren't.

@@ -5,6 +5,7 @@
 //   goals:<site>   JSON list of goal paths
 //   origin         the dashboard's address, for the links in alerts; saved when the dashboard opens
 //   spike:<site>   the day's spike alerts sent so far; deletes itself after two days
+//   notes:<site>   JSON list of the owner's notes on days, {day: YYYY-MM-DD, text}, read and written in api.js
 import { HttpError } from './errors.js';
 
 // Every event reads the sites and the salt, so each isolate keeps them for a minute

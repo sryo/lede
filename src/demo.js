@@ -240,6 +240,14 @@ function demoFlows(f, [d0, d1]) {
   return toFlows(rows.filter(r => r.visitors > 0).sort((a, b) => b.visitors - a.visitors));
 }
 
+// The note the owner left on the busy day, dated in the viewer's time zone: noon of that day, N-1-BUSY
+// days before today's midnight there.
+export function demoNotes(q) {
+  const noon = q.bounds[2 * q.days - 1] - (N - 1 - BUSY) * 86400 + 43200;
+  const day = new Date((noon - q.tz * 60) * 1000).toISOString().slice(0, 10);
+  return [{ day, text: 'Shared /owls in a Facebook birding group' }];
+}
+
 export const demoStore = {
   async summary(q) {
     const w = windows(q);

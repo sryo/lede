@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readStory, tellStory, bounceSplit, bounceCaption, waterfall, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
-  audienceStory, audienceNote, labelOf } from '../public/story.js';
+  audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
-import { demoStore } from '../src/demo.js';
+import { demoStore, demoNotes } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
 import { channelFor } from '../src/channels.js';
 
@@ -40,9 +40,9 @@ const series = (base, days = {}, top = {}) => {
     topVisitors: visitors.map((v, i) => top[i]?.[1] ?? Math.round(v / 3)),
   };
 };
-const story = ({ rows, ser, pages = [], flows = [], prevFlows = [] }) => {
+const story = ({ rows, ser, pages = [], flows = [], prevFlows = [], notes }) => {
   const totals = totalsOf(rows);
-  const S = readStory({ totals, ser, pages: { rows: pages }, refs: { rows }, flows: { flows, prev: prevFlows } });
+  const S = readStory({ totals, ser, pages: { rows: pages }, refs: { rows }, flows: { flows, prev: prevFlows }, notes });
   return { S, T: tellStory(S, ser, 28) };
 };
 
@@ -595,4 +595,81 @@ test('demo: the countries, devices and browsers card leads with a finding', asyn
   const s = audienceStory(A, 30);
   assert.ok(s.key && !/^Nothing/.test(s.html), s.html);
   assert.equal(audienceNote(A, 30), '');
+});
+
+/* ---------- the owner's notes ---------- */
+
+// The owner's note on day i of the test series.
+const note = (i, text) => ({ day: dayKey(dayDate(START, i)), text });
+// Flat at 300, then `to` a day from day 10 (Thu, Oct 8) on: a change that lasts.
+const stepped = to => series(300, Object.fromEntries(Array.from({ length: 18 }, (_, k) => [10 + k, to])));
+const rose = [ref('news.ycombinator.com', 2260, 100), ref('google.com', 8300, 8300)];
+
+test('a note says what the owner did, as something they did', () => {
+  assert.equal(didWhat('Posted on Hacker News'), 'you posted on Hacker News');
+  assert.equal(didWhat('I rewrote the home page.'), 'you rewrote the home page');
+  assert.equal(didWhat('Sent the newsletter'), 'you sent the newsletter');
+  assert.equal(didWhat('New homepage'), null);
+  assert.equal(didWhat('Speed test'), null);
+});
+
+test('a rise that starts the day after a note is told as coming after it, and nothing more', () => {
+  const { S, T } = story({ rows: rose, ser: stepped(420), notes: [note(9, 'Posted on Hacker News')] });
+  assert.equal(S.note.kind, 'shift');
+  assert.equal(strip(T.html), 'Hacker News brought all of the 2,160 extra visitors. Visitors rose 40% after you posted on Hacker News (Wed, Oct 7).');
+});
+
+test('a rise that starts on the noted day is cited too', () => {
+  const { T } = story({ rows: rose, ser: stepped(420), notes: [note(10, 'New homepage')] });
+  assert.match(strip(T.html), /Visitors rose 40% after “New homepage” \(Thu, Oct 8\)\.$/);
+});
+
+test('a note is not cited when the change started at another time', () => {
+  for (const day of [3, 8, 11, 20]) {
+    const { S, T } = story({ rows: rose, ser: stepped(420), notes: [note(day, 'Posted on Hacker News')] });
+    assert.equal(S.note, null, `note on day ${day}`);
+    assert.doesNotMatch(T.html, /after you/);
+  }
+});
+
+test('a fall that starts after a note is told the same way', () => {
+  const { T } = story({ rows: [ref('google.com', 6780, 8400)], ser: stepped(210), notes: [note(10, 'Moved to a new host')] });
+  assert.match(strip(T.html), /Visitors fell 30% after you moved to a new host \(Thu, Oct 8\)\.$/);
+});
+
+test('a flat period cites no note', () => {
+  const { S } = story({ rows: [ref('google.com', 8400, 8400)], ser: series(300), notes: [note(10, 'Posted on Hacker News')] });
+  assert.equal(S.note, null);
+});
+
+test('a busy day on a noted day, or the day after, is told as that day', () => {
+  const rows = [ref('facebook.com', 1400, 1000), ref('google.com', 7400, 7400)];
+  const ser = series(300, { 18: 700 }, { 18: ['facebook.com', 450] });
+  const said = day => strip(story({ rows, ser, notes: [note(day, 'Shared /owls in a Facebook group')] }).T.html);
+  assert.match(said(18), /Fri, Oct 16 had twice the visitors of a usual Friday, the day you shared \/owls in a Facebook group\.$/);
+  assert.match(said(17), /, the day after you shared \/owls in a Facebook group\.$/);
+  assert.doesNotMatch(said(19), /Facebook group/);
+  assert.doesNotMatch(said(16), /Facebook group/);
+});
+
+test('today is not over, so it is never the busy day a note is cited for', () => {
+  const { S } = story({ rows: [ref('google.com', 9000, 8400)], ser: series(300, { 27: 900 }), notes: [note(27, 'Posted on Hacker News')] });
+  assert.equal(S.note, null);
+});
+
+test('a note is the owner\'s own text, so the sentence escapes it', () => {
+  const { T } = story({ rows: rose, ser: stepped(420), notes: [note(10, '<i>Launch</i> day')] });
+  assert.ok(T.html.includes('“&lt;i&gt;Launch&lt;/i&gt; day”'));
+});
+
+test('the demo has a note on its busy day, and home cites it', async () => {
+  const q = parseQuery(new URL(`https://w.test/api/x?days=30&tz=${new Date().getTimezoneOffset()}`), ['example.com']);
+  const [totals, ser, pages, refs, flows] = await Promise.all([demoStore.summary(q), demoStore.series(q),
+    demoStore.breakdown(q, 'path'), demoStore.breakdown(q, 'referrer'), demoStore.flows(q)]);
+  const notes = demoNotes(q);
+  assert.equal(notes.length, 1);
+  const S = readStory({ totals, ser, pages, refs, flows, notes });
+  assert.equal(S.note?.kind, 'day');
+  assert.equal(ser.top[S.note.day], 'facebook.com');
+  assert.match(strip(tellStory(S, ser, 30).html), /the day you shared \/owls in a Facebook birding group\.$/);
 });

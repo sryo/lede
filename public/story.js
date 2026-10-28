@@ -57,7 +57,7 @@ export function findSpike(vals, start) {
 // Works out the facts behind the summary sentence: which sources moved the total, whether a spike
 // or a landing page explains it, and who is growing fastest. Only what the sentence ends up naming
 // gets the story colour.
-export function readStory({ totals, ser, pages, refs, flows }) {
+export function readStory({ totals, ser, pages, refs, flows, notes }) {
   const c = totals.cur, p = totals.prev, diff = c.visitors - p.visitors;
   const sources = refs.rows.map(r => ({ key: r.key, label: labelOf('referrer', r.key), channel: r.channel, value: r.visitors, prev: r.prev?.visitors || 0,
     change: r.visitors - (r.prev?.visitors || 0), bounce: r.bounce, prevBounce: r.prev?.bounce, visits: r.visits, prevVisits: r.prev?.visits || 0 }));
@@ -95,6 +95,7 @@ export function readStory({ totals, ser, pages, refs, flows }) {
   S.fast = sources.filter(s => !named.has(s) && share(s) && s.prev >= 20 && s.change >= Math.max(10, 2 * Math.sqrt(s.prev)) && s.value >= s.prev * 1.05)
     .sort((a, b) => b.value / b.prev - a.value / a.prev)[0] || null;
   if (!S.fast) S.fresh = sources.filter(s => !named.has(s) && !s.prev && s.value >= 20 && share(s)).sort((a, b) => b.value - a.value)[0] || null;
+  S.note = noteChange(S, ser, notes);
   return S;
 }
 
@@ -126,10 +127,99 @@ export function tellStory(S, ser, days) {
     else parts.push(`The drop was spread across sources; ${src(lead)} fell most, by ${n(lead.change)}.`);
     if (S.prevSpike >= 0) parts.push(`The ${days} days before included a spike on ${fmtDate(dayDate(ser.start - ser.days * 86400, S.prevSpike), 'long')}.`);
   }
-  // The second claim is whichever finding moved the most visitors among those not named yet.
-  const f = findings(S, told)[0];
-  if (f) { parts.push(f.html); told.add(f.kind === 'channel' ? `ch:${f.key}` : f.key); }
+  // The second claim is what the owner did, when the change came right after it; otherwise whichever
+  // finding moved the most visitors among those not named yet.
+  const f = S.note ? null : findings(S, told)[0];
+  if (S.note) parts.push(noteSentence(S.note, ser));
+  else if (f) { parts.push(f.html); told.add(f.kind === 'channel' ? `ch:${f.key}` : f.key); }
   return { html: parts.join(' '), told, page: S.page?.key ?? null };
+}
+
+/* ---------- the owner's notes ---------- */
+
+// A day as notes name it, YYYY-MM-DD, in the viewer's time zone.
+export const dayKey = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const mean = a => sum(a) / (a.length || 1);
+const DONE = new Set(['sent', 'wrote', 'rewrote', 'made', 'built', 'rebuilt', 'ran', 'gave', 'began', 'put', 'got', 'took', 'sold', 'told', 'spoke',
+  'set', 'cut', 'won', 'held', 'led', 'met', 'did', 'redid', 'went', 'left', 'lost', 'found', 'brought', 'taught', 'shut', 'hit', 'let', 'read', 'spent']);
+
+// "Posted on Hacker News" → "you posted on Hacker News". A note that doesn't start with something done
+// ("New homepage") gives null and is quoted instead.
+export function didWhat(text) {
+  const t = String(text).trim().replace(/[.!]+$/, '').replace(/^(I|we)\s+/i, ''), w = t.split(/\s/)[0].toLowerCase();
+  return (/^[a-z]{2,}ed$/.test(w) && !/eed$/.test(w)) || DONE.has(w) ? `you ${t[0].toLowerCase()}${t.slice(1)}` : null;
+}
+
+// Where a lasting change began, over both periods with the unfinished last day of each left out:
+// the split where the running total of (day − average) bottoms out (for a rise) or peaks (for a fall),
+// after each weekday is evened out against its own average, so weekends don't pull the split.
+function levelShift(ser, sign) {
+  const n = ser.cur.visitors.length, pts = [];
+  const add = (vals, start, off) => vals.forEach((v, i) => { if (i < n - 1) pts.push({ i: i + off, v, wd: dayDate(start, i).getDay() }); });
+  add(ser.prev.visitors, ser.start - n * 86400, -n);
+  add(ser.cur.visitors, ser.start, 0);
+  const all = mean(pts.map(p => p.v));
+  if (!all) return null;
+  const w = pts.length >= 28 ? [0, 1, 2, 3, 4, 5, 6].map(d => mean(pts.filter(p => p.wd === d).map(p => p.v)) / all || 1) : Array(7).fill(1);
+  const x = pts.map(p => p.v / w[p.wd]), m = mean(x);
+  let acc = 0, low = 0, k = -1;
+  x.forEach((v, j) => {
+    if (j >= 7 && x.length - j >= 3 && sign * acc < low) { low = sign * acc; k = j; }
+    acc += v - m;
+  });
+  if (k < 0) return null;
+  const before = mean(pts.slice(0, k).map(p => p.v)), after = pts.slice(k).map(p => p.v);
+  return { i: pts[k].i, before, after: mean(after), usual: median(after), cur: after.filter((_, j) => pts[k + j].i >= 0).length };
+}
+
+// The owner's note that the change (or a busy day) came on or right after, or null. Only the timing is
+// claimed: a note is something that happened before, never the cause.
+//   shift: visitors moved to a new level that lasted, from the noted day or the next one, in the direction
+//          the period moved and making at least half of that move;
+//   day:   the noted day or the next one had at least 1.5 times the visitors of a usual day like it.
+export function noteChange(S, ser, notes) {
+  if (!notes?.length || !S.p.visitors) return null;
+  const cur = ser.cur.visitors, n = cur.length, byDay = new Map(notes.map(x => [x.day, x]));
+  const noteOn = i => i >= 0 && i < n ? byDay.get(dayKey(dayDate(ser.start, i))) : undefined;
+  const sign = Math.sign(S.diff);
+  if (!S.flat) {
+    const L = levelShift(ser, sign);
+    const rise = L && L.after - L.before;
+    if (L && L.before && Math.sign(rise) === sign && Math.abs(rise) >= L.before * .1 && sign * (L.usual - L.before) >= Math.abs(rise) * .5
+      && Math.abs(rise) * L.cur >= Math.abs(S.diff) * .5) {
+      for (const lag of [0, 1]) {
+        const note = noteOn(L.i - lag);
+        if (note) return { kind: 'shift', day: L.i - lag, lag, pct: Math.round(rise / L.before * 100), note };
+      }
+    }
+  }
+  // A usual day: the same weekday in both periods (unfinished days left out), or any day when there are too few.
+  const days = [...ser.prev.visitors.slice(0, n - 1).map((v, i) => ({ v, d: dayDate(ser.start - n * 86400, i) })),
+    ...cur.slice(0, n - 1).map((v, i) => ({ v, d: dayDate(ser.start, i), i }))];
+  for (let i = 0; i < n - 1; i++) {
+    for (const lag of [0, 1]) {
+      const note = noteOn(i - lag);
+      if (!note) continue;
+      const wd = dayDate(ser.start, i).getDay(), others = days.filter(x => x.i !== i), same = others.filter(x => x.d.getDay() === wd);
+      const like = same.length >= 2, usual = median((like ? same : others).map(x => x.v));
+      if (usual > 0 && cur[i] >= usual * 1.5 && cur[i] - usual >= 30) return { kind: 'day', day: i, lag, ratio: cur[i] / usual, weekday: like ? fmtWeekday(dayDate(ser.start, i), 'long') : null, note };
+    }
+  }
+  return null;
+}
+
+// "Visitors rose 40% after you posted on Hacker News (Wed, Oct 7)." or
+// "Fri, Oct 16 had twice the visitors of a usual Friday, the day you shared /owls in a Facebook group."
+export function noteSentence(N, ser) {
+  const did = didWhat(N.note.text), quoted = `“${esc(N.note.text.trim())}”`;
+  if (N.kind === 'shift') {
+    const noted = fmtDate(dayDate(ser.start, N.day));
+    return `Visitors ${N.pct > 0 ? 'rose' : 'fell'} ${Math.abs(N.pct)}% after ${did ? esc(did) : quoted} (${noted}).`;
+  }
+  const x = Math.round(N.ratio), like = N.weekday ? `a usual ${N.weekday}` : 'a usual day';
+  const how = N.ratio >= 1.95 ? `${x === 2 ? 'twice' : `${x} times`} the visitors of ${like}` : `${Math.round((N.ratio - 1) * 100)}% more visitors than ${like}`;
+  const when = did ? `the day ${N.lag ? 'after ' : ''}${esc(did)}` : `the day ${N.lag ? 'after' : 'of'} ${quoted}`;
+  return `${fmtDate(dayDate(ser.start, N.day))} had ${how}, ${when}.`;
 }
 
 /* ---------- findings ---------- */

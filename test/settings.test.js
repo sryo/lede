@@ -129,12 +129,66 @@ test('a failed account lookup is tried again on the next query', async () => {
 
 test('goals are saved for everyone who opens the dashboard', async () => {
   const env = { STORE: memoryKV({ sites: '["example.com"]' }), DEMO: 'true' };
-  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: [] });
+  assert.deepEqual((await (await call('goals?site=example.com', env)).json()).goals, []);
   const saved = await call('goals?site=example.com', env, { method: 'PUT', body: JSON.stringify({ goals: ['/signup', '/signup', '/thanks'] }) });
   assert.deepEqual(await saved.json(), { goals: ['/signup', '/thanks'] });
-  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/signup', '/thanks'] });
+  assert.deepEqual((await (await call('goals?site=example.com', env)).json()).goals, ['/signup', '/thanks']);
   const bad = await call('goals?site=example.com', env, { method: 'PUT', body: JSON.stringify({ goals: ['signup'] }) });
   assert.equal(bad.status, 400);
+});
+
+test('notes on days are saved for everyone, one per day, and each change is one write', async () => {
+  const env = { STORE: memoryKV({ sites: '["example.com"]' }) };
+  let writes = 0;
+  const put = env.STORE.put;
+  env.STORE.put = (...a) => { writes++; return put(...a); };
+  const notes = async (q = '', init) => (await call(`notes?site=example.com${q}`, env, init)).json();
+  const save = body => notes('', { method: 'PUT', body: JSON.stringify(body) });
+  assert.deepEqual(await notes(), { notes: [] });
+  assert.deepEqual(await save({ day: '2026-10-16', text: '  Posted on Hacker News ' }), { notes: [{ day: '2026-10-16', text: 'Posted on Hacker News' }] });
+  await save({ day: '2026-10-02', text: 'New homepage' });
+  assert.deepEqual(await save({ day: '2026-10-16', text: 'Posted on Hacker News again' }), { notes: [
+    { day: '2026-10-02', text: 'New homepage' }, { day: '2026-10-16', text: 'Posted on Hacker News again' }] });
+  assert.equal(writes, 3);
+  await save({ day: '2026-10-16', text: 'Posted on Hacker News again' });
+  assert.equal(writes, 3, 'saving the same note again writes nothing');
+  assert.deepEqual(await notes('&day=2026-10-02', { method: 'DELETE' }), { notes: [{ day: '2026-10-16', text: 'Posted on Hacker News again' }] });
+  await notes('&day=2026-10-03', { method: 'DELETE' });
+  assert.equal(writes, 4, 'removing a note that is not there writes nothing');
+  assert.deepEqual(await notes(), { notes: [{ day: '2026-10-16', text: 'Posted on Hacker News again' }] });
+  // The dashboard reads goals and notes with one request.
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: [], notes: [{ day: '2026-10-16', text: 'Posted on Hacker News again' }] });
+});
+
+test('a note is a real day and a few words, at most 80 characters', async () => {
+  const env = { STORE: memoryKV({ sites: '["example.com"]' }) };
+  const save = async body => call('notes?site=example.com', env, { method: 'PUT', body: JSON.stringify(body) });
+  for (const bad of [{ day: '2026-13-01', text: 'x' }, { day: '16/10/2026', text: 'x' }, { day: '2026-10-16', text: '   ' },
+    { day: '2026-10-16', text: 'x'.repeat(81) }, { day: '2026-10-16', text: 42 }, {}]) {
+    const res = await save(bad);
+    assert.equal(res.status, 400, JSON.stringify(bad));
+    assert.match((await res.json()).error, /note/i);
+  }
+  assert.equal((await save({ day: '2026-10-16', text: 'é'.repeat(80) })).status, 200);
+  assert.equal((await call('notes?site=example.com', env, { method: 'DELETE' })).status, 400);
+});
+
+test('only the newest 100 notes are kept, since stats only go back three months', async () => {
+  const days = Array.from({ length: 101 }, (_, i) => new Date(Date.UTC(2026, 0, 1) + i * 864e5).toISOString().slice(0, 10));
+  const env = { STORE: memoryKV({ sites: '["example.com"]', 'notes:example.com': JSON.stringify(days.slice(1).map(day => ({ day, text: 'x' }))) }) };
+  const res = await call('notes?site=example.com', env, { method: 'PUT', body: JSON.stringify({ day: days[0], text: 'oldest' }) });
+  const { notes } = await res.json();
+  assert.equal(notes.length, 100);
+  assert.ok(!notes.some(n => n.text === 'oldest'));
+});
+
+test('the demo starts with a note on its busy day, until the owner changes the notes', async () => {
+  const env = { STORE: memoryKV({ sites: '["example.com"]' }), DEMO: 'true' };
+  const { notes } = await (await call('notes?site=example.com&days=30', env)).json();
+  assert.equal(notes.length, 1);
+  assert.match(notes[0].text, /Facebook/);
+  const after = await (await call('notes?site=example.com', env, { method: 'PUT', body: JSON.stringify({ day: '2026-10-02', text: 'New homepage' }) })).json();
+  assert.equal(after.notes.length, 2);
 });
 
 test('stats explain a missing token instead of failing silently', async () => {
