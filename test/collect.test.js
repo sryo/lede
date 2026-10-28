@@ -1,8 +1,8 @@
-import { test } from 'node:test';
+import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEvent, identify, visitHour, collect, senderCap, SENDER_LIMIT, SENDER_WINDOW } from '../src/collect.js';
+import { parseEvent, identify, visitHour, visitSalt, collect, scrubPath, senderCap, SENDER_LIMIT, ADDRESS_LIMIT, SENDER_WINDOW } from '../src/collect.js';
 import { channelFor } from '../src/channels.js';
-import { FIELDS } from '../src/schema.js';
+import { FIELDS, NUMBERS } from '../src/schema.js';
 
 const SITES = ['example.com'];
 const SAFARI = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Safari/605.1.15';
@@ -19,7 +19,16 @@ test('normalizes host, path and query', () => {
   const ev = parseEvent({ u: 'https://www.example.com/pricing/?plan=pro&utm_source=x&gclid=1', r: '', l: '' }, SITES);
   assert.equal(ev.site, 'example.com');
   assert.equal(ev.path, '/pricing');
-  assert.equal(ev.url, '/pricing?plan=pro');
+  assert.equal(ev.url, '/pricing');
+});
+
+test('a page address keeps only the word searched for, cleaned as search words are', () => {
+  const url = u => parseEvent({ u: 'https://example.com' + u }, SITES).url;
+  assert.equal(url('/search?q=Owl++Calls&page=2&session=abc123'), '/search?q=owl+calls');
+  assert.equal(url('/find?query=robin&email=a%40b.co#top'), '/find?q=robin');
+  assert.equal(url('/reset?token=9f8e7d6c5b4a&email=a%40b.co'), '/reset', 'a reset link keeps nothing of its query');
+  assert.equal(url('/search?q=call+me+on+0612345678'), '/search', 'a word that could name someone is dropped');
+  assert.equal(url('/search?q=a@b.co'), '/search');
 });
 
 test('ignores self-referrals and strips www from referrers', () => {
@@ -32,6 +41,39 @@ test('keeps the landing page UTM tags on every page of the visit', () => {
   assert.equal(ev.utmSource, 'hn');
   assert.equal(ev.utmCampaign, 'launch');
   assert.equal(ev.channel, 'social');
+});
+
+test('without a referrer, the landing page\'s source tag says where the visit came from', () => {
+  const ev = (l, r = '') => parseEvent({ u: 'https://example.com/', r, l }, SITES);
+  assert.deepEqual([ev('?utm_source=fb').referrer, ev('?utm_source=fb').channel], ['facebook.com', 'social']);
+  assert.deepEqual([ev('?source=Newsletter').referrer, ev('?source=Newsletter').channel, ev('?source=Newsletter').utmSource], ['newsletter', 'referral', 'newsletter']);
+  assert.deepEqual([ev('?ref=hn').referrer, ev('?ref=hn').channel], ['news.ycombinator.com', 'social']);
+  assert.equal(ev('?utm_source=www.Google.co.uk').referrer, 'google.com');
+  assert.equal(ev('?utm_source=chatgpt.com').channel, 'ai');
+  assert.equal(ev('?utm_source=fb', 'https://news.ycombinator.com').referrer, 'news.ycombinator.com', 'a referrer wins over the tag');
+  assert.equal(ev('?utm_source=example.com').referrer, '', 'the site itself is not a source');
+  assert.equal(ev('?utm_source=' + encodeURIComponent('me@mail.com hi')).referrer, '', 'only a plain word or host');
+  assert.equal(ev('?utm_source=' + 'a'.repeat(80)).referrer, '');
+  assert.deepEqual([ev('').referrer, ev('').channel], ['', 'direct']);
+});
+
+test('one search engine, app or mail service is one source, wherever it sends from', () => {
+  const ev = r => parseEvent({ u: 'https://example.com/', r }, SITES);
+  const ref = r => ev(r).referrer;
+  assert.deepEqual(['https://www.google.co.uk/', 'https://google.de', 'https://www.google.com.br/'].map(ref), ['google.com', 'google.com', 'google.com']);
+  assert.deepEqual(['https://yandex.com.tr/', 'https://yandex.kz/', 'https://ya.ru/'].map(ref), ['yandex.ru', 'yandex.ru', 'yandex.ru']);
+  assert.equal(ev('https://ya.ru/').channel, 'search');
+  assert.equal(ref('https://t.me/'), 'telegram.org');
+  assert.equal(ref('https://l.threads.com/'), 'threads.com');
+  assert.equal(ref('https://go.bsky.app/'), 'bsky.app');
+  assert.deepEqual([ref('https://pplx.ai/'), ev('https://pplx.ai/').channel], ['perplexity.ai', 'ai']);
+  assert.deepEqual([ref('https://nam12.safelinks.protection.outlook.com/'), ev('https://nam12.safelinks.protection.outlook.com/').channel], ['outlook.office.com', 'email']);
+  assert.equal(ev('https://teams.microsoft.com/').channel, 'email');
+  assert.equal(ref('https://sites.google.com/'), 'sites.google.com', 'a site on Google Sites is its own source');
+  assert.equal(ev('https://sites.google.com/').channel, 'referral');
+  assert.equal(ev('https://news.yahoo.com/').channel, 'referral');
+  assert.equal(ev('https://search.yahoo.com/').channel, 'search');
+  assert.equal(ref('https://google.example.org/'), 'google.example.org', 'only Google\'s own domains');
 });
 
 test('classifies channels', () => {
@@ -47,6 +89,12 @@ test('classifies channels', () => {
   assert.equal(channelFor('youtube.com', q('')), 'video');
   assert.equal(channelFor('someblog.dev', q('')), 'referral');
   assert.equal(channelFor('notgoogle.com', q('')), 'referral');
+  assert.equal(channelFor('', q('utm_source=youtube')), 'video', 'the source tag counts for every channel');
+  assert.equal(channelFor('', q('utm_source=gmail')), 'email');
+  assert.equal(channelFor('', q('utm_source=bing')), 'search');
+  assert.equal(channelFor('', q('li_fat_id=1')), 'paid');
+  assert.equal(channelFor('', q('twclid=1')), 'paid');
+  assert.equal(channelFor('', q('dclid=1')), 'paid');
 });
 
 test('visitor IDs follow the salt, and visits are scoped to the hour they started', async () => {
@@ -63,14 +111,58 @@ test('visitor IDs follow the salt, and visits are scoped to the hour they starte
   assert.equal(d.visit, a.visit);
 });
 
-test('the visit hour from the tracker is only trusted when it makes sense', () => {
-  const now = new Date('2026-10-05T11:05:00Z'), hour = Date.parse('2026-10-05T10:00:00Z');
+test('the visit start from the tracker is only trusted when it makes sense', () => {
+  const now = new Date('2026-10-05T11:05:00Z'), hour = Date.parse('2026-10-05T10:00:00Z'), thisHour = Date.parse('2026-10-05T11:00:00Z');
   assert.equal(visitHour(hour, now).getTime(), hour);
-  assert.equal(visitHour(hour + 1, now), now, 'not on the hour');
-  assert.equal(visitHour(hour + 2 * 3600e3, now), now, 'in the future');
-  assert.equal(visitHour(hour - 2 * 86400e3, now), now, 'too long ago');
-  assert.equal(visitHour('10', now), now);
-  assert.equal(visitHour(undefined, now), now);
+  assert.equal(visitHour(hour + 17 * 60e3, now).getTime(), hour + 17 * 60e3, 'a minute');
+  assert.equal(visitHour(hour + 1, now).getTime(), thisHour, 'not on the minute');
+  assert.equal(visitHour(hour + 2 * 3600e3, now).getTime(), thisHour, 'in the future');
+  assert.equal(visitHour(hour - 2 * 86400e3, now).getTime(), thisHour, 'too long ago');
+  assert.equal(visitHour('10', now).getTime(), thisHour);
+  assert.equal(visitHour(undefined, now).getTime(), thisHour);
+});
+
+test('a second visit in the same hour is its own visit, while every tab of the first shares one', async () => {
+  const now = new Date('2026-10-05T10:50:00Z');
+  const id = h => identify('october', 'example.com', '1.2.3.4', 'UA', now, visitHour(h, now));
+  const first = await id(Date.parse('2026-10-05T10:00:00Z')), again = await id(Date.parse('2026-10-05T10:41:00Z'));
+  assert.notEqual(again.visit, first.visit);
+  assert.equal(again.visitor, first.visitor);
+  assert.equal((await id(undefined)).visit, first.visit, 'a tracker that sends no start joins the hour\'s visit');
+  assert.equal((await id(Date.parse('2026-10-05T10:41:00Z'))).visit, again.visit);
+});
+
+const store = entries => {
+  const kv = new Map(entries), puts = [];
+  return { kv, puts, STORE: { get: async k => kv.get(k) ?? null, put: async (k, v) => (puts.push(k), kv.set(k, v)), delete: async k => kv.delete(k) } };
+};
+
+test('a visit that runs past midnight on the 1st keeps the salt of the month it started in, and never makes one', async () => {
+  const { STORE, puts } = store([['salt:2026-10', 'october']]);
+  const oct31 = new Date('2026-10-31T23:00:00Z'), nov1 = new Date('2026-11-01T00:10:00Z');
+  assert.equal(await visitSalt({ STORE }, oct31, nov1, 'november'), 'october');
+  assert.equal(await visitSalt({ STORE }, nov1, nov1, 'november'), 'november');
+  assert.equal(await visitSalt({ STORE }, new Date('2026-09-30T23:00:00Z'), new Date('2026-10-01T00:10:00Z'), 'october'), 'october', 'gone or never made: this month\'s');
+  assert.deepEqual(puts, []);
+});
+
+test('collect writes both halves of a visit across the 1st with one visitor and one visit', async t => {
+  const points = [];
+  const { STORE, puts } = store([['sites', '["example.com"]'], ['salt:2026-10', 'october'], ['salt:2026-11', 'november']]);
+  const env = { STORE, EVENTS: { writeDataPoint: p => points.push(p) } };
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-10-31T23:40:00Z') });
+  const send = h => collect(new Request('https://worker.test/lede', {
+    method: 'POST', headers: { ...BEACON, 'User-Agent': SAFARI, 'CF-Connecting-IP': '1.2.3.4' }, body: JSON.stringify({ u: 'https://example.com/', h }),
+  }), env);
+  await send(Date.parse('2026-10-31T23:00:00Z'));
+  t.mock.timers.setTime(Date.parse('2026-11-01T00:10:00Z'));
+  await send(Date.parse('2026-10-31T23:00:00Z'));
+  await send(Date.parse('2026-11-01T00:00:00Z'));
+  const rows = points.map(p => Object.fromEntries(FIELDS.map((f, i) => [f, p.blobs[i]])));
+  assert.equal(rows[1].visit, rows[0].visit);
+  assert.equal(rows[1].visitor, rows[0].visitor);
+  assert.notEqual(rows[2].visitor, rows[0].visitor, 'the next visit has November\'s visitor ID, which can\'t be linked to October\'s');
+  assert.deepEqual(puts, []);
 });
 
 test('collect writes one data point in schema order and skips bots', async () => {
@@ -139,6 +231,24 @@ test('engagement keeps its figures in range, and anything odd about it drops the
   assert.equal(parseEvent({ u: 'https://example.com/' }, SITES).type, 'pageview', 'older trackers send no type');
 });
 
+test('a page view says where it falls in its visit, so visits and bounces survive sampling', () => {
+  const step = (k, t) => parseEvent({ u: 'https://example.com/', k, t, e: 2000, s: 10 }, SITES).step;
+  assert.deepEqual([1, 2, 3].map(k => step(k)), [1, 2, 3]);
+  assert.deepEqual([0, 4, 1.5, '1', -1, null, undefined].map(k => step(k)), [0, 0, 0, 0, 0, 0, 0], 'anything else is unknown');
+  assert.equal(step(1, 'engagement'), 0, 'only page views have a place');
+});
+
+test('Web Vitals ride on the engagement event, and a broken measurement is unknown', () => {
+  const ev = body => parseEvent({ u: 'https://example.com/', t: 'engagement', e: 2000, s: 10, ...body }, SITES);
+  const v = body => { const e = ev(body); return [e.lcp, e.inp, e.cls]; };
+  assert.deepEqual(v({ lcp: 2400.4, inp: 180.6, cls: 105 }), [2400, 181, 105]);
+  assert.deepEqual(v({}), [0, 0, 0], 'not measured');
+  assert.deepEqual(v({ lcp: 60001, inp: -1, cls: 10001 }), [0, 0, 0], 'out of bounds');
+  assert.deepEqual(v({ lcp: '2400', inp: NaN, cls: Infinity }), [0, 0, 0]);
+  assert.deepEqual(v({ lcp: 60000, inp: 0, cls: 10000 }), [60000, 0, 10000]);
+  assert.equal(parseEvent({ u: 'https://example.com/', lcp: 2400 }, SITES).lcp, undefined, 'a page view carries none');
+});
+
 test('a ping says someone is still on a page, and carries nothing else', () => {
   const ev = parseEvent({ u: 'https://example.com/docs/?ref=x', t: 'ping', r: 'https://news.ycombinator.com/', e: 9000, o: 'https://a.test/' }, SITES);
   assert.deepEqual([ev.type, ev.path, ev.referrer, ev.engaged, ev.target], ['ping', '/docs', 'news.ycombinator.com', undefined, undefined]);
@@ -153,6 +263,23 @@ test('link clicks keep only the host and path of the link', () => {
   assert.equal(ev('outbound', 'not a url'), null);
   assert.equal(ev('download', undefined), null);
   assert.equal(ev('outbound', 'https://a.test/' + 'x'.repeat(3000)), null);
+  assert.equal(ev('download', 'https://cdn.test/invoices/88123456/Invoice-88123456.pdf').target, 'cdn.test/invoices/*/*.pdf');
+});
+
+test('a link\'s path loses what could name a person or unlock something, and keeps the rest', () => {
+  assert.equal(scrubPath('/u/jane.doe@mail.com/files'), '/u/*/files');
+  assert.equal(scrubPath('/u/jane.doe%40mail.com'), '/u/*');
+  assert.equal(scrubPath('/order/12345678'), '/order/*');
+  assert.equal(scrubPath('/reports/20261005.pdf'), '/reports/20261005.pdf', 'a date is not a number to hide');
+  assert.equal(scrubPath('/d/0b9d1c1e-3f5a-4c8e-9d2b-6a7f8e9d0c1b/report.pdf'), '/d/*/report.pdf');
+  assert.equal(scrubPath('/blob/9fceb02d0ae598e95dc970b74767f19372d61af8/README.md'), '/blob/*/README.md');
+  assert.equal(scrubPath('/reset/Xk9mQ2pL7vR4tY8wZ3bN'), '/reset/*');
+  assert.equal(scrubPath('/files/a1b2c3d4e5f6a7b8c9d0.zip'), '/files/*.zip', 'the kind of file stays');
+  assert.equal(scrubPath('/watch/dQw4w9WgXcQ'), '/watch/dQw4w9WgXcQ', 'a short ID is a page, not a secret');
+  assert.equal(scrubPath('/acme/repo/issues/1234'), '/acme/repo/issues/1234');
+  assert.equal(scrubPath('/getting-started-with-the-new-api'), '/getting-started-with-the-new-api');
+  assert.equal(scrubPath('/Release-Notes-2026-October-Edition'), '/Release-Notes-2026-October-Edition', 'words with capitals and a year are a title');
+  assert.equal(scrubPath('/%E0%A4%A'), '/%E0%A4%A', 'a broken escape is kept as it was');
 });
 
 test('collect writes engagement as doubles and the link in its own blob, hashed like a page view', async () => {
@@ -162,14 +289,15 @@ test('collect writes engagement as doubles and the link in its own blob, hashed 
   const send = body => collect(new Request('https://worker.test/lede', {
     method: 'POST', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh) Safari/605', 'CF-Connecting-IP': '1.2.3.4' }, body: JSON.stringify({ u: 'https://example.com/docs', ...body }),
   }), env);
-  await send({});
-  await send({ t: 'engagement', e: 12000, s: 80 });
+  await send({ k: 2 });
+  await send({ t: 'engagement', e: 12000, s: 80, lcp: 1840.6, inp: 96, cls: 42 });
   await send({ t: 'download', o: 'https://example.com/files/guide.pdf' });
   assert.equal(points.length, 3);
   const rows = points.map(p => Object.fromEntries(FIELDS.map((f, i) => [f, p.blobs[i]])));
   assert.deepEqual(FIELDS.slice(12), ['target', 'device', 'browser', 'utmTerm'], 'new fields go at the end, so stored rows keep their layout');
+  assert.deepEqual(NUMBERS, ['engaged', 'scroll', 'step', 'lcp', 'inp', 'cls'], 'and new numbers too');
   assert.deepEqual(rows.map(r => r.type), ['pageview', 'engagement', 'download']);
-  assert.deepEqual(points.map(p => p.doubles), [[0, 0], [12000, 80], [0, 0]]);
+  assert.deepEqual(points.map(p => p.doubles), [[0, 0, 2, 0, 0, 0], [12000, 80, 0, 1841, 96, 42], [0, 0, 0, 0, 0, 0]]);
   assert.deepEqual(rows.map(r => r.target), ['', '', 'example.com/files/guide.pdf']);
   assert.ok(rows.every(r => r.visitor === rows[0].visitor && r.visit === rows[0].visit && r.path === '/docs'));
 });
@@ -228,6 +356,22 @@ test('collect answers a sender over the cap like any dropped beacon, and writes 
   assert.equal(points.length, SENDER_LIMIT);
   await send('203.0.113.10');
   assert.equal(points.length, SENDER_LIMIT + 1, 'another sender still counts');
+});
+
+test('collect caps each browser on its own, and an address that changes its user agent as one', async () => {
+  const points = [];
+  const kv = new Map([['sites', '["example.com"]'], ['salt', 's']]);
+  const env = { STORE: { get: async k => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v), delete: async k => kv.delete(k) }, EVENTS: { writeDataPoint: p => points.push(p) } };
+  const send = (ua, ip = '192.0.2.44') => collect(new Request('https://worker.test/lede', {
+    method: 'POST', headers: { ...BEACON, 'User-Agent': ua, 'CF-Connecting-IP': ip }, body: JSON.stringify({ u: 'https://example.com/' }),
+  }), env);
+  for (let i = 0; i < SENDER_LIMIT; i++) await send(SAFARI);
+  await send(SAFARI.replace('18.6', '18.5'));
+  assert.equal(points.length, SENDER_LIMIT + 1, 'another reader behind the same address still counts');
+  for (let i = 0; i < ADDRESS_LIMIT + 50; i++) await send(SAFARI.replace('605.1.15', `605.1.${i}`));
+  assert.equal(points.length, ADDRESS_LIMIT);
+  await send(SAFARI, '192.0.2.45');
+  assert.equal(points.length, ADDRESS_LIMIT + 1, 'another address still counts');
 });
 
 test('collect also asks the Workers rate limiter when one is bound', async () => {

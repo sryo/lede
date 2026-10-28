@@ -1,6 +1,7 @@
 import SPAM from './spam.js';
 
-const BOT = /bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|monitor|uptime|curl|wget|python|axios|go-http|java\/|httpclient|scrapy|facebookexternalhit|embedly|fetcher|archiver|phantomjs|puppeteer|playwright|selenium|okhttp|node-fetch|undici|inspectiontool|mediapartners/i;
+// Cubot is a phone maker, not a bot.
+const BOT = /(?<!cu)bot|crawl|spider|slurp|headless|lighthouse|pagespeed|preview|monitor|uptime|curl|wget|python|axios|go-http|java\/|httpclient|scrapy|facebookexternalhit|embedly|fetcher|archiver|phantomjs|puppeteer|playwright|selenium|okhttp|node-fetch|undici|inspectiontool|mediapartners/i;
 
 // Only hex digits and separators: an IP address, a UUID or a hash, never a browser.
 const NOT_A_NAME = /^[\da-f.:[\]-]+$/i;
@@ -70,7 +71,7 @@ export const DATACENTERS = new Set([
 const RENDERED = ['cf-brapi-request-id', 'cf-brapi-devtools'];
 
 export function unwanted(req, env, ua) {
-  return isBot(ua) || !!req.cf?.botManagement?.verifiedBot || RENDERED.some(h => req.headers.has(h))
+  return isBot(ua) || RENDERED.some(h => req.headers.has(h))
     || (env.KEEP_DATACENTER !== 'true' && DATACENTERS.has(req.cf?.asn))
     || (env.RESPECT_GPC === 'true' && req.headers.get('Sec-GPC') === '1');
 }

@@ -33,6 +33,7 @@ const PEOPLE = {
   'Firefox ESR 115, frozen rv': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:109.0) Gecko/20100101 Firefox/115.0',
   'Firefox on Android': 'Mozilla/5.0 (Android 15; Mobile; rv:144.0) Gecko/144.0 Firefox/144.0',
   'Internet Explorer 11': 'Mozilla/5.0 (Windows NT 10.0; WOW64; Trident/7.0; rv:11.0) like Gecko',
+  'Cubot phone, whose name ends in "bot"': 'Mozilla/5.0 (Linux; Android 13; CUBOT KINGKONG 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36',
 };
 
 const BOTS = {
@@ -50,6 +51,8 @@ const BOTS = {
   'Internet Explorer 6': 'Mozilla/4.0 (compatible; MSIE 6.0; Windows NT 5.1; SV1)',
   'Internet Explorer 10': 'Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 6.2; Trident/6.0)',
   'Googlebot': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+  'Applebot': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_5) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.1 Safari/605.1.15 (Applebot/0.1; +http://www.apple.com/go/applebot)',
+  'a bot named after Cubot': 'Mozilla/5.0 (compatible; CubotScanner/1.0; +https://scan.test/bot)',
   'headless Chrome': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/141.0.0.0 Safari/537.36',
 };
 
