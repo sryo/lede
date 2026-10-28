@@ -220,6 +220,25 @@ function wordList(cur, prev) {
     .map(([key, visitors]) => ({ key, visitors, prev: prev.get(key) || null }));
 }
 
+// keywordsSql's rows as the two lists toKeywords counts: a search row (surl) for the words, and a row per ad
+// keyword, where a search an ad landed on counts its one visitor.
+export function splitKeywords(rows) {
+  const site = [], paid = [], landed = new Map();
+  for (const r of rows) {
+    if (r.surl) site.push({ p: r.p, url: r.surl, visitor: r.v });
+    if (!r.term) continue;
+    if (!r.surl) { paid.push({ p: r.p, key: r.term, visitors: r.visitors }); continue; }
+    const k = `${num(r.p) === 1 ? 1 : 0}\n${r.term}`;
+    if (!landed.has(k)) landed.set(k, new Set());
+    landed.get(k).add(r.v);
+  }
+  for (const [k, who] of landed) {
+    const [p, key] = k.split('\n');
+    paid.push({ p: Number(p), key, visitors: String(who.size) });
+  }
+  return { site, paid };
+}
+
 // site: rows of { p, url, visitor }, one per visitor and search address, so a visitor who paged through
 // the results or typed the word twice is counted once. paid: rows of { p, key, visitors } per ad keyword,
 // already cleaned when collected; cleaning again merges what older rows spelled differently.

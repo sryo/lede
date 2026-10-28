@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseEvent } from '../src/collect.js';
 import { parseQuery, sqlStore, handleApi } from '../src/api.js';
-import { siteSearchSql, paidWordsSql, SEARCH_PARAMS } from '../src/queries.js';
-import { keyword, searchWord, toKeywords } from '../src/shape.js';
+import { keywordsSql, SEARCH_PARAMS } from '../src/queries.js';
+import { keyword, searchWord, toKeywords, splitKeywords } from '../src/shape.js';
 import { demoStore } from '../src/demo.js';
 import { keywordsStory, keywordsCard, KEYWORDS_EMPTY } from '../public/story.js';
 import { viewToUrl, urlToView } from '../public/routes.js';
@@ -59,39 +59,70 @@ test('the ad keyword (utm_term) of the landing page is kept, cleaned', () => {
 
 /* ---------- SQL ---------- */
 
-test('site searches read page views whose address holds a search parameter, both periods in one query', () => {
+test('site searches and ad keywords come from one query over the same page views, both periods at once', () => {
   const q = parseQuery(url('keywords?days=7'), SITES);
-  const sql = siteSearchSql('lede', q);
-  assert.match(sql, /^SELECT if\(timestamp >= toDateTime\(\d+\), 1, 0\) AS p, blob3 AS url, blob6 AS visitor FROM lede WHERE /);
+  const sql = keywordsSql('lede', q);
+  assert.match(sql, /^SELECT if\(timestamp >= toDateTime\(\d+\), 1, 0\) AS p, /);
   assert.match(sql, /blob8 = 'pageview'/);
   for (const p of SEARCH_PARAMS) {
     assert.ok(sql.includes(`position('?${p}=' IN blob3) > 0`), p);
     assert.ok(sql.includes(`position('&${p}=' IN blob3) > 0`), p);
   }
-  assert.match(sql, /GROUP BY p, url, visitor LIMIT \d+$/);
+  assert.match(sql, /blob16 AS term/);
+  assert.match(sql, /OR blob16 != ''\)/, 'a page view with an ad keyword is read even when it is no search');
+  assert.match(sql, /count\(DISTINCT blob6\) AS visitors/);
+  assert.match(sql, /GROUP BY p, surl, term, v ORDER BY visitors DESC LIMIT \d+$/);
   assert.ok(sql.length < 10240);
 });
 
-test('paid words count visitors per ad keyword, both periods in one query', () => {
-  const q = parseQuery(url('keywords'), SITES);
-  const sql = paidWordsSql('lede', q);
-  assert.match(sql, /blob16 AS key, count\(DISTINCT blob6\) AS visitors/);
-  assert.match(sql, /blob16 != ''/);
-  assert.match(sql, /GROUP BY p, key ORDER BY visitors DESC LIMIT \d+$/);
-});
-
-test('the SQL store runs one query per list and shapes them', async () => {
+test('the SQL store asks once for both lists and shapes them', async () => {
   const sent = [];
   const fetchImpl = async (_, init) => {
     sent.push(init.body);
-    const data = init.body.includes('blob16 AS key')
-      ? [{ p: 1, key: 'bird feeder', visitors: '7' }, { p: 0, key: 'bird feeder', visitors: '3' }]
-      : [{ p: 1, url: '/search?q=Owls', visitor: 'a' }, { p: 1, url: '/search?q=owls&page=2', visitor: 'b' }];
+    const data = [
+      { p: 1, surl: '', term: 'bird feeder', v: '', visitors: '7' }, { p: 0, surl: '', term: 'bird feeder', v: '', visitors: '3' },
+      { p: 1, surl: '/search?q=Owls', term: '', v: 'a', visitors: '1' }, { p: 1, surl: '/search?q=owls&page=2', term: '', v: 'b', visitors: '1' },
+    ];
     return new Response(JSON.stringify({ data }));
   };
   const out = await sqlStore(ENV, fetchImpl).keywords(parseQuery(url('keywords'), SITES));
-  assert.equal(sent.length, 2);
+  assert.equal(sent.length, 1);
   assert.deepEqual(out, { site: [{ key: 'owls', visitors: 2, prev: null }], paid: [{ key: 'bird feeder', visitors: 7, prev: 3 }] });
+});
+
+test('one query\'s rows split into the search and ad rows the lists are counted from', () => {
+  assert.deepEqual(splitKeywords([]), { site: [], paid: [] });
+  const { site, paid } = splitKeywords([
+    { p: 1, surl: '', term: 'Bird Feeder', v: '', visitors: '5' },
+    // An ad that lands on the site's search: a search for the words, and a visitor for the ad keyword.
+    { p: 1, surl: '/search?q=feeder', term: 'bird feeder', v: 'a', visitors: '1' },
+    { p: 1, surl: '/search?q=feeder', term: 'bird feeder', v: 'b', visitors: '1' },
+    { p: 1, surl: '/search?q=feeder&page=2', term: '', v: 'a', visitors: '1' },
+    { p: '0', surl: '/search?q=owls', term: '', v: 'z', visitors: '1' },
+  ]);
+  assert.deepEqual(site, [
+    { p: 1, url: '/search?q=feeder', visitor: 'a' }, { p: 1, url: '/search?q=feeder', visitor: 'b' },
+    { p: 1, url: '/search?q=feeder&page=2', visitor: 'a' }, { p: '0', url: '/search?q=owls', visitor: 'z' },
+  ]);
+  assert.deepEqual(toKeywords(site, paid), {
+    site: [{ key: 'feeder', visitors: 2, prev: null }],
+    paid: [{ key: 'bird feeder', visitors: 7, prev: null }],
+  });
+});
+
+test('a big site\'s rows give the same lists as the two queries did', () => {
+  const merged = [], site = [], paid = [];
+  for (let w = 0; w < 300; w++) {
+    const n = 2 + (w % 7);
+    merged.push({ p: w % 2, surl: '', term: `ad ${w}`, v: '', visitors: String(n) });
+    paid.push({ p: w % 2, key: `ad ${w}`, visitors: String(n) });
+    for (let v = 0; v < n; v++) {
+      merged.push({ p: w % 2, surl: `/s?q=w${w}&page=${v % 3}`, term: '', v: `v${v}`, visitors: '1' });
+      site.push({ p: w % 2, url: `/s?q=w${w}&page=${v % 3}`, visitor: `v${v}` });
+    }
+  }
+  const split = splitKeywords(merged);
+  assert.deepEqual(toKeywords(split.site, split.paid), toKeywords(site, paid));
 });
 
 /* ---------- shaping ---------- */

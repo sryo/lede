@@ -271,18 +271,17 @@ export const usualSql = (ds, site, nowSec, days) => {
 
 // The query parameters site search pages commonly put the words in (WordPress uses s).
 export const SEARCH_PARAMS = ['q', 's', 'search', 'query', 'keyword', 'keywords', 'k'];
-// SQL here can't pull one parameter out of an address, so the query finds the page views whose address
-// holds one and sends each address once per visitor; shape.js reads the words and counts each visitor once.
-// Rows past the limit are dropped, which only a site with tens of thousands of searches a period reaches.
-const SEARCHED = SEARCH_PARAMS.flatMap(p => [`position('?${p}=' IN ${COL.url}) > 0`, `position('&${p}=' IN ${COL.url}) > 0`]).join(' OR ');
-export const siteSearchSql = (ds, q) =>
-  `SELECT ${PERIOD(q)} AS p, ${COL.url} AS url, ${COL.visitor} AS visitor FROM ${ds} WHERE ${within(q)} AND (${SEARCHED}) `
-  + 'GROUP BY p, url, visitor LIMIT 20000';
-
-// Visitors per ad keyword (utm_term on the page a visit landed on).
-export const paidWordsSql = (ds, q) =>
-  `SELECT ${PERIOD(q)} AS p, ${COL.utmTerm} AS key, count(DISTINCT ${COL.visitor}) AS visitors FROM ${ds} `
-  + `WHERE ${within(q)} AND ${COL.utmTerm} != '' GROUP BY p, key ORDER BY visitors DESC LIMIT 1000`;
+// Site searches and ad keywords, from one query over the same page views. SQL here can't pull one parameter
+// out of an address, so a page view whose address holds one comes back once per visitor and address (surl, v),
+// and shape.js reads the words and counts each visitor once. A page view with an ad keyword (utm_term on the
+// page a visit landed on) is counted per keyword instead (visitors, v empty), unless it was a search too: an
+// ad can land on the site's search, and then its row carries both. Rows past the limit are dropped, which only
+// a site with tens of thousands of searches a period reaches; the keywords with the most visitors come first.
+const SEARCHED = '(' + SEARCH_PARAMS.flatMap(p => [`position('?${p}=' IN ${COL.url}) > 0`, `position('&${p}=' IN ${COL.url}) > 0`]).join(' OR ') + ')';
+export const keywordsSql = (ds, q) =>
+  `SELECT ${PERIOD(q)} AS p, if(${SEARCHED}, ${COL.url}, '') AS surl, ${COL.utmTerm} AS term, if(${SEARCHED}, ${COL.visitor}, '') AS v, `
+  + `count(DISTINCT ${COL.visitor}) AS visitors FROM ${ds} WHERE ${within(q)} AND (${SEARCHED} OR ${COL.utmTerm} != '') `
+  + 'GROUP BY p, surl, term, v ORDER BY visitors DESC LIMIT 21000';
 
 // What readers do after a page. This SQL has no window functions (no lag or lead) and no joins, and
 // IN only takes a written list, so the next page can't be found in one query. Instead: the first query

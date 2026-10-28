@@ -2,7 +2,7 @@
 // bench can measure what a change costs against the free limits without touching Cloudflare.
 
 export function counters() {
-  return { sql: 0, writes: 0, kvReads: 0, kvWrites: 0, kvLists: 0, api: 0, beacons: 0, screenshots: 0, browserMs: 0, ai: 0, aiTokens: 0, webhooks: 0 };
+  return { sql: 0, writes: 0, kvReads: 0, kvWrites: 0, kvLists: 0, api: 0, beacons: 0, screenshots: 0, browserMs: 0, ai: 0, aiTokens: 0, webhooks: 0, sheet: 0 };
 }
 
 // KV as Workers has it, for what Lede uses: text or bytes, metadata, and listing by prefix. Expiry isn't
@@ -91,6 +91,8 @@ function siteRows(sql) {
   }));
   if (sql.includes('AS ms')) return both(p => PAGES.map((key, i) => ({ p, key, n: String(20 - i), ms: String(900000 - i * 50000), depth: String(1500 - i * 100), ...vitals(i) })));
   if (sql.includes('AS kind')) return both(p => [{ p, kind: 'outbound', key: 'github.com/acme', visitors: '6', clicks: '9' }, { p, kind: 'download', key: 'example.com/guide.pdf', visitors: '2', clicks: '2' }]);
+  // Site searches and ad keywords in one query: as the ad keyword list always had, and no searches.
+  if (sql.includes('AS surl')) return keyed(PAGES).map(({ p, key, visitors }) => ({ p, surl: '', term: key, v: '', visitors }));
   if (sql.includes('AS key')) return keyed(sql.includes('blob4 AS key') ? REFS : sql.includes('blob9 AS key') ? COUNTRIES : PAGES);
   return both(p => [{ p, visitors: String(p ? 1200 : 1000), visits: '1500', views: '3000', bounces: '700', total_time: '90000', sampled: '0' }]);
 }

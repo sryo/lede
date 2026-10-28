@@ -187,7 +187,9 @@ async function countsOf(root, chrome) {
       await tab.go(server.base + view);
       await settle(server);
       const c = await getJSON(server.base + '/__bench/counts');
-      out[`queries: ${view}`] = c.sql;
+      // The second line's sheet apart: it's built at most once an hour per period, not on every load.
+      out[`queries: ${view}`] = c.sql - (c.sheet ?? 0);
+      out[`sheet queries: ${view}`] = c.sheet ?? 0;
       out[`api calls: ${view}`] = c.api;
       // Pictures of the page come out of a daily allowance of browser time, so each one counts.
       out[`screenshots: ${view}`] = c.screenshots ?? 0;

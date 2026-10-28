@@ -140,7 +140,7 @@ test('after home, the line adds only the reading, speed and search-word queries;
     const res = await get(`insight?${qs}`, env);
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { text: 'Hacker News sent 40 visitors to /blog. Worth checking: /blog.' });
-    assert.equal(calls.length - home, 3, 'reading and speed (1) and search words (2); the rest home just asked for');
+    assert.equal(calls.length - home, 2, 'reading and speed (1) and search words with ad keywords (1); the rest home just asked for');
     assert.equal(runs, 1);
     assert.equal(env.STORE.puts[0].key, 'insight:example.com:7');
     assert.equal(JSON.parse(env.STORE.puts[0].v).text, 'Hacker News sent 40 visitors to /blog. Worth checking: /blog.');

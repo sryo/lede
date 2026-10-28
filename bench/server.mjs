@@ -5,6 +5,7 @@
 //   node bench/server.mjs --root <dir> [--demo]      prints {"port":N} once listening
 
 import { createServer } from 'node:http';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { readFile } from 'node:fs/promises';
 import { join, extname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -15,8 +16,14 @@ const root = resolve(argv[argv.indexOf('--root') + 1]);
 const demo = argv.includes('--demo');
 
 crypto.subtle.timingSafeEqual ??= (a, b) => Buffer.from(a).equals(Buffer.from(b));
-const count = counters();
-globalThis.fetch = fakeFetch(count);
+const count = counters(), inner = fakeFetch(count);
+// Queries made while answering /api/insight are the second line's sheet, which Lede builds at most once an
+// hour, so they're counted apart from the ones every load makes.
+const route = new AsyncLocalStorage();
+globalThis.fetch = (url, init) => {
+  if (route.getStore() === 'insight' && String(url).endsWith('/analytics_engine/sql')) count.sheet++;
+  return inner(url, init);
+};
 const worker = (await import(pathToFileURL(join(root, 'src/index.js')).href)).default;
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.woff2': 'font/woff2', '.css': 'text/css', '.json': 'application/json' };
@@ -51,7 +58,8 @@ const server = createServer(async (req, res) => {
   const request = new Request(url, { method: req.method, headers: req.headers, body: chunks.length ? Buffer.concat(chunks) : undefined });
   const waits = [];
   try {
-    const out = await worker.fetch(request, env, { waitUntil: p => waits.push(p), passThroughOnException() {} });
+    const name = req.url.startsWith('/api/') ? req.url.slice(5).split(/[?/]/)[0] : null;
+    const out = await route.run(name, () => worker.fetch(request, env, { waitUntil: p => waits.push(p), passThroughOnException() {} }));
     res.writeHead(out.status, Object.fromEntries(out.headers));
     res.end(Buffer.from(await out.arrayBuffer()));
     await Promise.allSettled(waits);

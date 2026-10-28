@@ -81,6 +81,11 @@ export function scheduleDay(counts) {
   return { queries: day('queries'), kvReads: day('kv reads'), kvWrites: day('kv writes'), ai: day('ai calls'), aiTokens: day('ai tokens') };
 }
 
+// The second line's sheet (src/insight.js) is built at most once an hour for each period opened, 7 and 30
+// days, whoever loads home: a day's worst case for one site.
+const SHEETS = 24 * 2;
+export const sheetDay = counts => SHEETS * (counts['sheet queries: /'] ?? 0);
+
 // Headroom against the free limits: how many of each a day before Cloudflare stops serving, after what
 // the schedules take of the same allowance.
 export function headroom(counts) {
@@ -89,7 +94,8 @@ export function headroom(counts) {
   const day = scheduleDay(counts);
   return [
     `the schedules a day: ${n(day.queries)} queries, ${n(day.kvReads)} KV reads, ${n(day.kvWrites)} KV writes, ${n(day.ai)} Workers AI asks`,
-    `dashboard home loads a day before 10k queries: ${per(10000 - day.queries, counts['queries: /'])}`,
+    `the second line's sheet a day at most, per site: ${n(sheetDay(counts))} queries`,
+    `dashboard home loads a day before 10k queries: ${per(10000 - day.queries - sheetDay(counts), counts['queries: /'])}`,
     `visits a day before 100k writes: ${per(100000, counts['visit: writes'])}`,
     `visits a day before 100k Worker requests: ${per(100000, counts['visit: requests'])}`,
     `visits a day before 1k KV writes: ${per(1000 - day.kvWrites, counts['visit: kv writes'])}`,
