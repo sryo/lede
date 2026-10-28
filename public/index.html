@@ -74,6 +74,10 @@ button,select{font:inherit;color:inherit}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 h1,h2,h3{margin:0;font:inherit}
 .muted{color:var(--muted)}
+/* under the window: what this is and where it lives */
+.foot{max-width:1080px;margin:16px auto 0;text-align:center;font-size:var(--fs-xs);color:var(--muted);text-wrap:balance}
+.foot a{color:inherit;text-decoration:none}.foot a b{color:var(--ink);font-weight:600}
+.foot a:hover{text-decoration:underline;text-underline-offset:3px}
 
 .win{display:flex;flex-direction:column;position:relative;max-width:1080px;margin:0 auto;min-height:clamp(860px,100%,940px);
   background:var(--win);border-radius:var(--r-win);overflow:hidden;box-shadow:0 0 0 1px var(--line)}
@@ -560,6 +564,7 @@ button.lrow:hover{background:var(--line)}
     <div class="grid" id="grid"><div class="state">Loading the stats…</div></div>
   </div>
 </main>
+<footer class="foot"><a href="https://github.com/sryo/lede" target="_blank" rel="noopener"><b>Lede</b></a> · open-source analytics that counts people, not bots</footer>
 <div class="sr" id="status" role="status"></div>
 
 <script type="module">

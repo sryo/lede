@@ -260,3 +260,8 @@ test('a state is a dot and a word, not a pill that looks like a button', () => {
   assert.doesNotMatch(rule('.chip'), /border-radius:999px|box-shadow/);
   assert.doesNotMatch(rule('.setup-panel .onoff'), /border-radius:999px|box-shadow/);
 });
+
+test('a quiet footer under the window names Lede and links to the project', () => {
+  assert.match(html, /<footer class="foot">[\s\S]*href="https:\/\/github\.com\/sryo\/lede"[\s\S]*<\/footer>/);
+  assert.match(html, /\.foot\{/);
+});
