@@ -1,6 +1,6 @@
-// Page-view tracker. Add to a site with:
-//   <script defer src="https://YOUR-WORKER/t.js"></script>
-// No cookies. The visit's original referrer and landing query are kept in sessionStorage so
+// Lede's line. Add it to every page of a site:
+//   <script defer src="https://YOUR-LEDE/t.js"></script>
+// No cookies. The site a visit came from and its landing query are kept in sessionStorage so
 // every page of the visit is credited to where the visitor came from.
 // It also sends, once per page view, how long the page was read and how far down it was scrolled
 // (add data-engagement="false" to the script tag to turn that off), clicks on links to other

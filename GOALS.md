@@ -13,25 +13,27 @@ or fill a report; it's to show, as it happens, how the small things you do (a po
 rewrite, a link someone shared) change who reads you, with almost nothing to set up.
 
 Lede does what nine in ten of today's site owners need, and nothing they don't. What it does,
-it does better than anyone: it should be the most beautiful analytics software there is.
+it should do better than any other tool, and look better too.
 
-## Never traded
+## What we never trade away
 - **People, not bots.** Anything that isn't a person reading is left out, and the docs say
   what and why.
 - **True to the data.** No conclusion the numbers can't back. Small samples and gaps are
   said plainly, never dressed up as a trend.
 - **Private.** Visits are stored in the site owner's own Cloudflare account and go nowhere
-  else: not to Lede's makers, not to anyone. No cookies, and nothing follows a person across
-  sites or months. What the dashboard shows can't point to one person: rare words, emails and
+  else: not to Lede's makers, not to anyone. The one exception is the messages the owner can
+  turn on, which go to the webhook they choose. No cookies on visitors, and nothing follows a
+  person across sites or months. What the dashboard shows can't point to one person: rare words, emails and
   long numbers are left out.
 - **Free to run.** A small site stays inside Cloudflare's free limits.
-- **Simple to own.** One Worker, no runtime dependencies, one command to deploy.
+- **Simple to own.** One Worker, no runtime dependencies, one button to deploy.
 
 ## Goals, in priority order
 When two conflict, the higher one wins.
 
-1. **Insight at a glance.** Every screen opens with what happened and why, in one sentence
-   ("Hacker News sent 3x more people to /pricing"), and ties it to what the owner did. The
+1. **Insight at a glance.** Every screen opens with what happened and where it came from, in
+   one sentence ("Hacker News sent 3 times as many visitors to /pricing"), and says what the
+   owner did just before, never that it was the cause. The
    numbers come after, to back it up. No query builder, no wall of reports.
 2. **Easy.** One line on the site and the first useful sentence follows. Nothing to
    configure, no account anywhere but Cloudflare, installed in minutes. Every error says
