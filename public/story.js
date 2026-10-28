@@ -841,22 +841,27 @@ export function parseSteps(text) {
 /* ---------- speed ---------- */
 
 // Web Vitals at the 75th percentile, against Google's thresholds: good up to the first, poor past the second.
-// lcp (loading) and inp (answering a tap or click) are in ms; cls (how much the layout moves) is ×1000.
-export const VITALS = { lcp: [2500, 4000], inp: [200, 500], cls: [100, 250] };
-// Below this many views a 75th percentile is a handful of people.
+// lcp (loading) and inp (answering a tap or click) are in ms; cls (how much the layout moves) is the score itself.
+export const VITALS = { lcp: [2500, 4000], inp: [200, 500], cls: [.1, .25] };
+// Below this many measures a 75th percentile is a handful of people.
 const VITALS_MIN = 30;
+// The views that measured k: lcpN, inpN, clsN when the row has them, else all its views. INP comes only from
+// views with a tap or click, far fewer than all of them, so without its own count it is never enough.
+const measured = (r, k) => r[`${k}N`] ?? (k === 'inp' ? 0 : r.views || 0);
 export const vitalRating = (k, v) => v == null ? null : v <= VITALS[k][0] ? 'good' : v > VITALS[k][1] ? 'poor' : 'needs work';
-export const fmtVital = (k, v) => k === 'cls' ? (v / 1000).toFixed(2) : v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`;
+export const fmtVital = (k, v) => k === 'cls' ? v.toFixed(2) : v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`;
 const VITAL_WORDS = { lcp: v => `loaded within ${v}`, inp: v => `answered a tap or click within ${v}`, cls: v => `moved their layout by ${v} or less` };
 const listed = a => a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a.at(-1)}` : a[0];
 
-// One page's speed, from an engagement row: "3 in 4 views loaded within 2.1 s (good) and …". Null with no measures.
+// One page's speed, from an engagement row: "Of the views measured, 3 in 4 loaded within 2.1 s (good) and …".
+// Each measure needs VITALS_MIN views of its own. Null with no measures.
 export function vitalsLine(r) {
   const have = Object.keys(VITALS).filter(k => r?.[k] != null);
   if (!have.length) return null;
-  if ((r.views || 0) < VITALS_MIN) return { html: 'Too few views yet to say how fast this page is.', ratings: {} };
-  const ratings = Object.fromEntries(have.map(k => [k, vitalRating(k, r[k])]));
-  return { ratings, html: `3 in 4 views ${listed(have.map(k => `${VITAL_WORDS[k](`<b>${fmtVital(k, r[k])}</b>`)} (${ratings[k]})`))}.` };
+  const enough = have.filter(k => measured(r, k) >= VITALS_MIN);
+  if (!enough.length) return { html: 'Too few views yet to say how fast this page is.', ratings: {} };
+  const ratings = Object.fromEntries(enough.map(k => [k, vitalRating(k, r[k])]));
+  return { ratings, html: `Of the views measured, 3 in 4 ${listed(enough.map(k => `${VITAL_WORDS[k](`<b>${fmtVital(k, r[k])}</b>`)} (${ratings[k]})`))}.` };
 }
 export const VITALS_HINT = 'Good is within 2.5 s to load, 200 ms to answer and 0.1 of layout movement; poor is over 4 s, 500 ms and 0.25.';
 
@@ -864,13 +869,14 @@ export const VITALS_HINT = 'Good is within 2.5 s to load, 200 ms to answer and 0
 // 5% of all of them. rows: engagement rows; pageRows: { key, value } with visitors.
 export function vitalsFinding(rows, pageRows, total) {
   const seen = new Map(pageRows.map(r => [r.key, r.value]));
-  const slow = rows.map(r => ({ r, v: seen.get(r.key) || 0, load: vitalRating('lcp', r.lcp) === 'poor', answer: vitalRating('inp', r.inp) === 'poor' }))
-    .filter(x => (x.load || x.answer) && x.r.views >= VITALS_MIN && x.v >= 50 && x.v >= total * .05)
+  const poor = (r, k) => vitalRating(k, r[k]) === 'poor' && measured(r, k) >= VITALS_MIN;
+  const slow = rows.map(r => ({ r, v: seen.get(r.key) || 0, load: poor(r, 'lcp'), answer: poor(r, 'inp') }))
+    .filter(x => (x.load || x.answer) && x.v >= 50 && x.v >= total * .05)
     .sort((a, b) => b.v - a.v)[0];
   if (!slow) return null;
   const { r, v } = slow, parts = [];
-  if (slow.load) parts.push(`1 in 4 views took ${fmtVital('lcp', r.lcp)} or longer to load`);
-  if (slow.answer) parts.push(`${slow.load ? '1 in 4' : '1 in 4 views'} waited ${fmtVital('inp', r.inp)} or longer for a tap or click to answer`);
+  if (slow.load) parts.push(`1 in 4 took ${fmtVital('lcp', r.lcp)} or longer to load`);
+  if (slow.answer) parts.push(`1 in 4 waited ${fmtVital('inp', r.inp)} or longer for a tap or click to answer`);
   const page = `<button type="button" class="link told" data-f="path" data-k="${esc(r.key)}">${r.key === '/' ? 'The home page' : pathHTML(r.key)}</button>`;
-  return { key: r.key, html: `${page} is slow for many of its ${fmtInt(v)} visitors: ${parts.join(', and ')}.` };
+  return { key: r.key, html: `${page} is slow for many of its ${fmtInt(v)} visitors: of the views measured, ${parts.join(', and ')}.` };
 }

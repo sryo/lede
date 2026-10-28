@@ -873,30 +873,51 @@ test('speed is good, needs work or poor, by Google\'s thresholds', () => {
   assert.equal(vitalRating('inp', 200), 'good');
   assert.equal(vitalRating('inp', 500), 'needs work');
   assert.equal(vitalRating('inp', 501), 'poor');
-  assert.equal(vitalRating('cls', 100), 'good');
-  assert.equal(vitalRating('cls', 260), 'poor');
+  assert.equal(vitalRating('cls', .1), 'good');
+  assert.equal(vitalRating('cls', .2), 'needs work');
+  assert.equal(vitalRating('cls', .26), 'poor');
   assert.equal(vitalRating('cls', null), null);
 });
 
 test('a page\'s speed line: what 3 in 4 views got, in plain words, only for what was measured', () => {
-  assert.equal(strip(vitalsLine({ views: 400, lcp: 2140, inp: 180, cls: 50 }).html),
-    '3 in 4 views loaded within 2.1 s (good), answered a tap or click within 180 ms (good) and moved their layout by 0.05 or less (good).');
-  assert.equal(strip(vitalsLine({ views: 400, lcp: 4800, inp: null, cls: null }).html), '3 in 4 views loaded within 4.8 s (poor).');
-  assert.deepEqual(vitalsLine({ views: 400, lcp: 3000, inp: 300 }).ratings, { lcp: 'needs work', inp: 'needs work' });
+  assert.equal(strip(vitalsLine({ views: 400, lcp: 2140, inp: 180, cls: .05, lcpN: 300, inpN: 90, clsN: 300 }).html),
+    'Of the views measured, 3 in 4 loaded within 2.1 s (good), answered a tap or click within 180 ms (good) and moved their layout by 0.05 or less (good).');
+  assert.equal(strip(vitalsLine({ views: 400, lcp: 4800, inp: null, cls: null }).html), 'Of the views measured, 3 in 4 loaded within 4.8 s (poor).');
+  assert.deepEqual(vitalsLine({ views: 400, lcp: 3000, inp: 300, inpN: 60 }).ratings, { lcp: 'needs work', inp: 'needs work' });
   assert.equal(vitalsLine({ views: 12, lcp: 2000 }).html, 'Too few views yet to say how fast this page is.');
   assert.equal(vitalsLine({ views: 400 }), null, 'nothing measured yet, nothing said');
   assert.equal(vitalsLine({ views: 400, lcp: null, inp: null, cls: null }), null);
 });
 
+test('each speed measure needs enough views that measured it, not just enough views', () => {
+  // 40 views, a tap on only 4 of them: their answer time is left out, not called poor.
+  const r = { views: 40, lcp: 2000, inp: 650, lcpN: 36, inpN: 4 };
+  assert.deepEqual(vitalsLine(r).ratings, { lcp: 'good' });
+  assert.doesNotMatch(vitalsLine(r).html, /tap/);
+  assert.equal(vitalsLine({ views: 400, inp: 650 }).html, 'Too few views yet to say how fast this page is.', 'without its own count, INP is never enough');
+  assert.equal(vitalsLine({ views: 400, lcp: 2000, lcpN: 12 }).html, 'Too few views yet to say how fast this page is.');
+  assert.equal(vitalsFinding([{ key: '/', views: 500, inp: 650, inpN: 4 }], [{ key: '/', value: 600 }], 1000), null);
+  assert.equal(vitalsFinding([{ key: '/', views: 500, inp: 650 }], [{ key: '/', value: 600 }], 1000), null);
+});
+
+test('layout movement arrives as its score, the way the engagement answer gives it', () => {
+  // An engagement row as the API shapes it: stored CLS 300 (×1000) comes out as .3.
+  const row = { key: '/', views: 200, time: 40, scroll: .5, median: 30000, lcp: 2100, inp: null, cls: .3, lcpN: 150, clsN: 150, prev: null };
+  const V = vitalsLine(row);
+  assert.equal(V.ratings.cls, 'poor');
+  assert.match(strip(V.html), /moved their layout by 0\.30 or less \(poor\)/);
+  assert.equal(vitalsLine({ ...row, cls: .12 }).ratings.cls, 'needs work');
+});
+
 test('speed finding: the busiest page slow for many readers, never a small one', () => {
-  const rows = [{ key: '/pricing', views: 900, lcp: 4800, inp: 120 }, { key: '/blog/x', views: 300, lcp: 6000 }, { key: '/tiny', views: 40, inp: 900 }, { key: '/', views: 2000, lcp: 1800, inp: 150 }];
+  const rows = [{ key: '/pricing', views: 900, lcp: 4800, inp: 120, inpN: 300 }, { key: '/blog/x', views: 300, lcp: 6000 }, { key: '/tiny', views: 40, inp: 900, inpN: 40 }, { key: '/', views: 2000, lcp: 1800, inp: 150, inpN: 600 }];
   const pageRows = [{ key: '/pricing', value: 1240 }, { key: '/blog/x', value: 400 }, { key: '/tiny', value: 30 }, { key: '/', value: 5000 }];
   const F = vitalsFinding(rows, pageRows, 8000);
   assert.equal(F.key, '/pricing');
-  assert.equal(strip(F.html), '/pricing is slow for many of its 1,240 visitors: 1 in 4 views took 4.8 s or longer to load.');
+  assert.equal(strip(F.html), '/pricing is slow for many of its 1,240 visitors: of the views measured, 1 in 4 took 4.8 s or longer to load.');
   assert.equal(vitalsFinding(rows.slice(2), pageRows, 8000), null, 'a slow page with few visitors is no finding');
-  const both = vitalsFinding([{ key: '/app', views: 500, lcp: 4500, inp: 700 }], [{ key: '/app', value: 600 }], 1000);
-  assert.equal(strip(both.html), '/app is slow for many of its 600 visitors: 1 in 4 views took 4.5 s or longer to load, and 1 in 4 waited 700 ms or longer for a tap or click to answer.');
-  const answer = vitalsFinding([{ key: '/', views: 500, inp: 650 }], [{ key: '/', value: 600 }], 1000);
-  assert.equal(strip(answer.html), 'The home page is slow for many of its 600 visitors: 1 in 4 views waited 650 ms or longer for a tap or click to answer.');
+  const both = vitalsFinding([{ key: '/app', views: 500, lcp: 4500, inp: 700, inpN: 150 }], [{ key: '/app', value: 600 }], 1000);
+  assert.equal(strip(both.html), '/app is slow for many of its 600 visitors: of the views measured, 1 in 4 took 4.5 s or longer to load, and 1 in 4 waited 700 ms or longer for a tap or click to answer.');
+  const answer = vitalsFinding([{ key: '/', views: 500, inp: 650, inpN: 120 }], [{ key: '/', value: 600 }], 1000);
+  assert.equal(strip(answer.html), 'The home page is slow for many of its 600 visitors: of the views measured, 1 in 4 waited 650 ms or longer for a tap or click to answer.');
 });
