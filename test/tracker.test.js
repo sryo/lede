@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-// Every test runs on the readable tracker and on public/t.js, the copy without comments that sites
-// receive, so stripping it can't change what it does.
+// Every test runs on the readable tracker and on public/t.js, the minified copy that sites receive,
+// so minifying it can't change what it does.
 const FILES = ['src/tracker.js', 'public/t.js'];
 let SOURCE;
 const test = (name, fn) => {
