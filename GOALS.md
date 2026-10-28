@@ -20,8 +20,10 @@ it does better than anyone: it should be the most beautiful analytics software t
   what and why.
 - **True to the data.** No conclusion the numbers can't back. Small samples and gaps are
   said plainly, never dressed up as a trend.
-- **Private.** No cookies. Nothing follows a person across sites or months, nothing records
-  what they type, and no one can be identified from what Lede stores.
+- **Private.** Visits are stored in the site owner's own Cloudflare account and go nowhere
+  else: not to Lede's makers, not to anyone. No cookies, and nothing follows a person across
+  sites or months. What the dashboard shows can't point to one person: rare words, emails and
+  long numbers are left out.
 - **Free to run.** A small site stays inside Cloudflare's free limits.
 - **Simple to own.** One Worker, no runtime dependencies, one command to deploy.
 
