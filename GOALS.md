@@ -58,4 +58,6 @@ And we go the extra mile: the edge case handled, the sentence rewritten, the byt
 | 6 | queries per dashboard page, requests and writes per visit, KV use, headroom | `npm run bench` |
 
 Every change is measured (see "Measuring changes" in `docs/how-it-works.md`). Goals 5 and 6
-may never get worse, and a change made for them must make them better.
+may not get worse, and a change made for them must make them better. When the bench blocks a
+change, only the owner can let it through, knowing the numbers; the commit then says what got
+worse, by how much, and why it's worth it.
