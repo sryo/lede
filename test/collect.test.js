@@ -247,3 +247,23 @@ test('collect also asks the Workers rate limiter when one is bound', async () =>
   assert.ok(!keys[0].includes('198.51'));
   assert.equal(keys[0], keys[1]);
 });
+
+test('collect stores the device and browser family in the blobs reserved for them, and nothing new in the visitor hash', async () => {
+  const points = [];
+  const kv = new Map([['sites', '["example.com"]'], ['salt', 's']]);
+  const env = { STORE: { get: async k => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v), delete: async k => kv.delete(k) }, EVENTS: { writeDataPoint: p => points.push(p) } };
+  const send = (ua, extra = {}) => collect(new Request('https://worker.test/lede', {
+    method: 'POST', headers: { ...BEACON, 'User-Agent': ua, 'CF-Connecting-IP': '1.2.3.4', ...extra }, body: JSON.stringify({ u: 'https://example.com/docs' }),
+  }), env);
+  const android = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36';
+  await send(SAFARI);
+  await send('Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1');
+  await send(android, { 'Sec-CH-UA-Mobile': '?1' });
+  await send(android, { 'Sec-CH-UA-Mobile': '?0' });
+  assert.equal(points.length, 4);
+  const rows = points.map(p => Object.fromEntries(FIELDS.map((f, i) => [f, p.blobs[i]])));
+  assert.deepEqual(rows.map(r => [r.device, r.browser]), [['computer', 'safari'], ['phone', 'safari'], ['phone', 'chrome'], ['tablet', 'chrome']]);
+  assert.deepEqual(points.map(p => [p.blobs[13], p.blobs[14]]), rows.map(r => [r.device, r.browser]), 'blob14 and blob15');
+  assert.ok(rows.every(r => r.utmTerm === ''));
+  assert.equal(rows[2].visitor, rows[3].visitor, 'the hint that settles the device is not part of who the visitor is');
+});

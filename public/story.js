@@ -5,7 +5,12 @@ import { displayHost } from './hosts.js';
 export const CHANNELS = { paid: 'Paid', email: 'Email', ai: 'AI assistants', search: 'Search', video: 'Video', social: 'Social', referral: 'Referral', direct: 'Direct' };
 // Hosts whose name doesn't read as the site people know.
 const NAMES = { 'news.ycombinator.com': 'Hacker News' };
-export const labelOf = (dim, key) => dim === 'channel' ? (CHANNELS[key] || key || 'Unknown') : dim === 'referrer' ? (NAMES[key] || displayHost(key) || 'Direct') : (key || '(none)');
+const USES = { samsung: 'Samsung Internet', app: 'Inside apps', other: 'Other browsers' };
+let regions;
+// Countries by name; a code Intl doesn't know (T1, for Tor) stays as it is.
+const country = k => { try { return (regions ??= new Intl.DisplayNames('en', { type: 'region' })).of(k); } catch { return k; } };
+export const labelOf = (dim, key) => dim === 'channel' ? (CHANNELS[key] || key || 'Unknown') : dim === 'referrer' ? (NAMES[key] || displayHost(key) || 'Direct')
+  : !key ? (dim === 'country' ? 'Unknown' : '(none)') : dim === 'country' ? country(key) : USES[key] || key[0].toUpperCase() + key.slice(1) + (dim === 'device' ? 's' : '');
 export const fmtN = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(1) + 'k' : n >= 1e3 ? (n / 1e3).toFixed(2) + 'k' : String(Math.round(n));
 export const fmtInt = n => Math.round(n).toLocaleString('en-US');
 export const count = n => n < 1e5 ? fmtInt(n) : fmtN(n);
@@ -35,7 +40,7 @@ export const pageName = k => k === '/' ? 'the home page' : k;
 // A path that wraps after an inner slash, never at a hyphen (which would read like a minus at the start of a line).
 export const pathHTML = k => esc(k).replace(/-/g, '\u2011').replace(/(?<=.)\//g, '/<wbr>');
 const pctChange = (c, p) => p ? Math.round((c - p) / p * 100) : null;
-const readers = label => label === 'Direct' ? 'direct visitors' : `${label} readers`;
+export const readers = label => label === 'Direct' ? 'direct visitors' : `${label} readers`;
 
 /* ---------- the story ---------- */
 
@@ -430,6 +435,33 @@ export function sourceStory(totals, ser, label, days) {
   else if (left) parts.push(left + '.');
   return { html: parts.join(' '), without };
 }
+
+/* ---------- countries, devices and browsers ---------- */
+
+const lower = (dim, k) => labelOf(dim, k).toLowerCase();
+const who = (dim, k) => dim == 'country' ? `Readers from ${/^(US|GB|NL)$/.test(k) ? 'the ' : ''}<b>${esc(labelOf(dim, k))}</b>`
+  : dim == 'device' ? `Readers on <b>${lower(dim, k)}</b>` : k == 'app' ? 'Readers inside <b>apps</b>' : `Readers using <b>${esc(labelOf(dim, k))}</b>`;
+
+// The finding that moved the most readers ({ html, dim, key }), by the rules in docs/how-it-works.md; null with no visitors.
+export function audienceStory(A) {
+  const total = rows => sum(rows.map(r => r.visitors));
+  if (!total(A.country)) return null;
+  let best = { impact: 0, html: `${sum(A.country.map(r => r.visits)) < 30 ? 'Too few visits yet to say much' : 'Nothing stands out'} about where readers are or what they use.` };
+  const offer = (impact, dim, key, html) => { if (impact > best.impact) best = { impact, dim, key, html }; };
+  for (const dim of ['country', 'device', 'browser']) for (const r of A[dim]) {
+    const v = r.visitors, was = r.prev?.visitors, x = v / was, m = Math.round(x), c = total(A[dim]), shift = v / c - was / sum(A[dim].map(r => r.prev?.visitors));
+    if (!/^(|XX|T1|other)$/.test(r.key) && moved(v - was, was) && Math.abs(shift) >= .02 && shift * (v - was) > 0) offer(Math.abs(shift) * c, dim, r.key,
+      `${who(dim, r.key)} ${Math.abs(x - m) <= .15 && m > 1 && m < 4 ? ['doubled', 'tripled'][m - 2] : `${x > 1 ? 'rose' : 'fell'} ${Math.round(Math.abs(x - 1) * 100)}%`}, from ${fmtInt(was)} to ${fmtInt(v)}.`);
+  }
+  const [hi, lo] = ['phone', 'computer'].map(k => A.device.find(r => r.key == k)).sort((a, b) => b?.bounce - a?.bounce), all = total(A.device);
+  if (lo?.visits >= 50 && hi.visits >= 50 && Math.round(hi.bounce * 100) - Math.round(lo.bounce * 100) >= 10) {
+    const big = [hi, lo].find(r => r.visitors > all / 2), leave = `${lower('device', hi.key)} leave sooner: <b>${fmtPct(hi.bounce)}</b> of visits bounce, against ${fmtPct(lo.bounce)} on ${lower('device', lo.key)}.`;
+    offer(hi.visits * (hi.bounce - lo.bounce), 'device', hi.key, big ? `Most readers are on ${lower('device', big.key)}, ${big == hi ? 'and' : 'but'} ${leave}` : leave[0].toUpperCase() + leave.slice(1));
+  }
+  return best;
+}
+
+export const audienceNote = ({ partial: p }, days) => p ? `Lede began recording devices and browsers during ${p == 'cur' ? 'these' : 'the'} ${days} days${p == 'cur' ? '' : ' before'}, so they ${p == 'cur' ? 'cover only the visits since then and ' : ''}show no change yet.` : '';
 
 /* ---------- other sub-pages ---------- */
 

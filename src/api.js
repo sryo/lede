@@ -1,5 +1,5 @@
 import * as Q from './queries.js';
-import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, toFirsts, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords } from './shape.js';
+import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, toFirsts, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience } from './shape.js';
 import { getSites, addSite, getAccountId } from './settings.js';
 import { HttpError } from './errors.js';
 import { demoStore } from './demo.js';
@@ -122,6 +122,10 @@ export function sqlStore(env, fetchImpl = fetch) {
       const [site, paid] = await Promise.all([run(Q.siteSearchSql(ds, q)), run(Q.paidWordsSql(ds, q))]);
       return toKeywords(site, paid);
     },
+    async audience(q) {
+      const { cur, prev } = await lists(only => Q.audienceSql(ds, q, only), Q.LISTS.audience);
+      return toAudience(cur, prev);
+    },
   };
 }
 
@@ -170,6 +174,7 @@ async function route(name, url, env, store, req) {
     case 'engagement': return store.engagement(q);
     case 'links': return store.links(q);
     case 'keywords': return store.keywords(q);
+    case 'audience': return store.audience(q);
     case 'conversions': {
       const list = url.searchParams.getAll('goal');
       return store.conversions(q, parseGoals(list.length ? list : null));

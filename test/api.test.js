@@ -4,7 +4,8 @@ import { parseQuery, sqlStore, handleApi, runSql } from '../src/api.js';
 import { ranges, where, hexOf, breakdownSql, flowSql, hourlySql, firstSeenSql, conversionsSql, engagementSql, linksSql, liveSql, summarySql, seriesSql, topSourceSql, DAY } from '../src/queries.js';
 import { demoStore } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
-import { mergeRows, shapeLive , toEngagement} from '../src/shape.js';
+import { mergeRows, shapeLive, toEngagement, toAudience } from '../src/shape.js';
+import { audienceSql } from '../src/queries.js';
 
 const SITES = ['example.com'];
 const ENV = { ACCOUNT_ID: 'acc', ANALYTICS_TOKEN: 'tok', DATASET: 'lede' };
@@ -66,7 +67,14 @@ function fakeSql(calls) {
     calls.push({ endpoint, init });
     const sql = init.body;
     let data;
-    if (sql.includes('AS hr')) data = [{ hr: '1', visitors: '4' }, { hr: '50', visitors: '2' }, { hr: '9999', visitors: '9' }];
+    if (sql.includes('AS device')) data = [
+      { p: 1, country: 'AR', device: 'phone', browser: 'chrome', visitors: '40', visits: '50', views: '60', bounces: '30', total_time: '600' },
+      { p: 1, country: 'US', device: 'computer', browser: 'safari', visitors: '30', visits: '40', views: '90', bounces: '10', total_time: '2400' },
+      { p: 1, country: 'US', device: 'phone', browser: 'safari', visitors: '10', visits: '10', views: '12', bounces: '6', total_time: '100' },
+      { p: 0, country: 'US', device: 'computer', browser: 'safari', visitors: '25', visits: '30', views: '60', bounces: '9', total_time: '1800' },
+      { p: 0, country: 'AR', device: 'phone', browser: 'chrome', visitors: '20', visits: '22', views: '30', bounces: '12', total_time: '300' },
+    ];
+    else if (sql.includes('AS hr')) data = [{ hr: '1', visitors: '4' }, { hr: '50', visitors: '2' }, { hr: '9999', visitors: '9' }];
     else if (sql.includes('AS landing')) data = [{ p: 1, src: 'news.ycombinator.com', landing: '/blog', visitors: '12' }, { p: 0, src: 'news.ycombinator.com', landing: '/blog', visitors: '6' }, { p: 1, src: '', landing: '/', visitors: '5' }, { p: 0, src: '', landing: '/', visitors: '5' }];
     else if (sql.includes('AS d, count(DISTINCT visitor)')) data = [{ p: 1, d: '3', visitors: '5', visits: '6', views: '9', bounces: '3', total_time: '120' }, { p: 1, d: '5', visitors: '1', visits: '1', views: '1', bounces: '1', total_time: '0' }, { p: 0, d: '1', visitors: '7', visits: '7', views: '7', bounces: '7', total_time: '0' }];
     else if (sql.includes('AS ref')) data = [{ d: '0', ref: 'google.com', visitors: '4' }, { d: '0', ref: '', visitors: '1' }];
@@ -348,4 +356,67 @@ test('demo: pages are read for a plausible time, and links and downloads follow 
   const res = await handleApi(new Request('https://worker.test/api/links?days=7'), { STORE: memoryKV({ sites: '["example.com"]' }), DEMO: 'true' }, { waitUntil() {} });
   assert.equal(res.status, 200);
   assert.ok((await res.json()).outbound.length > 0);
+});
+
+/* ---------- countries, devices and browsers ---------- */
+
+test('countries, devices and browsers come from one query, keyed by each visit\'s first event', () => {
+  const q = parseQuery(url('audience?days=7'), SITES);
+  const sql = audienceSql('lede', q);
+  for (const [col, as] of [['blob9', 'country'], ['blob14', 'device'], ['blob15', 'browser']]) assert.ok(sql.includes(`argMin(${col}, timestamp) AS ${as}`), as);
+  assert.match(sql, /GROUP BY p, country, device, browser/);
+  assert.ok(sql.includes(`toDateTime(${q.prevStart})`) && sql.includes(`toDateTime(${q.start})`), 'both periods at once');
+  assert.ok(sql.includes("blob8 = 'pageview'"));
+});
+
+// One row per country, device and browser, as audienceSql returns them.
+const aud = (p, country, device, browser, visitors, bounces = 0) => ({ p, country, device, browser, visitors: String(visitors), visits: String(visitors), views: String(visitors * 2), bounces: String(bounces), total_time: '0' });
+
+test('the three lists add up their rows, biggest first, each with last period\'s figures', () => {
+  const A = toAudience([aud(1, 'US', 'phone', 'safari', 30, 15), aud(1, 'US', 'computer', 'chrome', 20, 5), aud(1, 'AR', 'phone', 'chrome', 40, 20)],
+    [aud(0, 'US', 'phone', 'safari', 10), aud(0, 'AR', 'phone', 'chrome', 10)]);
+  assert.deepEqual(A.country.map(r => [r.key, r.visitors, r.prev?.visitors]), [['US', 50, 10], ['AR', 40, 10]]);
+  assert.deepEqual(A.device.map(r => [r.key, r.visitors, r.bounce, r.prev?.visitors ?? null]), [['phone', 70, 35 / 70, 20], ['computer', 20, .25, null]]);
+  assert.deepEqual(A.browser.map(r => r.key), ['chrome', 'safari']);
+  assert.equal(A.partial, null);
+});
+
+test('visits stored before devices were recorded count for countries only, and the part-recorded period shows no change', () => {
+  // Recording started during this period: its unrecorded visits are left out, and nothing is compared.
+  const cur = toAudience([aud(1, 'US', '', '', 50), aud(1, 'US', 'phone', 'safari', 20)], [aud(0, 'US', '', '', 60)]);
+  assert.equal(cur.partial, 'cur');
+  assert.deepEqual(cur.country.map(r => [r.key, r.visitors, r.prev.visitors]), [['US', 70, 60]]);
+  assert.deepEqual(cur.device.map(r => [r.key, r.visitors, r.prev]), [['phone', 20, null]]);
+  assert.deepEqual(cur.browser.map(r => [r.key, r.prev]), [['safari', null]]);
+  // Recording started during the period before: this period is whole, but there is still nothing to compare with.
+  const prev = toAudience([aud(1, 'US', 'phone', 'safari', 50)], [aud(0, 'US', '', '', 30), aud(0, 'US', 'phone', 'safari', 5)]);
+  assert.equal(prev.partial, 'prev');
+  assert.deepEqual(prev.device.map(r => [r.key, r.visitors, r.prev]), [['phone', 50, null]]);
+  assert.equal(prev.country[0].prev.visitors, 35);
+  // Nothing at all yet.
+  assert.deepEqual(toAudience([], []), { country: [], device: [], browser: [], partial: null });
+});
+
+test('SQL store answers countries, devices and browsers with one query', async () => {
+  const calls = [];
+  const store = sqlStore(ENV, fakeSql(calls));
+  const A = await store.audience(parseQuery(url('audience?days=7'), SITES));
+  assert.equal(calls.length, 1);
+  assert.deepEqual(A.country.map(r => [r.key, r.visitors, r.prev?.visitors]), [['AR', 40, 20], ['US', 40, 25]]);
+  assert.deepEqual(A.device.map(r => [r.key, r.visitors]), [['phone', 50], ['computer', 30]]);
+  assert.equal(A.device[0].bounce, 36 / 60);
+});
+
+test('demo: countries, devices and browsers add up to everyone, and phones leave sooner than computers', async () => {
+  const res = await handleApi(new Request('https://worker.test/api/audience?days=30'), { STORE: memoryKV({ sites: '["example.com"]' }), DEMO: 'true' }, { waitUntil() {} });
+  assert.equal(res.status, 200);
+  const A = await res.json();
+  const s = await demoStore.summary(parseQuery(url('summary?days=30'), SITES));
+  for (const dim of ['country', 'device', 'browser']) {
+    assert.ok(A[dim].length > 1 && A[dim].every(r => r.key && r.prev), dim);
+    assert.ok(Math.abs(A[dim].reduce((a, r) => a + r.visitors, 0) - s.cur.visitors) < 1, `${dim} adds up to everyone`);
+  }
+  const by = Object.fromEntries(A.device.map(r => [r.key, r]));
+  assert.ok(by.phone.bounce - by.computer.bounce >= .1);
+  assert.equal(A.partial, null);
 });

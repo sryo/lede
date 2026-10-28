@@ -43,16 +43,14 @@
 /* transparency, not white: a colour keeps its hue, and overlapping marks (crossing ribbons) show it */
 :root{
   --time-t:color-mix(in srgb,var(--time) var(--a-rest),transparent); --time-p:color-mix(in srgb,var(--time) var(--a-pale),transparent);
-  --time-ts:color-mix(in srgb,var(--time) var(--a-rest-s),transparent); --time-ps:color-mix(in srgb,var(--time) var(--a-pale-s),transparent);
   /* amber is light, so its faded versions need more opacity to show as much as the darker colours */
   --src-t:color-mix(in srgb,var(--src) calc(var(--a-rest) * 1.3),transparent); --src-p:color-mix(in srgb,var(--src) calc(var(--a-pale) * 1.7),transparent);
-  --src-ts:color-mix(in srgb,var(--src) calc(var(--a-rest-s) * 1.2),transparent); --src-ps:color-mix(in srgb,var(--src) calc(var(--a-pale-s) * 1.5),transparent);
+  --src-ts:color-mix(in srgb,var(--src) calc(var(--a-rest-s) * 1.2),transparent);
   --page-t:color-mix(in srgb,var(--page) var(--a-rest),transparent); --page-p:color-mix(in srgb,var(--page) var(--a-pale),transparent);
-  --page-ts:color-mix(in srgb,var(--page) var(--a-rest-s),transparent); --page-ps:color-mix(in srgb,var(--page) var(--a-pale-s),transparent);
+  --page-ts:color-mix(in srgb,var(--page) var(--a-rest-s),transparent);
   --bnc-t:color-mix(in srgb,var(--bnc) var(--a-rest),transparent); --bnc-p:color-mix(in srgb,var(--bnc) var(--a-pale),transparent);
-  --bnc-ts:color-mix(in srgb,var(--bnc) var(--a-rest-s),transparent); --bnc-ps:color-mix(in srgb,var(--bnc) var(--a-pale-s),transparent);
   --live-t:color-mix(in srgb,var(--live) var(--a-rest),transparent); --live-p:color-mix(in srgb,var(--live) var(--a-pale),transparent);
-  --live-ts:color-mix(in srgb,var(--live) var(--a-rest-s),transparent); --live-ps:color-mix(in srgb,var(--live) var(--a-pale-s),transparent);
+  --live-ps:color-mix(in srgb,var(--live) var(--a-pale-s),transparent);
   --rule:color-mix(in srgb,var(--ink) 30%,var(--tile));
   --focus:var(--page);
 }
@@ -272,7 +270,6 @@ button.tile-title:hover{color:var(--ink)}
 .card{background:var(--tile);border-radius:var(--r-tile);box-shadow:0 0 0 1px var(--line);padding:20px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .card-title{font-size:var(--fs-s);color:var(--muted)}
 .two{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;align-items:stretch}
-.two.even{grid-template-columns:repeat(2,minmax(0,1fr))}
 .more-link{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) 10px;align-items:center;gap:12px;
   width:calc(100% - 8px);margin:0 -8px;padding:8px;border-radius:8px;font-size:var(--fs-s);color:var(--muted)}
 .more-link:hover{background:var(--line);color:var(--ink)}
@@ -286,7 +283,6 @@ button.tile-title:hover{color:var(--ink)}
 .legend{font-size:var(--fs-xs);color:var(--muted);display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap}
 .legend .total{color:var(--ink);font-weight:600}
 .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:0}
-.sw.ring-sw{box-shadow:inset 0 0 0 2px var(--ink)}
 
 .chart{position:relative;min-height:220px;height:24vh}
 .chart svg{display:block}
@@ -366,7 +362,12 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .lrow.lhead.online>span:nth-child(5){text-align:right}
 .lrow.online .src{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .told-page{text-decoration:underline;text-decoration-color:var(--page);text-decoration-thickness:2.5px;text-underline-offset:4px}
-.told-src{font-weight:700;text-decoration:underline;text-decoration-color:var(--src);text-decoration-thickness:2.5px;text-underline-offset:4px}
+.mix{display:grid;grid-template-columns:88px minmax(0,1fr);gap:6px 16px;align-items:center;margin-top:8px}
+.mix .k{color:var(--muted)}
+.strip{display:flex;gap:2px;height:14px;border-radius:4px;overflow:hidden}
+.strip i{min-width:2px}
+.mix p{grid-column:2;margin:0;display:flex;flex-wrap:wrap;gap:2px 16px}
+.mix span{white-space:nowrap}
 
 @media (max-width:1000px){
   .story{grid-template-columns:auto auto;gap:16px 28px}
@@ -389,7 +390,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
   .node{font-size:var(--fs-xs);max-width:none}
   .node>span:first-child{white-space:normal;overflow-wrap:anywhere}
   .sq-num{flex-direction:column;gap:0}
-    .two,.two.even{grid-template-columns:1fr}
+    .two{grid-template-columns:1fr}
   .lrow{grid-template-columns:minmax(0,1fr) 44px 56px 56px 10px;gap:8px}
   .lrow .pct,.lrow.lhead:not(.rate):not(.online)>span:nth-child(4){display:none}
   .kw .lrow{grid-template-columns:minmax(0,1fr) 56px 56px 10px}.kw .lrow .bar,.kw .lhead>span:nth-child(2){display:none}
@@ -399,6 +400,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
   .lrow.lhead.online>span{white-space:nowrap}
   .lrow.rate{grid-template-columns:minmax(0,1fr) 44px 40px 56px 10px}
   .say{font-size:var(--fs-m)}
+  .mix{grid-template-columns:1fr}.mix p{grid-column:1}
 }
 @media (prefers-reduced-motion:reduce){.blk{transition:none}}
 </style>
@@ -421,7 +423,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 <script type="module">
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, spikeSegment, waterfall, waterfallCaption, bounceSplit, bounceCaption,
-  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, pageStory, scrollStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, keywordsStory, KEYWORDS_EMPTY,
+  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, keywordsStory, KEYWORDS_EMPTY,
   dayHint, ribbonHint, sourceHint, pageHint } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -555,7 +557,6 @@ function showError(el,e,retry){
 }
 // Long paths keep their start and end: /blog/…-analytics.
 const shorten=(s,max=22)=>s.length<=max?s:s.slice(0,Math.ceil(max/2)-1)+'…'+s.slice(-Math.floor(max/2));
-const readers=label=>label==='Direct'?'direct visitors':`${label} readers`;
 
 /* ---------- drawing ---------- */
 const ro=new ResizeObserver(es=>es.forEach(e=>e.target._draw&&e.target._draw()));
@@ -1093,7 +1094,8 @@ async function renderFilter(body,f){
     ${f.path!=null?'<section class="card"><div class="card-title">Where visitors who landed here came from</div><div class="landed"></div><p class="say-sub landed-note"></p></section>':''}
     ${f.path!=null?'<section class="card goal-card" hidden></section>':''}
     ${f.path==null?'<section data-group="pages"></section>':''}
-    ${f.referrer==null&&f.path==null?'<section data-group="sources"></section>':''}`;
+    ${f.referrer==null&&f.path==null?'<section data-group="sources"></section>':''}
+    ${overview?'<section class="card aud" hidden></section>':''}`;
   bindLinks(body.querySelector('.say'));
   const cur=ser.cur.visitors,busiest=cur.indexOf(maxOf(cur));
   // On the overview the markers row carries the dates, as on home.
@@ -1135,6 +1137,7 @@ async function renderFilter(body,f){
       +n('Scrolled',fmtPct(r.scroll),r.prev?pts(r.scroll,r.prev.scroll):'new','How far down the page people got, on average'));
     drawReach(body,r);
   },()=>{});
+  if(overview)api('audience').then(A=>{if(!stale(body,gen))drawAudience(body.querySelector('.aud'),A)},()=>{});
   if(overview||f.path!=null)api('links',p).then(L=>{if(!stale(body,gen))drawLinks(body,L,c.visitors)},()=>{});
 }
 
@@ -1146,6 +1149,18 @@ function drawReach(body,r){
   sec.innerHTML=`<div class="card-title">How far down people read</div><div class="reach-body"><div><p class="reach-say">${S.html}</p>${S.sub?`<p class="say-sub">${S.sub}</p>`:''}</div>${S.few?'':`<div class="reach" role="img" aria-label="Still reading at each tenth of the page: ${R.map(fmtPct).join(', ')}">`
     +R.map((x,i)=>`<span>${['Top',,,,'Middle',,,,,'End'][i]||''}</span><i title="${i+1}0% of the way down: ${fmtPct(x)} still reading"${i===S.drop?' class="on"':''}><b style="width:${x*100}%"></b><u style="width:${((R[i-1]??1)-x)*100}%"></u></i><span>${fmtPct(x)}</span>`).join('')+'</div>'}</div>`;
   body.querySelector('.nums').after(sec);
+}
+
+// Where readers are and what they use: the finding, then each list as one strip of shares, the row it names solid.
+function drawAudience(sec,A){
+  const S=audienceStory(A);if(!S)return;
+  sec.innerHTML=`<div class="card-title">Where readers are and what they use</div><p class="sentence">${S.html}</p>${[['Countries','country'],['Devices','device'],['Browsers','browser']].map(([t,dim])=>{
+    const rows=A[dim].filter(r=>r.visitors),all=sum(rows.map(r=>r.visitors)),on=rows.find(r=>dim==S.dim&&r.key==S.key),far=rows.indexOf(on)>3;
+    const top=rows.slice(0,far?3:4).concat(far?[on]:[]).map(r=>[labelOf(dim,r.key),r.visitors,r==on]),n=rows.length-top.length;
+    if(n)top.push([`${n} more`,all-sum(top.map(r=>r[1])),0,'-p']);
+    return all?`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v,b,a])=>`<i style="flex:${v};background:var(--time${b?'':a||'-t'})" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}</div>
+      <p>${top.map(([l,v,b])=>`<span>${b?`<b>${esc(l)}</b>`:esc(l)} ${fmtPct(v/all)}</span>`).join('')}</p></div>`:''}).join('')}<p class="say-sub">${audienceNote(A,DAYS)}</p>`;
+  sec.hidden=false;
 }
 
 // Links to other sites and files people clicked, as a share of the visitors; a switch when there are both.

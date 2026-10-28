@@ -1,5 +1,6 @@
 import { unwanted, isSpam } from './bots.js';
 import { channelFor, referrerHost } from './channels.js';
+import { deviceOf, browserOf } from './devices.js';
 import { toDataPoint } from './schema.js';
 import { keyword } from './shape.js';
 import { getSites, getSalt } from './settings.js';
@@ -183,6 +184,8 @@ export async function collect(req, env) {
     return new Response(null, { status: 204, headers: CORS });
   }
   const ids = await identify(salt, ev.site, ip, ua, now, visitHour(body.h, now));
-  env.EVENTS.writeDataPoint(toDataPoint({ ...ev, ...ids, country: req.cf?.country || '' }));
+  env.EVENTS.writeDataPoint(toDataPoint({
+    ...ev, ...ids, country: req.cf?.country || '', device: deviceOf(ua, req.headers.get('Sec-CH-UA-Mobile')), browser: browserOf(ua),
+  }));
   return new Response(null, { status: 204, headers: CORS });
 }

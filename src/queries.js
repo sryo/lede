@@ -111,7 +111,7 @@ export function within(q, only, types) {
 // per period unless one period alone fills nearly all of both, as when traffic rose or fell tenfold
 // across a site with hundreds of pages; the other period's list can then come back short, and the
 // store asks for that period on its own.
-export const LISTS = { breakdown: { keep: 100, both: 1000 }, flows: { keep: 10000, both: 20000 }, pages: { keep: 200, both: 2000 } };
+export const LISTS = { breakdown: { keep: 100, both: 1000 }, flows: { keep: 10000, both: 20000 }, pages: { keep: 200, both: 2000 }, audience: { keep: 2000, both: 4000 } };
 const limit = (list, only) => `LIMIT ${only ? list.keep : list.both}`;
 
 // One row per visit: n = events stored, w = page views they stand for (more than n once
@@ -150,6 +150,12 @@ export function breakdownSql(ds, q, dim, only) {
   return `SELECT p, key, ${METRICS} FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS[dim]} AS key`, PERIOD(q))} `
     + `GROUP BY p, key ORDER BY visitors DESC ${limit(LISTS.breakdown, only)}`;
 }
+
+// Visits by country, device and browser together, so one query answers all three lists: a visitor's hash
+// covers their IP and user agent, so each visitor sits in one row and the rows add up per list.
+export const audienceSql = (ds, q, only) =>
+  `SELECT p, country, device, browser, ${METRICS} FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS.country} AS country, argMin(${COL.device}, timestamp) AS device, `
+  + `argMin(${COL.browser}, timestamp) AS browser`, PERIOD(q))} GROUP BY p, country, device, browser ORDER BY visitors DESC ${limit(LISTS.audience, only)}`;
 
 // Visits by the source they came from, and how many of them viewed any of the goal pages.
 export const conversionsSql = (ds, q, from, to, goals) =>

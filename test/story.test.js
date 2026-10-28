@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readStory, tellStory, bounceSplit, bounceCaption, waterfall, waterfallCaption, spikeSegment,
-  flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory } from '../public/story.js';
+  flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
+  audienceStory, audienceNote, labelOf } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -485,4 +486,113 @@ test('scroll: the demo /owls page tells its drop', async () => {
   const S = scrollStory(r);
   assert.equal(strip(S.html), 'Half your readers stop before the middle of this page.');
   assert.match(strip(S.sub), /^The steepest drop comes between 40% and 50% of the way down, where \d+% of readers stop\.$/);
+});
+
+/* ---------- countries, devices and browsers ---------- */
+
+// A row as /api/audience returns it: visitors (as many visits), bounce, and last period's visitors (null: no change to show).
+const ar = (key, visitors, prev, bounce = .4) => ({ key, visitors, visits: visitors, bounce, prev: prev == null ? null : { visitors: prev, visits: prev } });
+// A steady site: the same countries, devices and browsers as before, and phones and computers leave alike.
+const steady = (over = {}) => ({
+  country: [ar('US', 500, 500), ar('GB', 200, 200), ar('DE', 100, 100)],
+  device: [ar('phone', 450, 450, .45), ar('computer', 300, 300, .4), ar('tablet', 50, 50)],
+  browser: [ar('chrome', 400, 400), ar('safari', 300, 300), ar('firefox', 100, 100)],
+  partial: null, ...over,
+});
+
+test('audience: says plainly when nothing stands out, or when there are too few visits to tell', () => {
+  assert.equal(audienceStory(steady(), 30).html, 'Nothing stands out about where readers are or what they use.');
+  const few = { country: [ar('US', 20, 18)], device: [ar('phone', 20, 18)], browser: [ar('safari', 20, 18)], partial: null };
+  assert.equal(audienceStory(few, 30).html, 'Too few visits yet to say much about where readers are or what they use.');
+  assert.equal(audienceStory({ country: [], device: [], browser: [], partial: null }, 30), null, 'no visitors, no card');
+});
+
+test('audience: phones leaving sooner than computers, said with who most readers are', () => {
+  const phones = steady({ device: [ar('phone', 500, 500, .62), ar('computer', 300, 300, .38)] });
+  const s = audienceStory(phones, 30);
+  assert.equal(strip(s.html), 'Most readers are on phones, and phones leave sooner: 62% of visits bounce, against 38% on computers.');
+  assert.deepEqual([s.dim, s.key], ['device', 'phone']);
+  const desk = steady({ device: [ar('computer', 500, 500, .38), ar('phone', 300, 300, .62)] });
+  assert.equal(strip(audienceStory(desk, 30).html), 'Most readers are on computers, but phones leave sooner: 62% of visits bounce, against 38% on computers.');
+  const even = steady({ device: [ar('phone', 400, 400, .3), ar('computer', 400, 400, .5), ar('tablet', 200, 200)] });
+  assert.equal(strip(audienceStory(even, 30).html), 'Computers leave sooner: 50% of visits bounce, against 30% on phones.');
+});
+
+test('audience: a bounce gap needs 10 points and 50 visits on each side', () => {
+  const near = steady({ device: [ar('phone', 500, 500, .47), ar('computer', 300, 300, .38)] });
+  assert.match(audienceStory(near, 30).html, /^Nothing stands out/);
+  const thin = steady({ device: [ar('phone', 750, 750, .7), ar('computer', 49, 49, .2)] });
+  assert.match(audienceStory(thin, 30).html, /^Nothing stands out/);
+});
+
+test('audience: a country whose share of readers moved', () => {
+  const up = steady({ country: [ar('US', 500, 520), ar('GB', 200, 210), ar('AR', 84, 40)] });
+  const s = audienceStory(up, 30);
+  assert.equal(strip(s.html), 'Readers from Argentina doubled, from 40 to 84.');
+  assert.deepEqual([s.dim, s.key], ['country', 'AR']);
+  const down = steady({ country: [ar('US', 500, 500), ar('DE', 110, 200), ar('GB', 200, 200)] });
+  assert.equal(strip(audienceStory(down, 30).html), 'Readers from Germany fell 45%, from 200 to 110.');
+  const us = steady({ country: [ar('US', 700, 500), ar('GB', 200, 200)] });
+  assert.equal(strip(audienceStory(us, 30).html), 'Readers from the United States rose 40%, from 500 to 700.');
+});
+
+test('audience: when the whole site doubled, a country that doubled with it is not a finding', () => {
+  const all = steady({ country: [ar('US', 1000, 500), ar('GB', 400, 200), ar('AR', 80, 40)] });
+  assert.match(audienceStory(all, 30).html, /^Nothing stands out/);
+});
+
+test('audience: devices and browsers that moved, named in words', () => {
+  const ff = steady({ browser: [ar('chrome', 400, 400), ar('safari', 300, 330), ar('firefox', 200, 100)] });
+  assert.equal(strip(audienceStory(ff, 30).html), 'Readers using Firefox doubled, from 100 to 200.');
+  const apps = steady({ browser: [ar('chrome', 400, 400), ar('safari', 300, 300), ar('app', 150, 50)] });
+  assert.equal(strip(audienceStory(apps, 30).html), 'Readers inside apps tripled, from 50 to 150.');
+  const tabs = steady({ device: [ar('phone', 450, 450, .45), ar('computer', 300, 300, .4), ar('tablet', 120, 50)] });
+  assert.equal(strip(audienceStory(tabs, 30).html), 'Readers on tablets rose 140%, from 50 to 120.');
+});
+
+test('audience: the finding that moved the most readers wins', () => {
+  // Phones' bounce gap stands for 500 × 24 pts = 120 visits; Argentina's share moved by about 122 readers.
+  const both = steady({ device: [ar('phone', 500, 500, .62), ar('computer', 300, 300, .38)],
+    country: [ar('US', 500, 520), ar('GB', 200, 210), ar('AR', 200, 70)] });
+  assert.equal(audienceStory(both, 30).key, 'AR');
+  const gap = steady({ device: [ar('phone', 500, 500, .72), ar('computer', 300, 300, .38)],
+    country: [ar('US', 500, 520), ar('GB', 200, 210), ar('AR', 200, 70)] });
+  assert.equal(audienceStory(gap, 30).key, 'phone');
+});
+
+test('audience: unknown countries and other browsers are never the finding', () => {
+  const odd = steady({ country: [ar('US', 500, 500), ar('', 200, 50), ar('T1', 150, 40), ar('XX', 150, 40)],
+    browser: [ar('chrome', 400, 400), ar('other', 300, 50)] });
+  assert.match(audienceStory(odd, 30).html, /^Nothing stands out/);
+});
+
+test('audience: a period only partly recorded shows no change, and the note says which', () => {
+  // The API sends no previous figures for devices and browsers when either period is partly recorded.
+  const part = steady({ device: [ar('phone', 450, null, .45), ar('computer', 300, null, .4)], browser: [ar('chrome', 400, null), ar('firefox', 300, null)], partial: 'cur' });
+  assert.match(audienceStory(part, 30).html, /^Nothing stands out/);
+  assert.equal(audienceNote(part, 30), 'Lede began recording devices and browsers during these 30 days, so they cover only the visits since then and show no change yet.');
+  assert.equal(audienceNote({ ...part, partial: 'prev' }, 7), 'Lede began recording devices and browsers during the 7 days before, so they show no change yet.');
+  assert.equal(audienceNote(steady(), 30), '');
+  // The bounce gap only needs this period, so it still counts.
+  const gap = { ...part, device: [ar('phone', 500, null, .62), ar('computer', 300, null, .38)] };
+  assert.equal(audienceStory(gap, 30).key, 'phone');
+});
+
+test('countries, devices and browsers read as words', () => {
+  assert.equal(labelOf('country', 'US'), 'United States');
+  assert.equal(labelOf('country', 'AR'), 'Argentina');
+  assert.equal(labelOf('country', 'T1'), 'T1', 'a code Intl does not know stays as it is');
+  assert.equal(labelOf('country', ''), 'Unknown');
+  assert.equal(labelOf('device', 'phone'), 'Phones');
+  assert.equal(labelOf('device', 'computer'), 'Computers');
+  assert.equal(labelOf('browser', 'samsung'), 'Samsung Internet');
+  assert.equal(labelOf('browser', 'app'), 'Inside apps');
+  assert.equal(labelOf('browser', 'other'), 'Other browsers');
+});
+
+test('demo: the countries, devices and browsers card leads with a finding', async () => {
+  const A = await demoStore.audience(parseQuery(new URL('https://worker.test/api/audience?days=30'), ['example.com']));
+  const s = audienceStory(A, 30);
+  assert.ok(s.key && !/^Nothing/.test(s.html), s.html);
+  assert.equal(audienceNote(A, 30), '');
 });

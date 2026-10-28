@@ -1,7 +1,7 @@
 // Sample data for local development (DEMO="true"). It answers the same questions as the SQL
 // store, returning the same raw row fields, so the dashboard can't tell the difference.
-import { metrics, toSeries, toFlows, toFirsts, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords } from './shape.js';
-import { hourlyStart , BANDS} from './queries.js';
+import { metrics, toSeries, toFlows, toFirsts, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience } from './shape.js';
+import { hourlyStart, BANDS } from './queries.js';
 
 // A field guide to birds. w: traffic weight, vpv: views per visit, br: bounce rate, dur: seconds, en/ex: entry & exit weighting
 const PATHS = [
@@ -60,6 +60,12 @@ const LINKS = [
   { kind: 'download', key: '/files/song-chart.pdf', from: '/by-song', rate: .05 },
   { kind: 'download', key: '/files/backyard-checklist.pdf', from: '/', rate: .02 },
 ];
+// Who reads the guide: where (shares of everyone), and on what: device, browser, share, and how much more often
+// those visits bounce. Phones, and apps' own browsers most of all, leave sooner than computers.
+const COUNTRIES = [['US', .38], ['GB', .14], ['CA', .1], ['AU', .07], ['DE', .06], ['IN', .05], ['NL', .04], ['FR', .04], ['BR', .03], ['IE', .03], ['NZ', .03], ['SE', .02], ['JP', .01]];
+const USES = [['phone', 'safari', .26, 1.2], ['phone', 'chrome', .2, 1.2], ['phone', 'app', .07, 1.5], ['phone', 'samsung', .04, 1.2], ['computer', 'chrome', .18, .7],
+  ['computer', 'safari', .08, .7], ['computer', 'edge', .06, .7], ['computer', 'firefox', .05, .65], ['tablet', 'safari', .04, 1], ['tablet', 'chrome', .02, 1]];
+const BM = USES.reduce((a, u) => a + u[2] * u[3], 0);
 const N = 90;
 // An ordinary month with one of each thing the dashboard notices: as autumn goes on, search sends
 // more people to /migration and AI assistants grow slowly; a new page, /swift, goes up; bsky.app starts
@@ -360,6 +366,17 @@ export const demoStore = {
       for (const it of ADS) paid.push({ p, key: it.key, visitors: over(it, range) });
     }
     return toKeywords(site, paid);
+  },
+  async audience(q) {
+    const w = windows(q);
+    const rows = range => {
+      const a = agg(q.filters, ...range);
+      return COUNTRIES.flatMap(([country, cs]) => USES.map(([device, browser, us, bm]) => {
+        const x = cs * us, b = bm / BM;
+        return { country, device, browser, visitors: a.visitors * x, visits: a.visits * x, views: a.views * x, bounces: a.bounces * x * b, total_time: a.total_time * x / b };
+      }));
+    };
+    return toAudience(rows(w.cur), rows(w.prev));
   },
   async live() {
     const now = Math.floor(Date.now() / 1000);
