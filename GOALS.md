@@ -21,11 +21,13 @@ it should do better than any other tool, and look better too.
 - **True to the data.** No conclusion the numbers can't back. Small samples and gaps are
   said plainly, never dressed up as a trend.
 - **Private.** Visits are stored in the site owner's own Cloudflare account and go nowhere
-  else: not to Lede's makers, not to anyone. The one exception is the messages the owner can
-  turn on, which go to the webhook they choose. No cookies on visitors, and nothing follows a
-  person across sites or months. What the dashboard shows can't point to one person: rare words, emails and
-  long numbers are left out.
-- **Free to run.** A small site stays inside Cloudflare's free limits.
+  else: not to Lede's makers, not to anyone. There are two exceptions: the messages the owner
+  can turn on, which go to the webhook they choose, and the totals behind home's second line,
+  which go to Workers AI in the same account, where Cloudflare doesn't keep them or train on
+  them. No cookies on visitors, and nothing follows a person across sites or months. What the
+  dashboard shows can't point to one person: rare words, emails and long numbers are left out.
+- **Free to run.** A small site stays inside Cloudflare's free limits. Workers AI is
+  optional, and Lede works the same without it.
 - **Simple to own.** One Worker, no runtime dependencies, one button to deploy.
 
 ## Goals, in priority order
@@ -33,8 +35,10 @@ When two conflict, the higher one wins.
 
 1. **Insight at a glance.** Every screen opens with what happened and where it came from, in
    one sentence ("Hacker News sent 3 times as many visitors to /pricing"), and says what the
-   owner did just before, never that it was the cause. The
-   numbers come after, to back it up. No query builder, no wall of reports.
+   owner did just before, never that it was the cause. A second line may link findings the
+   first can't fit, with only numbers Lede measured, never a cause, and at most one
+   suggestion, labelled as one. The numbers come after, to back it up. No query builder, no
+   wall of reports.
 2. **Easy.** One line on the site and the first useful sentence follows. Nothing to
    configure, no account anywhere but Cloudflare, installed in minutes. Every error says
    what to do next.
@@ -54,7 +58,7 @@ And we go the extra mile: the edge case handled, the sentence rewritten, the byt
 ## How we know
 | Goal | Measure | Where |
 |---|---|---|
-| 1 | every view leads with a sentence; a story test for each finding | `test/story.test.js` |
+| 1 | every view leads with a sentence; a story test for each finding; the second line's checks | `test/story.test.js`, `test/insight.test.js` |
 | 2 | steps from nothing to the first sentence, written down; every error gives the next step | `docs/how-it-works.md`, `test/` |
 | 3 | screens checked at full size, in both themes and on a phone, before a release | by eye |
 | 4 | each feature has empty, tiny and large-data cases in the tests and the demo | `test/`, `src/demo.js` |
