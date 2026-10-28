@@ -137,6 +137,66 @@ test('goals are saved for everyone who opens the dashboard', async () => {
   assert.equal(bad.status, 400);
 });
 
+test('goals are read as the pages Lede stores: no trailing slash, encoded as browsers send them', async () => {
+  const env = { STORE: memoryKV({ sites: '["example.com"]' }) };
+  const saved = await call('goals?site=example.com', env, { method: 'PUT', body: JSON.stringify({ goals: ['/Pricing/', '/café', '/caf%C3%A9', '/thanks?from=mail'] }) });
+  assert.deepEqual(await saved.json(), { goals: ['/Pricing', '/caf%C3%A9', '/thanks'] });
+  const long = await call('goals?site=example.com', env, { method: 'PUT', body: JSON.stringify({ goals: ['/' + 'é'.repeat(40)] }) });
+  assert.equal(long.status, 400, '40 characters, but 240 once encoded');
+  assert.match((await long.json()).error, /up to 200 characters, where an accented letter counts as six/);
+});
+
+test('goals and funnels saved by an older version are read as they would be saved now, so no card fails on every load', async () => {
+  const settings = {
+    goals: ['/signup/', '/signup', '/' + 'x'.repeat(300), 'nope'],
+    funnels: [['/pricing', '/pricing/'], ['/a', '/b/', '/' + 'é'.repeat(40)], ['/a/', '/b'], ['/c', '/d']],
+  };
+  const env = { STORE: memoryKV({ sites: '["example.com"]', 'settings:example.com': JSON.stringify(settings) }) };
+  const read = await (await call('goals?site=example.com', env)).json();
+  assert.deepEqual(read.goals, ['/signup']);
+  assert.deepEqual(read.funnels, [['/a', '/b'], ['/c', '/d']], 'one page twice is no funnel; a step too long is left out');
+  assert.deepEqual((await (await call('funnels?site=example.com', env)).json()).funnels, read.funnels);
+  // What the dashboard sends back as it opens is accepted.
+  const goals = read.goals.map(g => `goal=${encodeURIComponent(g)}`).join('&');
+  for (const f of read.funnels) assert.equal((await call(`funnel?site=example.com&${f.map(s => `steps=${encodeURIComponent(s)}`).join('&')}`, { ...env, DEMO: 'true' })).status, 200);
+  assert.equal((await call(`conversions?site=example.com&${goals}`, { ...env, DEMO: 'true' })).status, 200);
+});
+
+test('goals, funnels and notes share one key per site; the old keys are read until it is first saved', async () => {
+  const STORE = memoryKV({ sites: '["example.com"]', 'goals:example.com': '["/signup"]', 'notes:example.com': '[{"day":"2026-10-16","text":"Hi"}]' });
+  let reads = 0;
+  const get = STORE.get;
+  STORE.get = k => (reads++, get(k));
+  const env = { STORE };
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/signup'], funnels: [], notes: [{ day: '2026-10-16', text: 'Hi' }] });
+  await call('funnels?site=example.com', env, { method: 'PUT', body: JSON.stringify({ funnels: [['/', '/signup']] }) });
+  assert.deepEqual(JSON.parse(STORE.m.get('settings:example.com')), { goals: ['/signup'], notes: [{ day: '2026-10-16', text: 'Hi' }], funnels: [['/', '/signup']] });
+  reads = 0;
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/signup'], funnels: [['/', '/signup']], notes: [{ day: '2026-10-16', text: 'Hi' }] });
+  assert.equal(reads, 1, 'the sites come from the isolate\'s copy, and the settings are one read');
+});
+
+test('stats read the sites once a minute per isolate, and again at once for a site just added or when the dashboard asks for them', async () => {
+  const STORE = memoryKV({ sites: '["a.example"]' });
+  let reads = 0;
+  const get = STORE.get;
+  STORE.get = k => (k === 'sites' && reads++, get(k));
+  const env = { STORE, DEMO: 'true' };
+  const together = await Promise.all([0, 1, 2].map(i => call(`summary?site=a.example&n=${i}`, env)));
+  assert.ok(together.every(r => r.status === 200));
+  assert.equal(reads, 1, 'requests arriving together share one read');
+  assert.equal((await call('summary?site=a.example&n=3', env)).status, 200);
+  assert.equal(reads, 1);
+  STORE.m.set('sites', '["a.example","b.example"]');
+  assert.equal((await call('summary?site=b.example', env)).status, 200, 'not in the copy, so read again');
+  assert.equal(reads, 2);
+  assert.equal((await call('summary?site=c.example', env)).status, 400);
+  reads = 0;
+  await call('sites', env);
+  await call('summary?site=a.example&n=4', env);
+  assert.equal(reads, 1, 'the dashboard\'s own read of the sites is kept for the stats after it');
+});
+
 test('notes on days are saved for everyone, one per day, and each change is one write', async () => {
   const env = { STORE: memoryKV({ sites: '["example.com"]' }) };
   let writes = 0;

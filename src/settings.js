@@ -2,10 +2,12 @@
 //   sites          JSON list of hostnames that may send events, added from the dashboard
 //   salt:YYYY-MM   random secret that hashes that month's visitors; deletes itself when the month is over
 //   account        Cloudflare account ID, read from the API token the first time stats are asked for
-//   goals:<site>   JSON list of goal paths
+//   settings:<site> JSON {goals, funnels, notes}: goal paths, funnels (lists of paths) and the owner's notes
+//                  on days, {day: YYYY-MM-DD, text}; a field not there was never saved. Read and written in
+//                  api.js. Older versions kept each in its own key (goals:<site>, funnels:<site>,
+//                  notes:<site>), which are read until the site's settings are first saved.
 //   origin         the dashboard's address, for the links in alerts; saved when the dashboard opens
 //   spike:<site>   the day's spike alerts sent so far; deletes itself after two days
-//   notes:<site>   JSON list of the owner's notes on days, {day: YYYY-MM-DD, text}, read and written in api.js
 //   shot:… og:…    a page's picture for its view, and its share picture; see src/shot.js
 import { HttpError } from './errors.js';
 
@@ -14,14 +16,16 @@ import { HttpError } from './errors.js';
 const MEMO_MS = 60_000;
 const memo = new WeakMap();
 
-async function remembered(store, key, read) {
+// The promise is kept, so requests arriving together (a dashboard load sends ten) share one read.
+// fresh reads anyway, and keeps what it read for the others.
+async function remembered(store, key, read, fresh = false) {
   const byKey = memo.get(store) || new Map();
   memo.set(store, byKey);
   const hit = byKey.get(key);
-  if (hit && Date.now() - hit.at < MEMO_MS) return hit.value;
-  const value = await read();
+  if (!fresh && hit && Date.now() - hit.at < MEMO_MS) return hit.value;
+  const value = read();
   byKey.set(key, { value, at: Date.now() });
-  return value;
+  try { return await value; } catch (e) { if (byKey.get(key)?.value === value) byKey.delete(key); throw e; }
 }
 const forget = (store, key) => memo.get(store)?.delete(key);
 
@@ -41,12 +45,23 @@ export function normalizeSite(input) {
   return host.length <= 96 && /^(localhost|([a-z0-9-]+\.)+[a-z0-9-]{2,})$/.test(host) ? host : null;
 }
 
-// fresh skips the per-isolate copy, for the dashboard, which must see a site the moment it is added.
+// fresh reads past the per-isolate copy, for the dashboard, which must see a site the moment it is added.
 export async function getSites(env, { fresh = false } = {}) {
   const store = storeOf(env);
-  const read = async () => JSON.parse(await store.get('sites') || '[]');
-  return fresh ? read() : remembered(store, 'sites', read);
+  return remembered(store, 'sites', async () => JSON.parse(await store.get('sites') || '[]'), fresh);
 }
+
+// One read when the site's settings were saved since they moved to one key, four before that.
+const PARTS = ['goals', 'funnels', 'notes'];
+export async function getSettings(env, site) {
+  const store = storeOf(env);
+  const saved = await store.get(`settings:${site}`);
+  if (saved) return JSON.parse(saved);
+  const old = await Promise.all(PARTS.map(k => store.get(`${k}:${site}`)));
+  return Object.fromEntries(PARTS.flatMap((k, i) => old[i] == null ? [] : [[k, JSON.parse(old[i])]]));
+}
+
+export const saveSettings = (env, site, settings) => storeOf(env).put(`settings:${site}`, JSON.stringify(settings));
 
 export async function addSite(env, input) {
   const site = normalizeSite(input);

@@ -129,25 +129,50 @@ function visits(ds, cond, extra = '', p = '') {
 const METRICS = 'count(DISTINCT visitor) AS visitors, count() AS visits, sum(w) AS views, '
   + 'countIf(n = 1) AS bounces, sumIf(dur, n > 1) AS total_time';
 
+// Once Analytics Engine samples, a visit whose views were mostly left out still counts as one visit
+// (a bounce, if one view is left), so visits and bounces run low. Page views carry step: 1 for a visit's
+// first view, 2 for its second, 3 after, 0 from trackers older than step. Each sampled row stands for
+// _sample_interval rows like it, so the weighted count of step 1 is the visits and of step 2 the visits
+// that didn't bounce, whatever was left out. v1 and v2 count that way only for sampled visits whose views
+// carry a step, and exactly for the rest: a visit kept whole is one visit even when it has two step-1
+// views, as when a second tab joins it or the tracker can't keep its count.
+const STEPS = `, sumIf(_sample_interval, ${COL.step} = 1) AS k1, sumIf(_sample_interval, ${COL.step} = 2) AS k2, countIf(${COL.step} = 0) AS k0`;
+const FLAT = 'countIf(w > n) AS sampled, countIf(k0 > 0 OR w = n) + sumIf(k1, k0 = 0 AND w > n) AS v1, '
+  + 'countIf((k0 > 0 OR w = n) AND n > 1) + sumIf(k2, k0 = 0 AND w > n) AS v2';
+
 // sampled: visits with any sampled view (each such row stands for more than one, so w > n).
 export const summarySql = (ds, q) =>
-  `SELECT p, ${METRICS}, countIf(w > n) AS sampled FROM ${visits(ds, within(q), '', PERIOD(q))} GROUP BY p`;
+  `SELECT p, ${METRICS}, ${FLAT} FROM ${visits(ds, within(q), STEPS, PERIOD(q))} GROUP BY p`;
 
 // d counts days from the start of the previous period, by the day each visit started.
 export const seriesSql = (ds, q) =>
-  `SELECT p, ${dayOf('t0', bothDays(q))} AS d, ${METRICS} FROM ${visits(ds, within(q), ', toUnixTimestamp(min(timestamp)) AS t0', PERIOD(q))} `
+  `SELECT p, ${dayOf('t0', bothDays(q))} AS d, ${METRICS}, ${FLAT} FROM ${visits(ds, within(q), `, toUnixTimestamp(min(timestamp)) AS t0${STEPS}`, PERIOD(q))} `
   + 'GROUP BY p, d ORDER BY p, d';
 
-export const topSourceSql = (ds, q) =>
-  `SELECT ${dayOf('toUnixTimestamp(timestamp)', curDays(q))} AS d, ${COL.referrer} AS ref, count(DISTINCT ${COL.visitor}) AS visitors `
-  + `FROM ${ds} WHERE ${where(q, q.start, q.end)} GROUP BY d, ref ORDER BY d, visitors DESC LIMIT 10000`;
+// Whether the site has had any page view at all, whatever the filters: Analytics Engine keeps 90 days.
+export const everSql = (ds, site) =>
+  `SELECT 1 AS seen FROM ${ds} WHERE index1 = '${site}' AND ${COL.type} = 'pageview' AND timestamp > now() - INTERVAL '90' DAY LIMIT 1`;
 
+// Visitor IDs change at the start of each UTC month (see getSalt), so a period holding one counts
+// someone who came either side of it twice.
+const nextMonth = t => { const d = new Date(t * 1000); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1) / 1000; };
+export const monthSplit = q => ({ cur: nextMonth(q.start) < q.end, prev: nextMonth(q.prevStart) < q.prevEnd });
+
+// Each day's source with the most visitors: one row per day, so a busy day's sources can't crowd
+// the quieter days out of the answer. The inner count isn't named visitors: the outer alias would
+// shadow it, putting max() inside argMax().
+export const topSourceSql = (ds, q) =>
+  `SELECT d, argMax(ref, n) AS ref, max(n) AS visitors FROM (SELECT ${dayOf('toUnixTimestamp(timestamp)', curDays(q))} AS d, ${COL.referrer} AS ref, `
+  + `count(DISTINCT ${COL.visitor}) AS n FROM ${ds} WHERE ${where(q, q.start, q.end)} GROUP BY d, ref) GROUP BY d ORDER BY d LIMIT ${q.days}`;
+
+// d is the day of this period each key was first seen, so the timeline can mark new pages and sources
+// without a query of its own (this period's rows only).
 export function breakdownSql(ds, q, dim, only) {
   if (dim === 'path') {
-    return `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, count(DISTINCT ${COL.visitor}) AS visitors, count(DISTINCT ${COL.visit}) AS visits, sum(_sample_interval) AS views `
-      + `FROM ${ds} WHERE ${within(q, only)} GROUP BY p, key ORDER BY visitors DESC ${limit(LISTS.breakdown, only)}`;
+    return `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, count(DISTINCT ${COL.visitor}) AS visitors, count(DISTINCT ${COL.visit}) AS visits, sum(_sample_interval) AS views, `
+      + `${dayOf('toUnixTimestamp(min(timestamp))', curDays(q))} AS d FROM ${ds} WHERE ${within(q, only)} GROUP BY p, key ORDER BY visitors DESC ${limit(LISTS.breakdown, only)}`;
   }
-  return `SELECT p, key, ${METRICS} FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS[dim]} AS key`, PERIOD(q))} `
+  return `SELECT p, key, ${METRICS}, ${dayOf('min(t0)', curDays(q))} AS d FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS[dim]} AS key, toUnixTimestamp(min(timestamp)) AS t0`, PERIOD(q))} `
     + `GROUP BY p, key ORDER BY visitors DESC ${limit(LISTS.breakdown, only)}`;
 }
 
@@ -162,23 +187,33 @@ export const conversionsSql = (ds, q, from, to, goals) =>
   `SELECT src, count() AS visits, sum(hit) AS reached FROM ${visits(ds, where(q, from, to), `, ${VISIT_KEYS.referrer} AS src, `
   + `max(if(${goals.map(g => `hex(${COL.path}) = '${hexOf(g)}'`).join(' OR ')}, 1, 0)) AS hit`)} GROUP BY src ORDER BY visits DESC LIMIT 200`;
 
-// A funnel: per visit, the first time it viewed each step (NEVER when it didn't), then per period the
-// visits that reached each step in order: s_k counts visits with t0 < t1 < … < t_k < NEVER, each step
-// first seen strictly after the one before. Only views of the step pages are read. The dashboard's
-// filters don't apply: a path filter would leave out every step but one.
+// A funnel: per period, the visits that viewed each step after the step before, any view of it counting,
+// not only the first. With no window functions or arrays, each visit keeps the first (a) and last (z)
+// time it viewed each step (NEVER and 0 when it didn't), and lo carries the earliest the visit can have
+// been at a step: the first view of step 0, then the later of that and each next step's first view. A
+// visit reaches step k when every step up to k was last seen after lo of the one before. That holds for
+// every visit that went through the steps in order, and for two steps it's exact; with more, a visit
+// can count that saw a middle step only before and after the ones around it. Only views of the step
+// pages are read. The dashboard's filters don't apply: a path filter would leave out every step but one.
 const NEVER = 4294967295;
 export function funnelSql(ds, q, steps) {
   const is = s => `hex(${COL.path}) = '${hexOf(s)}'`;
-  const firsts = steps.map((s, i) => `min(if(${is(s)}, toUnixTimestamp(timestamp), ${NEVER})) AS t${i}`).join(', ');
-  const reached = steps.map((_, k) => `countIf(${[...steps.slice(0, k).map((_, i) => `t${i} < t${i + 1}`), `t${k} < ${NEVER}`].join(' AND ')}) AS s${k}`).join(', ');
+  // The last step's first view and the first step's last view are never needed.
+  const times = steps.flatMap((s, i) => [
+    ...(i < steps.length - 1 ? [`min(if(${is(s)}, toUnixTimestamp(timestamp), ${NEVER})) AS a${i}`] : []),
+    ...(i ? [`max(if(${is(s)}, toUnixTimestamp(timestamp), 0)) AS z${i}`] : []),
+  ]).join(', ');
+  const lo = steps.reduce((acc, _, i) => [...acc, i ? `if(a${i} > ${acc[i - 1]}, a${i}, ${acc[i - 1]})` : 'a0'], []);
+  const reached = steps.map((_, k) => `countIf(${['a0 < ' + NEVER, ...steps.slice(1, k + 1).map((_, j) => `z${j + 1} > ${lo[j]}`)].join(' AND ')}) AS s${k}`).join(', ');
   const cond = `${within({ ...q, filters: {} })} AND (${steps.map(is).join(' OR ')})`;
-  return `SELECT p, ${reached} FROM (SELECT ${PERIOD(q)} AS p, ${COL.visit} AS visit, ${firsts} FROM ${ds} WHERE ${cond} GROUP BY p, visit) GROUP BY p`;
+  return `SELECT p, ${reached} FROM (SELECT ${PERIOD(q)} AS p, ${COL.visit} AS visit, ${times} FROM ${ds} WHERE ${cond} GROUP BY p, visit) GROUP BY p`;
 }
 
 // Visitors by the source a visit came from and the page it landed on, for the Sankey.
-export const flowSql = (ds, q, only) =>
+// landing keeps only the visits that landed on that page, for its own view.
+export const flowSql = (ds, q, only, landing) =>
   `SELECT p, src, landing, count(DISTINCT visitor) AS visitors FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS.referrer} AS src, ${VISIT_KEYS.entry} AS landing`, PERIOD(q))} `
-  + `GROUP BY p, src, landing ORDER BY visitors DESC ${limit(LISTS.flows, only)}`;
+  + `${landing == null ? '' : `WHERE hex(landing) = '${hexOf(landing)}' `}GROUP BY p, src, landing ORDER BY visitors DESC ${limit(LISTS.flows, only)}`;
 
 // Where the hourly answer's hour 0 sits: whole days of 24 hours back from today's local midnight, so
 // today's hour k is the hour starting k hours after midnight, whatever the clocks did earlier in the
@@ -192,18 +227,21 @@ export const hourlySql = (ds, q, from, to) =>
   `SELECT intDiv(toUnixTimestamp(timestamp) - ${from}, 3600) AS hr, count(DISTINCT ${COL.visitor}) AS visitors `
   + `FROM ${ds} WHERE ${where(q, from, to)} GROUP BY hr ORDER BY hr LIMIT 2000`;
 
-// The day each page or source was first seen in the period, for marking new ones on the timeline.
-export const firstSeenSql = (ds, q, dim) =>
-  `SELECT ${COL[dim]} AS key, ${dayOf('toUnixTimestamp(min(timestamp))', curDays(q))} AS d, count(DISTINCT ${COL.visitor}) AS visitors `
-  + `FROM ${ds} WHERE ${where(q, q.start, q.end)} GROUP BY key ORDER BY visitors DESC LIMIT 200`;
-
 // Per page: page views that sent an engagement event (n), and their engaged milliseconds and scroll
 // percentages summed, each weighted by the views a sampled row stands for. Averages are taken in shape.js.
 // For one page it also counts the views that got at least 10%, 20%... 100% of the way down (r10...r100),
 // so the page's view can show where readers stop without a query of its own.
+// It also takes the median engaged time, and the 75th percentile of each Web Vital (what Google's
+// thresholds are judged on) over the views that measured it: a view with 0 had none (an older tracker,
+// a browser without the API, no tap or key for INP). CLS 0 is left out too: it can't be told apart from
+// a browser that doesn't report layout shifts (Firefox, Safari), so pages that never shift have none.
+// lcp_n, inp_n, cls_n: the views each one comes from.
 export const BANDS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
+const VITALS = [['lcp', `${COL.lcp} > 0`], ['inp', `${COL.inp} > 0`], ['cls', `${COL.cls} > 0`]]
+  .map(([k, has]) => `, quantileExactWeighted(0.75)(${COL[k]}, if(${has}, _sample_interval, 0)) AS ${k}, sumIf(_sample_interval, ${has}) AS ${k}_n`).join('');
 export const engagementSql = (ds, q, only) =>
   `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, sum(_sample_interval) AS n, sum(_sample_interval * ${COL.engaged}) AS ms, sum(_sample_interval * ${COL.scroll}) AS depth`
+  + `, quantileExactWeighted(0.5)(${COL.engaged}, _sample_interval) AS median_ms${VITALS}`
   + (q.filters.path == null ? '' : BANDS.map(d => `, sumIf(_sample_interval, ${COL.scroll} >= ${d}) AS r${d}`).join(''))
   + ` FROM ${ds} WHERE ${within(q, only, ['engagement'])} GROUP BY p, key ORDER BY n DESC ${limit(LISTS.pages, only)}`;
 
@@ -251,8 +289,9 @@ export const paidWordsSql = (ds, q) =>
 export const NEXT = { keep: 250, both: 2000, rows: 10000 };
 const VISIT_ID = `substring(${COL.visit}, 1, 12)`;
 
-export const nextVisitsSql = (ds, q) =>
-  `SELECT ${PERIOD(q)} AS p, ${VISIT_ID} AS v FROM ${ds} WHERE ${within(q)} GROUP BY p, v ORDER BY v LIMIT ${NEXT.both}`;
+// only asks for one period, with one more than keep, which is enough to tell whether it had more.
+export const nextVisitsSql = (ds, q, only) =>
+  `SELECT ${PERIOD(q)} AS p, ${VISIT_ID} AS v FROM ${ds} WHERE ${within(q, only)} GROUP BY p, v ORDER BY v LIMIT ${only ? NEXT.keep + 1 : NEXT.both}`;
 
 // ids must already be checked to be 12 hex characters (pickVisits does), since they go in as written.
 export function nextRowsSql(ds, q, ids) {
