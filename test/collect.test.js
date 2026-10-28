@@ -257,11 +257,13 @@ test('a page view says where it falls in its visit, so visits and bounces surviv
 test('Web Vitals ride on the engagement event, and a broken measurement is unknown', () => {
   const ev = body => parseEvent({ u: 'https://example.com/', t: 'engagement', e: 2000, s: 10, ...body }, SITES);
   const v = body => { const e = ev(body); return [e.lcp, e.inp, e.cls]; };
-  assert.deepEqual(v({ lcp: 2400.4, inp: 180.6, cls: 105 }), [2400, 181, 105]);
+  assert.deepEqual(v({ lcp: 2400.4, inp: 180.6, cls: 105 }), [2400, 181, 106]);
+  assert.deepEqual(v({ lcp: 900, cls: 0 }), [900, 0, 1], 'a page that never shifts is still measured');
+  assert.deepEqual(v({ lcp: 900 }), [900, 0, 0], 'no CLS sent: not measured');
   assert.deepEqual(v({}), [0, 0, 0], 'not measured');
   assert.deepEqual(v({ lcp: 60001, inp: -1, cls: 10001 }), [0, 0, 0], 'out of bounds');
   assert.deepEqual(v({ lcp: '2400', inp: NaN, cls: Infinity }), [0, 0, 0]);
-  assert.deepEqual(v({ lcp: 60000, inp: 0, cls: 10000 }), [60000, 0, 10000]);
+  assert.deepEqual(v({ lcp: 60000, inp: 0, cls: 10000 }), [60000, 0, 10001]);
   assert.equal(parseEvent({ u: 'https://example.com/', lcp: 2400 }, SITES).lcp, undefined, 'a page view carries none');
 });
 
@@ -316,7 +318,7 @@ test('collect writes engagement as doubles and the link in its own blob, hashed 
   assert.deepEqual(FIELDS.slice(12), ['target', 'device', 'browser', 'utmTerm'], 'new fields go at the end, so stored rows keep their layout');
   assert.deepEqual(NUMBERS, ['engaged', 'scroll', 'step', 'lcp', 'inp', 'cls'], 'and new numbers too');
   assert.deepEqual(rows.map(r => r.type), ['pageview', 'engagement', 'download']);
-  assert.deepEqual(points.map(p => p.doubles), [[0, 0, 2, 0, 0, 0], [12000, 80, 0, 1841, 96, 42], [0, 0, 0, 0, 0, 0]]);
+  assert.deepEqual(points.map(p => p.doubles), [[0, 0, 2, 0, 0, 0], [12000, 80, 0, 1841, 96, 43], [0, 0, 0, 0, 0, 0]]);
   assert.deepEqual(rows.map(r => r.target), ['', '', 'example.com/files/guide.pdf']);
   assert.ok(rows.every(r => r.visitor === rows[0].visitor && r.visit === rows[0].visit && r.path === '/docs'));
 });

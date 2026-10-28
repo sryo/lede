@@ -662,10 +662,11 @@ export function scrollNumbers(r) {
 // picture of the page), og (the picture the page shares on social sites), none, or wait (still on its way).
 export function pictureCaption({ path, days, kind, why }) {
   const page = esc(pageName(path)), fix = 'give Lede’s Cloudflare token the Browser Run permission';
-  const later = why === 'failed' ? 'Cloudflare couldn’t take a picture of this page. ' : why === 'permission' ? `For a picture of the page, ${fix}. ` : 'Lede takes a picture of the page tomorrow. ';
+  const later = why === 'failed' ? 'Cloudflare couldn’t take a picture of this page. ' : why === 'permission' ? `For a picture of the page, ${fix}. `
+    : why === 'busy' ? 'Cloudflare’s browser was busy; Lede tries again when you next open this page. ' : 'Lede takes a picture of the page tomorrow. ';
   const what = kind === 'shot' ? `Picture of ${page} taken today. `
     : kind === 'og' ? `This is the picture ${page} shows when shared on social sites, not the page itself. ${later}`
-      : kind === 'none' ? (why === 'permission' ? `To show a picture of the page here, ${fix}. ` : why === 'failed' ? later : 'No picture of the page yet; Lede takes one tomorrow. ') : '';
+      : kind === 'none' ? (why === 'permission' ? `To show a picture of the page here, ${fix}. ` : why === 'failed' || why === 'busy' ? later : 'No picture of the page yet; Lede takes one tomorrow. ') : '';
   return what + (days === 1 ? 'Readers counted today.' : `Readers counted over the last ${days} days.`);
 }
 

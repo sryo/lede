@@ -19,6 +19,8 @@ export const TYPES = ['pageview', 'engagement', 'outbound', 'download', 'ping'];
 const MAX_ENGAGED = 30 * 60e3;
 // A Web Vital out of these bounds is a broken measurement, kept as unknown (0).
 const vital = (v, max) => typeof v === 'number' && v >= 0 && v <= max ? Math.round(v) : 0;
+// CLS is often truly 0, so a measured one is stored one higher and 0 still means not measured.
+const shift = v => typeof v === 'number' && v >= 0 && v <= 10e3 ? Math.round(v) + 1 : 0;
 
 // Parts of a link's path that can name a person or unlock something: an email address, 7 or more digits
 // that aren't a date (20261005), a UUID, 16 or more hex characters, or a long token mixing upper and
@@ -44,7 +46,7 @@ export function scrubPath(path) {
 
 // The type-specific part of an event, or null if it doesn't make sense. Engagement carries e (engaged ms)
 // and s (scroll depth, %), and the page view's Web Vitals when the browser measured them: lcp and inp in
-// ms, cls times 1000. Outbound links and downloads carry o, the link's address without its query, of
+// ms, cls times 1000 (stored one higher, see shift). Outbound links and downloads carry o, the link's address without its query, of
 // which only the host and path are kept (see scrubPath). A ping only says the page is still showing.
 function details(type, body, site) {
   if (type === 'pageview' || type === 'ping') return {};
@@ -53,7 +55,7 @@ function details(type, body, site) {
     if (typeof e !== 'number' || typeof s !== 'number' || !Number.isFinite(e) || !Number.isFinite(s) || e < 1000) return null;
     return {
       engaged: Math.min(MAX_ENGAGED, Math.round(e)), scroll: Math.min(100, Math.max(0, Math.round(s))),
-      lcp: vital(body.lcp, 60e3), inp: vital(body.inp, 60e3), cls: vital(body.cls, 10e3),
+      lcp: vital(body.lcp, 60e3), inp: vital(body.inp, 60e3), cls: shift(body.cls),
     };
   }
   if (typeof body.o !== 'string' || body.o.length > 2048) return null;

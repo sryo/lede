@@ -734,6 +734,8 @@ test('scroll picture: the caption says what the picture is and when it was taken
   assert.equal(pictureCaption({ path: '/owls', days: 1, kind: 'shot' }), 'Picture of /owls taken today. Readers counted today.');
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'budget' }), 'No picture of the page yet; Lede takes one tomorrow. Readers counted over the last 30 days.');
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'failed' }), 'Cloudflare couldn’t take a picture of this page. Readers counted over the last 30 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'busy' }), 'Cloudflare’s browser was busy; Lede tries again when you next open this page. Readers counted over the last 30 days.');
+  assert.match(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'busy' }), /busy; Lede tries again/);
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'budget' }),
     'This is the picture /owls shows when shared on social sites, not the page itself. Lede takes a picture of the page tomorrow. Readers counted over the last 30 days.');
   // Waiting won't help when the token can't take pictures, so it says what to do.

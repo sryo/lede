@@ -233,12 +233,12 @@ export const hourlySql = (ds, q, from, to) =>
 // so the page's view can show where readers stop without a query of its own.
 // It also takes the median engaged time, and the 75th percentile of each Web Vital (what Google's
 // thresholds are judged on) over the views that measured it: a view with 0 had none (an older tracker,
-// a browser without the API, no tap or key for INP). CLS 0 is left out too: it can't be told apart from
-// a browser that doesn't report layout shifts (Firefox, Safari), so pages that never shift have none.
+// a browser without the API, no tap or key for INP). CLS is stored one higher, so a page that never
+// shifts counts with 0 and Firefox and Safari, which don't report shifts, are left out.
 // lcp_n, inp_n, cls_n: the views each one comes from.
 export const BANDS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-const VITALS = [['lcp', `${COL.lcp} > 0`], ['inp', `${COL.inp} > 0`], ['cls', `${COL.cls} > 0`]]
-  .map(([k, has]) => `, quantileExactWeighted(0.75)(${COL[k]}, if(${has}, _sample_interval, 0)) AS ${k}, sumIf(_sample_interval, ${has}) AS ${k}_n`).join('');
+const VITALS = [['lcp', COL.lcp], ['inp', COL.inp], ['cls', `(${COL.cls} - 1)`]]
+  .map(([k, v]) => `, quantileExactWeighted(0.75)(${v}, if(${COL[k]} > 0, _sample_interval, 0)) AS ${k}, sumIf(_sample_interval, ${COL[k]} > 0) AS ${k}_n`).join('');
 export const engagementSql = (ds, q, only) =>
   `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, sum(_sample_interval) AS n, sum(_sample_interval * ${COL.engaged}) AS ms, sum(_sample_interval * ${COL.scroll}) AS depth`
   + `, quantileExactWeighted(0.5)(${COL.engaged}, _sample_interval) AS median_ms${VITALS}`

@@ -8,6 +8,7 @@
 //                  notes:<site>), which are read until the site's settings are first saved.
 //   origin         the dashboard's address, for the links in alerts; saved when the dashboard opens
 //   spike:<site>   the day's spike alerts sent so far; deletes itself after two days
+//   added:<site>   when the site's first event was seen (unix seconds), written once by alerts.js
 //   shot:… og:…    a page's picture for its view, and its share picture; see src/shot.js
 import { HttpError } from './errors.js';
 

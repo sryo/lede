@@ -2131,10 +2131,10 @@ async function drawHome(message){
   if(HOME&&!HOME.empty)home.classList.add('busy');else showSkeleton();
   home.setAttribute('aria-busy','true');
   const done=()=>{home.classList.remove('busy');home.removeAttribute('aria-busy')};
-  let sumR,ser,pages,refs,flows,firsts,live,hourly;
+  let sumR,ser,pages,refs,flows,live,hourly;
   try{
-    [sumR,ser,pages,refs,flows,firsts,live,hourly]=await Promise.all([api('summary'),api('series'),api('breakdown',{dim:'path'}),
-      api('breakdown',{dim:'referrer'}),api('flows'),api('firsts'),api('live',{},true).catch(()=>null),api('hourly').catch(()=>null)]);
+    [sumR,ser,pages,refs,flows,live,hourly]=await Promise.all([api('summary'),api('series'),api('breakdown',{dim:'path'}),
+      api('breakdown',{dim:'referrer'}),api('flows'),api('live',{},true).catch(()=>null),api('hourly').catch(()=>null)]);
   }catch(e){if(gen===homeRender){done();release(grid);$('#story').innerHTML='';HOME=null;showError(grid,e,()=>renderHome(message));announce('Couldn’t load the stats')}return false}
   // The sentence ties a change to the owner's notes; they come with the goals, which load alongside.
   await goalsReady;
@@ -2153,7 +2153,9 @@ async function drawHome(message){
   for(const note of countNotes(sumR,DAYS))$('#story .say-col').insertAdjacentHTML('beforeend',`<p class="sampled">${note}</p>`);
   const pageRows=pages.rows.map(r=>({key:r.key,label:labelOf('path',r.key),value:r.visitors,prev:r.prev?.visitors}));
   const openDim=g=>t=>openView({v:g},t);
-  const B=bounceSplit(S),events=findEvents(S,T,ser,firsts,pageRows);
+  // The day each page and source was first seen comes with the breakdowns.
+  const firstsOf=rows=>rows.filter(r=>r.first!=null&&r.visitors>0).map(r=>({key:r.key,day:r.first,visitors:r.visitors}));
+  const B=bounceSplit(S),events=findEvents(S,T,ser,{pages:firstsOf(pages.rows),sources:firstsOf(refs.rows)},pageRows);
   HOME.events=events;HOME.pageRows=pageRows;
   goalsReady.then(()=>{if(gen===homeRender)drawGoalLine()});
 
@@ -2196,7 +2198,7 @@ async function refreshOnline(){
 // The home's stats for the site seen last start loading with the site list instead of after it.
 // renderHome asks for the same addresses, so it picks these up from the memo.
 function prefetchHome(){
-  for(const p of [api('summary'),api('series'),api('breakdown',{dim:'path'}),api('breakdown',{dim:'referrer'}),api('flows'),api('firsts'),api('hourly')])p.catch(()=>{});
+  for(const p of [api('summary'),api('series'),api('breakdown',{dim:'path'}),api('breakdown',{dim:'referrer'}),api('flows'),api('hourly')])p.catch(()=>{});
 }
 
 async function boot(){

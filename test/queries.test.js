@@ -256,7 +256,7 @@ test('engagement takes the median read and each Web Vital at the 75th percentile
   assert.ok(sql.includes('quantileExactWeighted(0.75)(double4, if(double4 > 0, _sample_interval, 0)) AS lcp, sumIf(_sample_interval, double4 > 0) AS lcp_n'));
   assert.ok(sql.includes('quantileExactWeighted(0.75)(double5, if(double5 > 0, _sample_interval, 0)) AS inp'));
   // A browser that can't measure CLS sends none, stored as 0, so 0 is no measure at all.
-  assert.ok(sql.includes('quantileExactWeighted(0.75)(double6, if(double6 > 0, _sample_interval, 0)) AS cls, sumIf(_sample_interval, double6 > 0) AS cls_n'));
+  assert.ok(sql.includes('quantileExactWeighted(0.75)((double6 - 1), if(double6 > 0, _sample_interval, 0)) AS cls, sumIf(_sample_interval, double6 > 0) AS cls_n'));
 });
 
 // A fake SQL API for breakdowns: answers the query over both periods with rows, and a single-period

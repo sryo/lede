@@ -292,7 +292,10 @@ export const demoStore = {
       })
       .filter(r => r.visitors >= 1)
       .sort((a, b) => b.visitors - a.visitors);
-    return { dim, rows: mergeRows(rows(w.cur), rows(w.prev)) };
+    // Like the SQL, a page's or source's rows say the day it was first seen this period.
+    const seen = dim === 'path' || dim === 'referrer' ? await this.firsts(q) : null;
+    const day = new Map(seen ? seen[dim === 'path' ? 'pages' : 'sources'].map(f => [f.key, f.day]) : []);
+    return { dim, rows: mergeRows(rows(w.cur).map(r => day.has(r.key) ? { ...r, d: day.get(r.key) } : r), rows(w.prev)) };
   },
   async flows(q, landing) {
     const w = windows(q), only = list => landing == null ? list : list.filter(r => r.page === landing);

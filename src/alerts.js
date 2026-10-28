@@ -103,12 +103,13 @@ const people = (n, one) => `${fmtInt(n)} ${Math.round(n) === 1 ? one : `${one}s`
 
 // What backs the sentence up: the total, the top source, and the page that moved most (or was read most).
 function supporting(S, pageRows, toldPage) {
-  const { c, p, diff } = S, lines = [];
-  const pct = p.visitors >= 30 ? ` (${diff > 0 ? '+' : '−'}${Math.round(Math.abs(diff) / p.visitors * 100)}%)` : '';
-  // A flat week's sentence already says it was about the same, so the total stands alone.
-  lines.push(!c.visitors ? `No visitors this week, down from ${fmtInt(p.visitors)} the week before.`
-    : !p.visitors || S.flat ? `${people(c.visitors, 'visitor')}.`
-      : `${people(c.visitors, 'visitor')}, ${fmtInt(Math.abs(diff))} ${diff > 0 ? 'more' : 'fewer'} than the week before${pct}.`);
+  const { c, p, diff } = S, u = S.unit || 'visitors', one = u.slice(0, -1), lines = [];
+  const pct = p[u] >= 30 ? ` (${diff > 0 ? '+' : '−'}${Math.round(Math.abs(diff) / p[u] * 100)}%)` : '';
+  // A flat week's sentence already says it was about the same, and a week with no one already says how many
+  // came before, so the total stands alone or not at all. diff is in S.unit: visits when only one of the
+  // two weeks crosses a month start.
+  if (c.visitors) lines.push(!p.visitors || S.flat ? `${people(c[u], one)}.`
+    : `${people(c[u], one)}, ${fmtInt(Math.abs(diff))} ${diff > 0 ? 'more' : 'fewer'} than the week before${pct}.`);
   const top = S.sources.filter(s => s.value > 0).sort((a, b) => b.value - a.value)[0];
   if (top) lines.push(top.key ? `${top.label} sent the most visitors: ${fmtInt(top.value)}.` : `More visitors came direct than from any source: ${fmtInt(top.value)}.`);
   const moved = pagesFinding(pageRows, toldPage);
