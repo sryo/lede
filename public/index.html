@@ -1665,7 +1665,7 @@ function renderStory(S,T,live){
     <div class="say-col"><p class="sentence">${T.html}</p><p class="goal-line" id="goal-line" hidden></p></div>
     <button type="button" class="now" id="now"></button>`;
   const head=el.querySelector('.headline');
-  head.setAttribute('aria-label',`${fmtInt(c.visitors)} ${head.querySelector('span').textContent}. Open`);
+  head.setAttribute('aria-label',`${fmtInt(c[u])} ${head.querySelector('span').textContent}. Open`);
   head.onclick=()=>openOverview(head);
   bindLinks(el.querySelector('.sentence'));
   const now=$('#now');

@@ -46,8 +46,9 @@ export const pageName = k => k === '/' ? 'the home page' : k;
 export const pathHTML = k => esc(k).replace(/-/g, '\u2011').replace(/(?<=.)\//g, '/<wbr>');
 const pctChange = (c, p) => p ? Math.round((c - p) / p * 100) : null;
 // Lede counts a visitor once a month: the ID starts afresh at each UTC month start, so a period that crosses one
-// counts some people twice. When only one of the two periods crosses one, they are compared on visits instead.
-export const unitOf = totals => totals.split && !totals.split.cur !== !totals.split.prev ? 'visits' : 'visitors';
+// counts some people twice. When only one of the two periods crosses one, they are compared on visits instead,
+// unless one of them has no visitors and so there is nothing to compare.
+export const unitOf = ({ split, cur, prev }) => split && cur?.visitors && prev?.visitors && !split.cur !== !split.prev ? 'visits' : 'visitors';
 export const readers = label => label === 'Direct' ? 'direct visitors' : `${label} readers`;
 
 /* ---------- the story ---------- */

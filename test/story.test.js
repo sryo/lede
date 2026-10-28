@@ -848,10 +848,20 @@ test('the notes under the sentence say which period was sampled, and when the mo
   assert.deepEqual(countNotes({ sampled: true }, 30), ['These 30 days were busy enough that Cloudflare kept only some of the views, so visitor counts may run a little low.']);
   assert.match(countNotes({ sampled: false, prevSampled: true }, 7)[0], /^The 7 days before were busy enough/);
   assert.match(countNotes({ sampled: true, prevSampled: true }, 7)[0], /^These 7 days and the 7 before were busy enough/);
-  assert.deepEqual(countNotes({ split: { cur: true, prev: false } }, 7),
+  const both = { cur: { visitors: 300 }, prev: { visitors: 200 } };
+  assert.deepEqual(countNotes({ ...both, split: { cur: true, prev: false } }, 7),
     ['Lede counts each visitor once a month, and these 7 days cross the start of one, so the two are compared on visits instead of visitors.']);
-  assert.match(countNotes({ split: { cur: false, prev: true } }, 7)[0], /the 7 days before cross the start of one/);
-  assert.deepEqual(countNotes({ split: { cur: true, prev: true } }, 30), []);
+  assert.match(countNotes({ ...both, split: { cur: false, prev: true } }, 7)[0], /the 7 days before cross the start of one/);
+  assert.deepEqual(countNotes({ ...both, split: { cur: true, prev: true } }, 30), []);
+  assert.deepEqual(countNotes({ cur: { visitors: 300 }, prev: { visitors: 0 }, split: { cur: true, prev: false } }, 7), [], 'nothing before, nothing compared');
+});
+
+test('with no visitors in one period there is nothing to compare, so the count stays in visitors', () => {
+  const split = { cur: true, prev: false };
+  assert.equal(unitOf({ cur: { visitors: 40, visits: 60 }, prev: { visitors: 0, visits: 0 }, split }), 'visitors', 'a new site');
+  assert.equal(unitOf({ cur: { visitors: 0, visits: 0 }, prev: { visitors: 0, visits: 0 }, split, ever: true }), 'visitors', 'a site gone quiet');
+  assert.equal(unitOf({ cur: { visitors: 0, visits: 0 }, prev: { visitors: 50, visits: 70 }, split }), 'visitors');
+  assert.equal(unitOf({ cur: { visitors: 40, visits: 60 }, prev: { visitors: 30, visits: 45 }, split }), 'visits');
 });
 
 test('a source\'s busy days are weighed against its days added up, not its visitors', () => {
