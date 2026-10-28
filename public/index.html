@@ -70,7 +70,7 @@ body{background:var(--canvas);color:var(--ink);font:14px/1.4 var(--font);box-siz
 *{box-sizing:border-box}
 [hidden]{display:none!important}
 button,select{font:inherit;color:inherit}
-:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+:focus-visible,.note-edit .del:focus-visible,.event:focus-visible,.add input:focus-visible,.retry:focus-visible,.circle:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
 h1,h2,h3{margin:0;font:inherit}
 .muted{color:var(--muted)}
@@ -83,7 +83,7 @@ h1,h2,h3{margin:0;font:inherit}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .site{display:flex;align-items:baseline;gap:12px;min-width:0}
 .site b,.site select{font-size:var(--fs-l);font-weight:700;letter-spacing:-.02em}
-.hint{font-size:var(--fs-s);color:var(--muted)}
+.hint,.card-title{font-size:var(--fs-s);color:var(--muted)}
 .pick{position:relative;display:inline-flex;align-items:center}
 .pick select{appearance:none;border:0;background:transparent;cursor:pointer;padding:0 20px 0 0}
 .pick svg{position:absolute;right:0;pointer-events:none;color:var(--muted)}
@@ -96,7 +96,7 @@ h1,h2,h3{margin:0;font:inherit}
 /* story row: the number, the sentence, who is here now */
 .story{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:28px;align-items:center}
 .headline{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:4px}
-.headline:focus-visible{outline:2px solid var(--focus);outline-offset:4px;border-radius:6px}
+.headline:focus-visible,.now:focus-visible{outline:2px solid var(--focus);outline-offset:4px;border-radius:6px}
 .headline>b{font-size:var(--fs-xxl);line-height:1;font-weight:700;letter-spacing:-.035em;font-variant-numeric:tabular-nums}
 .headline span{font-size:var(--fs-s)}
 .sentence{margin:0;font-size:var(--fs-m);line-height:1.45}
@@ -113,7 +113,7 @@ h1,h2,h3{margin:0;font:inherit}
 .goal-t{all:unset;cursor:pointer;width:24px;height:28px;display:grid;place-items:center;border-radius:6px;opacity:0}
 .lwrap:hover .goal-t,.goal-t:focus-visible,.goal-t[aria-pressed="true"]{opacity:1}
 .goal-t:hover{background:var(--line)}
-.goal-t:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+.goal-t:focus-visible,.more-link:focus-visible,button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .goal-line .goal-t{margin:0 -4px}
 @media (hover:none){.goal-t{opacity:1}}
 
@@ -122,7 +122,6 @@ h1,h2,h3{margin:0;font:inherit}
 .link:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:2px}
 .now{all:unset;cursor:pointer;display:flex;flex-direction:column;align-items:flex-start;gap:4px}
 .now>span:last-child,.now .pace{font-size:var(--fs-s);white-space:nowrap}
-.now:focus-visible{outline:2px solid var(--focus);outline-offset:4px;border-radius:6px}
 /* Wee People: one letter is one person; tight spacing makes a small crowd */
 .ppl{font-family:WeePeople;font-size:26px;line-height:.86;letter-spacing:-.29em;white-space:nowrap;color:var(--live);font-weight:400}
 .ppl .named{color:var(--src)}
@@ -145,10 +144,10 @@ h1,h2,h3{margin:0;font:inherit}
 .tile-title{all:unset;font-size:var(--fs-s);line-height:1.35;color:var(--muted);cursor:pointer;min-width:0;display:block}
 button.tile-title:hover{color:var(--ink)}
 .tile-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
-.tile-key{font-size:var(--fs-xs);color:var(--muted);white-space:nowrap}
+.tile-key,.mark .tag{font-size:var(--fs-xs);color:var(--muted);white-space:nowrap}
 .tile-key .sw{border-radius:2px}
 .sw.here,.sw.gone{border-radius:50%;width:8px;height:8px;margin-right:4px} .sw.here{background:var(--live)} .sw.gone{background:var(--live-ps)}
-.tile-title:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
+.tile-title:focus-visible,.node:focus-visible,.landed .lbl:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
 .cap{margin:0;font-size:var(--fs-m);line-height:1.3}
 .t-pages .cap{font-size:var(--fs-s)}
 .viz{flex:1;min-height:0;position:relative}
@@ -166,7 +165,6 @@ button.tile-title:hover{color:var(--ink)}
 .chart+.marks{margin-right:40px}
 .mark{all:unset;position:absolute;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;border-radius:4px;padding:0 4px}
 .mark .g{display:flex;gap:4px}
-.mark .tag{font-size:var(--fs-xs);color:var(--muted);white-space:nowrap}
 .mark:hover .tag{color:var(--ink)}
 .mark:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
 .m-date{position:absolute;bottom:0;font-size:var(--fs-xs);color:var(--muted)} .m-date.end{right:0}
@@ -182,17 +180,16 @@ button.tile-title:hover{color:var(--ink)}
 .note-edit .add{margin:0;max-width:none}
 .note-edit .err{color:var(--bnc);font-size:var(--fs-xs)} .note-edit .err:empty{display:none}
 .note-edit .del{all:unset;cursor:pointer;color:var(--muted);font-size:var(--fs-xs);align-self:flex-start;border-radius:4px}
-.note-edit .del:hover{color:var(--ink);text-decoration:underline} .note-edit .del:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.note-edit .del:hover{color:var(--ink);text-decoration:underline}
 
 /* what happened */
 .event{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:8px;align-items:start;
   font-size:var(--fs-xs);line-height:1.3;border-radius:6px}
 .event .glyph{margin-top:4px}
-.event:hover b{text-decoration:underline}
-.event:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-.event b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.event:hover b,.node:hover>span:first-child,.landed .lbl:hover b,.landed .lbl:hover,button.lrow:hover .name{text-decoration:underline}
+.event b,.node>span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .event>span>span{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.events-list{display:flex;flex-direction:column;margin:0 -8px}
+.events-list,.list{display:flex;flex-direction:column;margin:0 -8px}
 .events-list .event{padding:8px;font-size:var(--fs-s);border-radius:8px}
 .events-list .event b,.events-list .event>span>span{white-space:normal}
 .events-list .event:hover{background:var(--line)}
@@ -204,13 +201,10 @@ button.tile-title:hover{color:var(--ink)}
 .node{all:unset;position:absolute;transform:translateY(-50%);cursor:pointer;font-size:var(--fs-xs);line-height:1.3;max-width:150px}
 .nodes.left .node{right:0;text-align:right}
 .nodes.right .node{left:0}
-.node>span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .node.told>span:first-child{white-space:normal;overflow-wrap:normal}
 .node b{font-weight:700}
 .node .chg{color:var(--muted);font-variant-numeric:tabular-nums}
 .node.told .chg{color:var(--ink);font-weight:700}
-.node:hover>span:first-child{text-decoration:underline}
-.node:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
 
 /* rows of ten squares: out of every 10 visits, how many left after one page */
 .sqs{height:100%;display:flex;flex-direction:column;justify-content:flex-start;gap:12px;padding-top:4px}
@@ -218,11 +212,11 @@ button.tile-title:hover{color:var(--ink)}
 .sqrow:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
 .sqrow:hover .sq-label{color:var(--ink)}
 .sq-num{flex:0 1 auto;display:flex;align-items:baseline;gap:8px;min-width:0}
-.sq-num b{font-size:var(--fs-l);font-weight:700;font-variant-numeric:tabular-nums}
+.sq-num b,.num .v{font-size:var(--fs-l);font-weight:700;font-variant-numeric:tabular-nums}
 
 .sqrow.stack .sq-num{flex-direction:column;align-items:flex-start;gap:0}
 .sqrow.under{flex-direction:column;align-items:flex-start;gap:4px}
-.sq-label{font-size:var(--fs-xs);color:var(--muted)}
+.sq-label,.num .k,.credit{font-size:var(--fs-xs);color:var(--muted)}
 .sqrow svg{display:block;flex:none}
 
 /* heatmap */
@@ -243,15 +237,13 @@ button.tile-title:hover{color:var(--ink)}
 .onboard code{font:12px var(--mono);background:var(--line);color:var(--ink);padding:4px 8px;border-radius:8px;overflow-wrap:anywhere}
 .add{display:flex;gap:8px;margin-top:8px;width:100%;max-width:340px}
 .add input{flex:1;min-width:0;height:32px;box-sizing:border-box;border:0;border-radius:999px;padding:0 16px;background:var(--tile);box-shadow:inset 0 0 0 1px var(--line);color:var(--ink);font:inherit;font-size:var(--fs-s)}
-.add input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .add .retry{margin:0;height:32px;padding:0 16px}
 .err{color:var(--bnc);font-size:var(--fs-s)} .err:empty{display:none}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(440px,calc(100% - 32px));z-index:20;background:var(--ink);color:var(--tile);border-radius:12px;padding:10px 14px;font-size:var(--fs-s)}
 .retry{border:0;border-radius:999px;padding:8px 16px;background:var(--ink);color:var(--win);cursor:pointer;font-size:var(--fs-s);font-weight:600;margin-top:4px}
-.retry:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .sk{display:block;background:var(--line);border-radius:6px}
 #home.busy .story,#home.busy .grid,.layer-body.busy{opacity:.5;transition:opacity .2s}
-.state b{color:var(--ink);font-weight:600}
+.state b,.legend .total{color:var(--ink);font-weight:600}
 
 /* zoom layers */
 .layer{position:absolute;inset:0;display:flex;flex-direction:column;background:var(--win)}
@@ -266,7 +258,6 @@ button.tile-title:hover{color:var(--ink)}
 .circle{all:unset;flex:none;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;cursor:pointer;
   background:var(--tile);box-shadow:inset 0 0 0 1px var(--line)}
 .circle:hover{background:var(--line)}
-.circle:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .crumbs{display:flex;flex-direction:column;line-height:1.2;min-width:0;flex:1}
 .crumbs span{font-size:var(--fs-xs);color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .crumbs h2{font-size:var(--fs-l);font-weight:700;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -284,24 +275,18 @@ button.tile-title:hover{color:var(--ink)}
 .hero .big{font-size:var(--fs-xl);font-weight:700;line-height:1;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .hero>span:last-child{font-size:var(--fs-s)}
 .num{display:flex;flex-direction:column;gap:4px}
-.num .k{font-size:var(--fs-xs);color:var(--muted)}
-.num .v{font-size:var(--fs-l);font-weight:700;font-variant-numeric:tabular-nums}
 
 .card{background:var(--tile);border-radius:var(--r-tile);box-shadow:0 0 0 1px var(--line);padding:20px;display:flex;flex-direction:column;gap:8px;min-width:0}
-.card-title{font-size:var(--fs-s);color:var(--muted)}
 .two{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;align-items:stretch}
 .more-link{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) 10px;align-items:center;gap:12px;
   width:calc(100% - 8px);margin:0 -8px;padding:8px;border-radius:8px;font-size:var(--fs-s);color:var(--muted)}
 .more-link:hover{background:var(--line);color:var(--ink)}
-.more-link:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
-.credit{font-size:var(--fs-xs);color:var(--muted)}
 
 .delta{font-size:var(--fs-xs);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .delta .muted{font-weight:400}
 
 .dim-body{display:flex;flex-direction:column;gap:12px}
 .legend{font-size:var(--fs-xs);color:var(--muted);display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap}
-.legend .total{color:var(--ink);font-weight:600}
 .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:4px;vertical-align:0}
 
 .chart{position:relative;min-height:220px;height:24vh}
@@ -333,8 +318,6 @@ button.tile-title:hover{color:var(--ink)}
 .landed{position:relative;min-height:276px;height:28vh}
 .landed .lbl{all:unset;position:absolute;transform:translateY(-50%);font-size:var(--fs-xs);line-height:1.3;cursor:pointer;white-space:nowrap;max-width:calc(40% - 18px);overflow:hidden;text-overflow:ellipsis}
 .landed .lbl span{color:var(--muted)}
-.landed .lbl:hover b,.landed .lbl:hover{text-decoration:underline}
-.landed .lbl:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
 .cross .lbl{max-width:calc(32% - 14px)}
 .cross.narrow .lbl{max-width:calc(40% - 14px)}
 .cross .lbl.l{transform:translate(-100%,-50%);text-align:right}
@@ -364,14 +347,11 @@ button.blk:focus-visible{outline:2px solid var(--tile);outline-offset:-2px;box-s
 
 /* lists: one row style everywhere, with a thin bar after the name. Counts scale to the largest row and have
    no track; rates (0–100%) sit on a track, which is the whole. */
-.list{display:flex;flex-direction:column;margin:0 -8px}
 .lrow{all:unset;box-sizing:border-box;display:grid;grid-template-columns:minmax(0,1.2fr) minmax(48px,1fr) 64px 40px 64px 10px;gap:12px;
   align-items:center;width:100%;padding:8px;border-radius:8px;font-size:var(--fs-s)}
 .lrow.rate{grid-template-columns:minmax(0,1.2fr) minmax(48px,1fr) 44px 64px 10px}
 button.lrow{cursor:pointer}
 button.lrow:hover{background:var(--line)}
-button.lrow:hover .name{text-decoration:underline}
-button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .lrow .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lrow .name small{color:var(--muted);font-size:var(--fs-xs);margin-left:8px}
 .lrow .bar{height:8px;border-radius:4px;overflow:hidden}
@@ -423,7 +403,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
   .t-flow{min-height:440px}
   .flow{grid-template-columns:minmax(0,1fr) minmax(80px,1fr) minmax(0,1fr)}
   .node{font-size:var(--fs-xs);max-width:none}
-  .node>span:first-child{white-space:normal;overflow-wrap:anywhere}
+  .node>span:first-child,.kw .name{white-space:normal;overflow-wrap:anywhere}
   .sq-num{flex-direction:column;gap:0}
     .two{grid-template-columns:1fr}
   .lrow{grid-template-columns:minmax(0,1fr) 44px 56px 56px 10px;gap:8px}
@@ -431,7 +411,6 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
   /* keywords are short and are the point: no bar, and whole words */
   .kw>.lrow{grid-template-columns:minmax(0,1fr) 56px 56px 10px}
   .kw .bar,.kw>.lhead>span:nth-child(2){display:none}
-  .kw .name{white-space:normal;overflow-wrap:anywhere}
   /* phones: the crowd above already shows the figures, so the table keeps page, source and time */
   .lrow.online{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) max-content 10px;column-gap:8px}
   .lrow.online .cty,.lrow.online>.ppl,.lrow.lhead.online>span:nth-child(2){display:none}
