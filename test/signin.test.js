@@ -1,0 +1,57 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import worker from '../src/index.js';
+
+// Workers has this; Node doesn't.
+crypto.subtle.timingSafeEqual ??= (a, b) => Buffer.from(a).equals(Buffer.from(b));
+
+const kv = () => {
+  const m = new Map([['sites', '["example.com"]']]);
+  return { get: async k => m.get(k) ?? null, put: async (k, v) => { m.set(k, v); } };
+};
+const env = (extra = {}) => ({ DASHBOARD_PASSWORD: 'pw', DEMO: 'true', STORE: kv(), ASSETS: { fetch: async () => new Response('page') }, ...extra });
+const call = (e, path, init = {}) => worker.fetch(new Request(`https://lede.test${path}`, init), e, { waitUntil() {} });
+const signIn = (e, password, headers = {}) => call(e, '/api/signin', {
+  method: 'POST', headers: { Origin: 'https://lede.test', ...headers }, body: JSON.stringify({ password }),
+});
+const cookieOf = res => (res.headers.get('Set-Cookie') || '').split(';')[0];
+
+test('without the password the stats answer 401 and the browser shows no sign-in box of its own', async () => {
+  const res = await call(env(), '/api/sites');
+  assert.equal(res.status, 401);
+  assert.equal(res.headers.get('WWW-Authenticate'), null);
+  assert.deepEqual(await res.json(), { error: 'Enter your password.', signIn: true });
+});
+
+test('the right password sets a cookie that opens the stats; a wrong one says so', async () => {
+  const e = env();
+  const wrong = await signIn(e, 'nope');
+  assert.equal(wrong.status, 401);
+  assert.equal((await wrong.json()).error, 'That’s not the password.');
+  assert.equal(wrong.headers.get('Set-Cookie'), null);
+
+  const right = await signIn(e, 'pw');
+  assert.equal(right.status, 204);
+  assert.match(right.headers.get('Set-Cookie'), /^lede=[0-9a-f]{64}; Path=\/; HttpOnly; Secure; SameSite=Strict; Max-Age=\d+$/);
+  const res = await call(e, '/api/sites', { headers: { Cookie: `other=1; ${cookieOf(right)}` } });
+  assert.equal(res.status, 200);
+  assert.ok(Array.isArray((await res.json()).sites));
+});
+
+test('changing the password signs everyone out', async () => {
+  const cookie = cookieOf(await signIn(env(), 'pw'));
+  assert.equal((await call(env({ DASHBOARD_PASSWORD: 'new' }), '/api/sites', { headers: { Cookie: cookie } })).status, 401);
+  assert.equal((await call(env(), '/api/sites', { headers: { Cookie: 'lede=' + '0'.repeat(64) } })).status, 401);
+});
+
+test('signing in only works from the dashboard itself', async () => {
+  assert.equal((await signIn(env(), 'pw', { Origin: 'https://evil.test' })).status, 403);
+});
+
+test('the dashboard page, the tracker beacon and an open dashboard need no password', async () => {
+  assert.equal(await (await call(env(), '/bounce')).text(), 'page');
+  assert.notEqual((await call(env(), '/lede', { method: 'POST', body: '{}' })).status, 401);
+  const open = env({ DASHBOARD_PASSWORD: undefined });
+  assert.equal((await call(open, '/api/sites')).status, 200);
+  assert.equal((await signIn(open, 'anything')).status, 204);
+});

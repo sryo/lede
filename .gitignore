@@ -1,0 +1,12 @@
+# dependencies and local Worker state
+node_modules/
+.wrangler/
+
+# local secrets; the example stays tracked
+.dev.vars
+.env
+.env.*
+
+# logs and OS files
+*.log
+.DS_Store
