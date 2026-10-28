@@ -1,0 +1,44 @@
+# Publishes the static sample (npm run demo) at sryo.github.io/lede, where nothing runs on Cloudflare.
+name: Demo
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A deploy that has started is left to finish; the next push waits its turn.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # The Deploy to Cloudflare button copies this file into every installer's own repo, where Pages is off, so
+    # the sample is published from this repo only and the copies skip it.
+    if: github.repository == 'sryo/lede'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The demo's tests run here as well as on the owner's machine, because Linux, like Pages, tells names apart
+      # by case. The build then stops when it can't rewrite the page.
+      - run: node --test test/demo.test.js
+      - run: npm run demo
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: demo-site
+      - id: deployment
+        uses: actions/deploy-pages@v5

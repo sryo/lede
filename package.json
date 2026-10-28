@@ -7,6 +7,7 @@
     "deploy": "wrangler deploy",
     "test": "node --test",
     "tracker": "node scripts/tracker.mjs",
+    "demo": "node scripts/build-demo.mjs",
     "bench": "node scripts/bench.mjs",
     "bench:compare": "node scripts/compare.mjs"
   },

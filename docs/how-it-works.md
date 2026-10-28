@@ -37,6 +37,8 @@ npm run dev
 
 Open http://localhost:8787. `npm run dev` serves sample data, so no Cloudflare account is needed: it runs with `--local`, which leaves out Workers AI (it has no local stand-in, and would need a login), so the sample's second line under the sentence is fixed text from `src/demo.js`. `npm test` runs the tests.
 
+`npm run demo` builds a static copy of the same sample into `demo-site/`: the dashboard, plus the Worker bundled for the browser with `DEMO="true"`, which answers the dashboard's `/api/*` calls from the sample data in the page itself. The workflow in `.github/workflows/demo.yml` publishes it to https://sryo.github.io/lede/ on every push to `main`, so the demo costs nothing on Cloudflare and visitors can't use up its free limits. The copy has no sign-in, calls no Workers AI (the second line is the sample's fixed text), can't make read-only links, and keeps saved goals, funnels and notes in memory until the page reloads. The repo's owner has to turn Pages on once, in Settings, Pages, with Source set to GitHub Actions; until then the workflow stops before it publishes anything. The workflow runs only in `sryo/lede`, so the copy the Deploy to Cloudflare button makes in your own account skips it.
+
 ## The dashboard
 
 Until the site has had its first visit, home shows the line to add to every page instead. After that it always draws: a period with nobody in it says how many came the period before, and to check that Lede's line is still on every page.
@@ -117,6 +119,7 @@ To show one site's stats to someone without giving them the password, click Shar
 | Messages | `src/alerts.js`, run by the Worker's `scheduled` handler on the crons in `wrangler.jsonc`. Tells the week with `readStory` and `tellStory` from `public/story.js`, the same code home uses. |
 | Second line | `src/insight.js`: the sheet of totals, the checks and the request to Workers AI; `GET /api/insight` in `src/api.js`. See [The second line](#the-second-line). |
 | Sample data | `src/demo.js`, used when `DEMO="true"` (`npm run dev` sets it). |
+| Demo site | `demo/`, `scripts/build-demo.mjs`, `.github/workflows/demo.yml`. See [Run it locally](#run-it-locally). |
 
 Each event is one data point, indexed by site. The blob order is defined once in `src/schema.js`:
 site, path, url, referrer, channel, visitor, visit, type, country, utm_source, utm_medium, utm_campaign, target, device, browser, utm_term.
