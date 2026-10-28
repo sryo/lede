@@ -118,11 +118,14 @@ const HOUR = 3600e3;
 const hourOf = date => new Date(Math.floor(date.getTime() / HOUR) * HOUR);
 
 // The tracker sends when its visit started, so a visit that runs past the hour isn't cut in two: the
-// hour for a tab's first visit, the minute for a later one (see identify). Anything that isn't a whole
-// minute from the last day (a wrong clock, a made-up value) is ignored, and the visit starts this hour.
+// hour for a tab's first visit, the minute for a later one (see identify). A clock a few minutes fast
+// sends a start that hasn't come yet here; it's kept, or the visit's first beacons would join the one
+// before while the rest, arriving after it, make another. Anything that isn't a whole minute from the
+// last day (a wrong clock, a made-up value) is ignored, and the visit starts this hour.
+const SKEW = 5 * 60e3;
 export function visitHour(h, now) {
   const ago = now.getTime() - h;
-  return Number.isInteger(h) && h % 60e3 === 0 && ago >= 0 && ago < 86400e3 ? new Date(h) : hourOf(now);
+  return Number.isInteger(h) && h % 60e3 === 0 && ago >= -SKEW && ago < 86400e3 ? new Date(h) : hourOf(now);
 }
 
 // salt is the month's the visit started in (see getSalt), so the same person gets a new visitor ID each
@@ -144,7 +147,7 @@ export async function identify(salt, site, ip, ua, now, started = hourOf(now)) {
 const pastSalts = new WeakMap();
 export function visitSalt(env, started, now, current) {
   const month = started.toISOString().slice(0, 7);
-  if (month === now.toISOString().slice(0, 7)) return current;
+  if (month >= now.toISOString().slice(0, 7)) return current;
   const byMonth = pastSalts.get(env.STORE) || new Map();
   pastSalts.set(env.STORE, byMonth);
   if (!byMonth.has(month)) byMonth.set(month, env.STORE.get(`salt:${month}`).catch(() => null));

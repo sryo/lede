@@ -118,6 +118,8 @@ test('the visit start from the tracker is only trusted when it makes sense', () 
   assert.equal(visitHour(hour + 17 * 60e3, now).getTime(), hour + 17 * 60e3, 'a minute');
   assert.equal(visitHour(hour + 1, now).getTime(), thisHour, 'not on the minute');
   assert.equal(visitHour(hour + 2 * 3600e3, now).getTime(), thisHour, 'in the future');
+  assert.equal(visitHour(thisHour + 6 * 60e3, now).getTime(), thisHour + 6 * 60e3, 'a clock a little fast');
+  assert.equal(visitHour(thisHour + 11 * 60e3, now).getTime(), thisHour, 'a clock far ahead');
   assert.equal(visitHour(hour - 2 * 86400e3, now).getTime(), thisHour, 'too long ago');
   assert.equal(visitHour('10', now).getTime(), thisHour);
   assert.equal(visitHour(undefined, now).getTime(), thisHour);
@@ -133,6 +135,15 @@ test('a second visit in the same hour is its own visit, while every tab of the f
   assert.equal((await id(Date.parse('2026-10-05T10:41:00Z'))).visit, again.visit);
 });
 
+test('a tab whose clock runs a few seconds fast keeps its later visit whole', async () => {
+  const h = Date.parse('2026-10-05T14:41:00Z');
+  const at = (when, start) => identify('october', 'example.com', '1.2.3.4', 'UA', new Date(when), visitHour(start, new Date(when)));
+  const earlier = await at('2026-10-05T14:40:57Z', Date.parse('2026-10-05T14:00:00Z'));
+  const view = await at('2026-10-05T14:40:57Z', h), engagement = await at('2026-10-05T14:45:00Z', h);
+  assert.equal(view.visit, engagement.visit);
+  assert.notEqual(view.visit, earlier.visit, 'not joined to the visit before');
+});
+
 const store = entries => {
   const kv = new Map(entries), puts = [];
   return { kv, puts, STORE: { get: async k => kv.get(k) ?? null, put: async (k, v) => (puts.push(k), kv.set(k, v)), delete: async k => kv.delete(k) } };
@@ -143,6 +154,7 @@ test('a visit that runs past midnight on the 1st keeps the salt of the month it 
   const oct31 = new Date('2026-10-31T23:00:00Z'), nov1 = new Date('2026-11-01T00:10:00Z');
   assert.equal(await visitSalt({ STORE }, oct31, nov1, 'november'), 'october');
   assert.equal(await visitSalt({ STORE }, nov1, nov1, 'november'), 'november');
+  assert.equal(await visitSalt({ STORE }, nov1, new Date('2026-10-31T23:59:58Z'), 'october'), 'october', 'a clock ahead into next month');
   assert.equal(await visitSalt({ STORE }, new Date('2026-09-30T23:00:00Z'), new Date('2026-10-01T00:10:00Z'), 'october'), 'october', 'gone or never made: this month\'s');
   assert.deepEqual(puts, []);
 });
