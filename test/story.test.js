@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readStory, tellStory, bounceSplit, bounceCaption, waterfall, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
-  scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate } from '../public/story.js';
+  scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
+  unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -783,4 +784,119 @@ test('countries whose English name takes "the" get it', () => {
 test('one person here, from a named source, reads as a sentence of its own', () => {
   const live = { now: 1, recent: 1, visitors: [{ referrer: 'news.ycombinator.com', path: '/a', seconds: 30, active: true, ago: 10 }] };
   assert.equal(strip(onlineStory(live, new Set(['news.ycombinator.com']), '/a')), 'One person is here now. They came from Hacker News and are reading /a. They arrived in the last minute.');
+});
+
+/* ---------- a site gone quiet ---------- */
+
+test('no visitors now after a period with some: how many there were, and what to check', () => {
+  const rows = [ref('google.com', 0, 900), ref('', 0, 340)];
+  const { T } = story({ rows, ser: series(0) });
+  assert.equal(strip(T.html), 'No visitors in the last 28 days, down from 1,240 in the 28 days before. Check that Lede’s line is still on every page.');
+  assert.equal(T.told.size, 0, 'no source is named for a drop that is everyone');
+  assert.equal(T.page, null);
+});
+
+test('no visitors in either period is said as before, for the weekly message too', () => {
+  const { T } = story({ rows: [], ser: series(0) });
+  assert.equal(T.html, 'No visitors in the last 28 days.');
+});
+
+test('quiet days in a row are one run; today is left out, since it isn\'t over', () => {
+  const cur = Array.from({ length: 28 }, (_, i) => i >= 20 ? 3 : 100);
+  assert.deepEqual(quietRuns(cur), [{ start: 20, end: 26, visitors: 21, usual: 100 }]);
+  const two = cur.map((v, i) => i === 5 || i === 9 ? 10 : i >= 20 ? 100 : v);
+  assert.deepEqual(quietRuns(two).map(q => [q.start, q.end]), [[5, 5], [9, 9]]);
+});
+
+test('a period with no visitors at all is quiet against the period before', () => {
+  const zero = Array(28).fill(0);
+  assert.deepEqual(quietRuns(zero), [], 'nothing to say what usual is');
+  const runs = quietRuns(zero, Array(28).fill(80));
+  assert.deepEqual(runs, [{ start: 0, end: 26, visitors: 0, usual: 80 }]);
+  assert.deepEqual(quietRuns(zero, Array(28).fill(10)), [], 'a small site\'s quiet days are noise');
+});
+
+/* ---------- a month start inside one period ---------- */
+
+test('when only one period crosses a month start, the story compares visits, not visitors', () => {
+  // Visitor IDs start afresh on the 1st, so this period counts many returning readers twice.
+  const rows = [ref('google.com', 1500, 1000, .4, .4, { visits: 1100, prev: { visitors: 1000, visits: 1000, views: 2000, bounce: .4, duration: 60 } }),
+    ref('', 600, 400, .4, .4, { visits: 410, prev: { visitors: 400, visits: 400, views: 800, bounce: .4, duration: 60 } })];
+  const totals = totalsOf(rows), ser = series(50);
+  totals.cur.visits = 1510; totals.cur.visitors = 2100;
+  const read = split => readStory({ totals: { ...totals, split }, ser, pages: { rows: [] }, refs: { rows }, flows: { flows: [], prev: [] } });
+  const S = read({ cur: true, prev: false });
+  assert.equal(S.unit, 'visits');
+  assert.equal(S.diff, 110);
+  assert.equal(S.sources[0].change, 100);
+  assert.match(strip(tellStory(S, ser, 28).html), /^google\.com sent 100 of the 110 extra visits\./);
+  assert.equal(read({ cur: true, prev: true }).unit, 'visitors', 'both cross one: alike, so visitors');
+  assert.equal(read(undefined).unit, 'visitors', 'an answer without split reads as before');
+  assert.equal(read({ cur: true, prev: true }).diff, 700);
+});
+
+test('a page or source on its own says its change in visits when the month splits one period', () => {
+  const totals = { cur: { visitors: 900, visits: 500 }, prev: { visitors: 400, visits: 400 }, split: { cur: false, prev: true } };
+  assert.equal(unitOf(totals), 'visits');
+  assert.equal(strip(pageStory(totals, [], '/docs', 7)), '900 visitors on /docs, visits up 25%.');
+  const ser = { start: START, days: 7, cur: { visitors: Array(7).fill(100) }, prev: { visitors: Array(7).fill(60) } };
+  assert.equal(strip(sourceStory(totals, ser, 'Google', 7).html), '900 visitors from Google, visits up 25%.');
+});
+
+test('the notes under the sentence say which period was sampled, and when the month splits one', () => {
+  assert.deepEqual(countNotes({ sampled: false }, 30), []);
+  assert.deepEqual(countNotes({ sampled: true }, 30), ['These 30 days were busy enough that Cloudflare kept only some of the views, so visitor counts may run a little low.']);
+  assert.match(countNotes({ sampled: false, prevSampled: true }, 7)[0], /^The 7 days before were busy enough/);
+  assert.match(countNotes({ sampled: true, prevSampled: true }, 7)[0], /^These 7 days and the 7 before were busy enough/);
+  assert.deepEqual(countNotes({ split: { cur: true, prev: false } }, 7),
+    ['Lede counts each visitor once a month, and these 7 days cross the start of one, so the two are compared on visits instead of visitors.']);
+  assert.match(countNotes({ split: { cur: false, prev: true } }, 7)[0], /the 7 days before cross the start of one/);
+  assert.deepEqual(countNotes({ split: { cur: true, prev: true } }, 30), []);
+});
+
+test('a source\'s busy days are weighed against its days added up, not its visitors', () => {
+  // Someone who came on two days is one visitor but counts on both days, so the days add up to more.
+  const visitors = Array.from({ length: 28 }, (_, i) => i === 18 ? 2758 : i === 19 ? 389 : 130);
+  const ser = { start: START, days: 28, cur: { visitors }, prev: { visitors: visitors.map(() => 128) } };
+  const totals = { cur: { visitors: 5000, bounce: .6 }, prev: { visitors: 3000, bounce: .48 } };
+  const s = sourceStory(totals, ser, 'Hacker News', 28);
+  assert.match(strip(s.html), /Almost half came on Fri, Oct 16–17\./, '3,147 of 6,527 days added up, not of 5,000 visitors');
+  assert.equal(s.without, 'Without those two days, Hacker News sent 6% fewer visitors than the 28 days before.');
+});
+
+/* ---------- speed ---------- */
+
+test('speed is good, needs work or poor, by Google\'s thresholds', () => {
+  assert.equal(vitalRating('lcp', 2500), 'good');
+  assert.equal(vitalRating('lcp', 2501), 'needs work');
+  assert.equal(vitalRating('lcp', 4001), 'poor');
+  assert.equal(vitalRating('inp', 200), 'good');
+  assert.equal(vitalRating('inp', 500), 'needs work');
+  assert.equal(vitalRating('inp', 501), 'poor');
+  assert.equal(vitalRating('cls', 100), 'good');
+  assert.equal(vitalRating('cls', 260), 'poor');
+  assert.equal(vitalRating('cls', null), null);
+});
+
+test('a page\'s speed line: what 3 in 4 views got, in plain words, only for what was measured', () => {
+  assert.equal(strip(vitalsLine({ views: 400, lcp: 2140, inp: 180, cls: 50 }).html),
+    '3 in 4 views loaded within 2.1 s (good), answered a tap or click within 180 ms (good) and moved their layout by 0.05 or less (good).');
+  assert.equal(strip(vitalsLine({ views: 400, lcp: 4800, inp: null, cls: null }).html), '3 in 4 views loaded within 4.8 s (poor).');
+  assert.deepEqual(vitalsLine({ views: 400, lcp: 3000, inp: 300 }).ratings, { lcp: 'needs work', inp: 'needs work' });
+  assert.equal(vitalsLine({ views: 12, lcp: 2000 }).html, 'Too few views yet to say how fast this page is.');
+  assert.equal(vitalsLine({ views: 400 }), null, 'nothing measured yet, nothing said');
+  assert.equal(vitalsLine({ views: 400, lcp: null, inp: null, cls: null }), null);
+});
+
+test('speed finding: the busiest page slow for many readers, never a small one', () => {
+  const rows = [{ key: '/pricing', views: 900, lcp: 4800, inp: 120 }, { key: '/blog/x', views: 300, lcp: 6000 }, { key: '/tiny', views: 40, inp: 900 }, { key: '/', views: 2000, lcp: 1800, inp: 150 }];
+  const pageRows = [{ key: '/pricing', value: 1240 }, { key: '/blog/x', value: 400 }, { key: '/tiny', value: 30 }, { key: '/', value: 5000 }];
+  const F = vitalsFinding(rows, pageRows, 8000);
+  assert.equal(F.key, '/pricing');
+  assert.equal(strip(F.html), '/pricing is slow for many of its 1,240 visitors: 1 in 4 views took 4.8 s or longer to load.');
+  assert.equal(vitalsFinding(rows.slice(2), pageRows, 8000), null, 'a slow page with few visitors is no finding');
+  const both = vitalsFinding([{ key: '/app', views: 500, lcp: 4500, inp: 700 }], [{ key: '/app', value: 600 }], 1000);
+  assert.equal(strip(both.html), '/app is slow for many of its 600 visitors: 1 in 4 views took 4.5 s or longer to load, and 1 in 4 waited 700 ms or longer for a tap or click to answer.');
+  const answer = vitalsFinding([{ key: '/', views: 500, inp: 650 }], [{ key: '/', value: 600 }], 1000);
+  assert.equal(strip(answer.html), 'The home page is slow for many of its 600 visitors: 1 in 4 views waited 650 ms or longer for a tap or click to answer.');
 });
