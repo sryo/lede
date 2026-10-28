@@ -11,6 +11,7 @@
     "bench:compare": "node scripts/compare.mjs"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "wrangler": "^4.153.0"
   },
   "cloudflare": {

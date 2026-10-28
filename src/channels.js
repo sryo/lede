@@ -1,7 +1,9 @@
 // A trailing dot matches any TLD ("google." covers google.com and google.co.uk).
 const AI = ['chatgpt.com', 'chat.openai.com', 'perplexity.ai', 'claude.ai', 'gemini.google.com', 'copilot.microsoft.com', 'poe.com', 'meta.ai', 'you.com', 'phind.com', 'grok.com', 'chat.deepseek.com', 'chat.mistral.ai'];
-const SEARCH = ['google.', 'bing.com', 'duckduckgo.com', 'search.brave.com', 'yahoo.', 'yandex.', 'baidu.com', 'ecosia.org', 'startpage.com', 'kagi.com', 'qwant.com', 'search.naver.com', 'msn.com'];
-const EMAIL = ['mail.google.com', 'outlook.live.com', 'outlook.office.com', 'outlook.office365.com', 'mail.yahoo.com', 'mail.proton.me', 'app.fastmail.com', 'mail.zoho.com'];
+const SEARCH = ['google.', 'bing.com', 'duckduckgo.com', 'search.brave.com', 'yahoo.', 'yandex.', 'ya.ru', 'baidu.com', 'ecosia.org', 'startpage.com', 'kagi.com', 'qwant.com', 'search.naver.com', 'msn.com'];
+// Pages on a search engine's domain that people read rather than search from.
+const NOT_SEARCH = ['sites.google.com', 'docs.google.com', 'groups.google.com', 'news.yahoo.'];
+const EMAIL = ['mail.google.com', 'outlook.live.com', 'outlook.office.com', 'outlook.office365.com', 'mail.yahoo.com', 'mail.proton.me', 'app.fastmail.com', 'mail.zoho.com', 'safelinks.protection.outlook.com', 'teams.microsoft.com', 'teams.live.com'];
 const VIDEO = ['youtube.com', 'youtu.be', 'twitch.tv', 'vimeo.com'];
 const SOCIAL = ['facebook.com', 'm.facebook.com', 'l.facebook.com', 'instagram.com', 'linkedin.com', 'lnkd.in', 'x.com', 'twitter.com', 't.co', 'reddit.com', 'old.reddit.com', 'news.ycombinator.com', 'threads.net', 'threads.com', 'bsky.app', 'pinterest.', 'tiktok.com', 'snapchat.com', 'tumblr.com', 'producthunt.com', 'lobste.rs', 'mastodon.social', 'discord.com', 'telegram.org', 'whatsapp.com', 'slack.com', 'messenger.com'];
 
@@ -17,34 +19,65 @@ const ALIASES = {
   'old.reddit.com': 'reddit.com', 'new.reddit.com': 'reddit.com', 'out.reddit.com': 'reddit.com', 'np.reddit.com': 'reddit.com', 'com.reddit.frontpage': 'reddit.com',
   'lnkd.in': 'linkedin.com', 'com.linkedin.android': 'linkedin.com', 'm.youtube.com': 'youtube.com', 'com.google.android.youtube': 'youtube.com',
   'com.google.android.gm': 'mail.google.com', 'com.google.android.googlequicksearchbox': 'google.com', 'com.microsoft.office.outlook': 'outlook.live.com',
-  'org.telegram.messenger': 'telegram.org', 'com.slack': 'slack.com', 'com.discord': 'discord.com', 'com.openai.chatgpt': 'chatgpt.com',
+  'org.telegram.messenger': 'telegram.org', 't.me': 'telegram.org', 'com.slack': 'slack.com', 'com.discord': 'discord.com', 'com.openai.chatgpt': 'chatgpt.com',
+  'l.threads.com': 'threads.com', 'go.bsky.app': 'bsky.app', 'pplx.ai': 'perplexity.ai', 'ya.ru': 'yandex.ru',
 };
+
+// What people write in utm_source, source or ref for a site that has a host of its own.
+const TAG_ALIASES = {
+  fb: 'facebook.com', facebook: 'facebook.com', ig: 'instagram.com', instagram: 'instagram.com', twitter: 'x.com', x: 'x.com',
+  linkedin: 'linkedin.com', reddit: 'reddit.com', hn: 'news.ycombinator.com', hackernews: 'news.ycombinator.com',
+  youtube: 'youtube.com', yt: 'youtube.com', threads: 'threads.com', bluesky: 'bsky.app', bsky: 'bsky.app', mastodon: 'mastodon.social',
+  tiktok: 'tiktok.com', pinterest: 'pinterest.com', telegram: 'telegram.org', whatsapp: 'whatsapp.com', discord: 'discord.com', slack: 'slack.com',
+  producthunt: 'producthunt.com', google: 'google.com', bing: 'bing.com', duckduckgo: 'duckduckgo.com', gmail: 'mail.google.com',
+  chatgpt: 'chatgpt.com', openai: 'chatgpt.com', perplexity: 'perplexity.ai', claude: 'claude.ai', gemini: 'gemini.google.com', copilot: 'copilot.microsoft.com',
+};
+
+// One name per source: Google's and Yandex's country domains are one search engine each, and every
+// Outlook Safe Links host is Outlook.
+function nameOf(host) {
+  if (ALIASES[host]) return ALIASES[host];
+  if (/^google\.(com?\.)?[a-z]{2,3}$/.test(host)) return 'google.com';
+  if (/^yandex\.(com?\.)?[a-z]{2,3}$/.test(host)) return 'yandex.ru';
+  if (host.endsWith('.safelinks.protection.outlook.com')) return 'outlook.office.com';
+  return host;
+}
 
 // "https://www.l.facebook.com/…" → "facebook.com"; '' when there is no usable host.
 export function referrerHost(url) {
   let host;
   try { host = new URL(url).hostname.toLowerCase().replace(/^www\./, ''); } catch { return ''; }
-  return ALIASES[host] || host;
+  return host && nameOf(host);
+}
+
+// A landing page's utm_source (or source, or ref) as a source: "FB" → "facebook.com". Only a plain word
+// or host is taken, so a tag can't carry anything else into the stats; '' otherwise.
+export function sourceTag(landing) {
+  const tag = (landing.get('utm_source') || landing.get('source') || landing.get('ref') || '').trim().toLowerCase().replace(/^www\./, '');
+  if (!/^[a-z\d][a-z\d._-]{0,63}$/.test(tag)) return '';
+  return TAG_ALIASES[tag] || nameOf(tag);
 }
 
 export const CHANNELS = ['paid', 'email', 'ai', 'search', 'video', 'social', 'referral', 'direct'];
 
 function matches(host, list) {
-  return list.some(d => d.endsWith('.')
+  return !!host && list.some(d => d.endsWith('.')
     ? host.startsWith(d) || host.includes('.' + d)
     : host === d || host.endsWith('.' + d));
 }
 
 // referrer: hostname without "www." ('' when none). landing: URLSearchParams of the page the visit started on.
+// The landing page's source tag counts as much as the referrer, since apps and newsletters often send none.
 export function channelFor(referrer, landing) {
   const medium = (landing.get('utm_medium') || '').toLowerCase();
-  const source = (landing.get('utm_source') || landing.get('ref') || '').toLowerCase();
+  const source = sourceTag(landing);
+  const from = list => matches(referrer, list) || matches(source, list);
   if (PAID_MEDIUMS.includes(medium) || PAID_PARAMS.some(p => landing.has(p))) return 'paid';
-  if (medium === 'email' || medium === 'newsletter' || matches(referrer, EMAIL)) return 'email';
-  if (matches(referrer, AI) || matches(source, AI)) return 'ai';
-  if (medium === 'organic' || matches(referrer, SEARCH)) return 'search';
-  if (medium === 'video' || matches(referrer, VIDEO)) return 'video';
-  if (medium === 'social' || medium === 'organic_social' || matches(referrer, SOCIAL)) return 'social';
+  if (medium === 'email' || medium === 'newsletter' || from(EMAIL)) return 'email';
+  if (from(AI)) return 'ai';
+  if (medium === 'organic' || [referrer, source].some(h => matches(h, SEARCH) && !matches(h, NOT_SEARCH))) return 'search';
+  if (medium === 'video' || from(VIDEO)) return 'video';
+  if (medium === 'social' || medium === 'organic_social' || from(SOCIAL)) return 'social';
   if (referrer || source) return 'referral';
   return 'direct';
 }
