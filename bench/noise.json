@@ -1,0 +1,17 @@
+{
+  "worker: visit": 0.16,
+  "worker: summary": 0.148,
+  "worker: series": 0.068,
+  "worker: flows": 0.061,
+  "worker: hourly": 0.086,
+  "worker: firsts": 0.074,
+  "worker: live": 0.133,
+  "worker: engagement": 0.095,
+  "worker: links": 0.25,
+  "worker: breakdown path": 0.083,
+  "worker: breakdown referrer": 0.063,
+  "worker: conversions /pricing": 0.118,
+  "browser: t.js run": 0.375,
+  "browser: home drawn": 0.094,
+  "browser: home blocking": 0.05
+}
