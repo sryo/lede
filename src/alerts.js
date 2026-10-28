@@ -2,7 +2,7 @@
 // the week's story every Monday, and a line when far more people than usual are here at once.
 // Nothing is read or sent until ALERT_WEBHOOK is set.
 import { sqlStore, withChannels, runSql } from './api.js';
-import { demoAlertStore, DEMO_INSIGHT } from './demo.js';
+import { demoAlertStore, demoNotes, DEMO_INSIGHT } from './demo.js';
 import { factSheet, insight, plain, MIN_VISITORS } from './insight.js';
 import { getSites } from './settings.js';
 import { DAY, hexOf } from './queries.js';
@@ -123,29 +123,39 @@ async function aiLine(env, facts, budget) {
   return env.AI?.run && budget.take() ? insight(env, facts()) : null;
 }
 
+// The owner's notes, so the sentence can say what came after one: one KV read, counted as a request, so
+// notes still in the keys older versions kept (see settings.js) are left out. Without a request left, the
+// week is told without them.
+async function notesOf(env, site, q, budget) {
+  let saved = null;
+  if (budget.take()) try { saved = JSON.parse(await env.STORE.get(`settings:${site}`) || 'null'); } catch {}
+  return saved?.notes || (env.DEMO === 'true' ? demoNotes(q) : []);
+}
+
 async function weekText(env, store, site, nowMs, link, budget) {
   const q = weekQuery(site, nowMs);
   // Every query settles before the next site starts, so none of this site's is still asking then.
-  const got = await Promise.allSettled([store.summary(q), store.series(q), store.breakdown(q, 'path'),
-    store.breakdown(q, 'referrer').then(withChannels), store.flows(q)]);
+  const [got, notes] = await Promise.all([Promise.allSettled([store.summary(q), store.series(q), store.breakdown(q, 'path'),
+    store.breakdown(q, 'referrer').then(withChannels), store.flows(q)]), notesOf(env, site, q, budget)]);
   const failed = got.find(g => g.status === 'rejected');
   if (failed) throw failed.reason;
   const [totals, ser, pages, refs, flows] = got.map(g => g.value);
   const span = { now: 'this week', before: 'the week before' };
-  const S = readStory({ totals, ser, pages, refs, flows }), T = tellStory(S, ser, q.days, span);
+  const S = readStory({ totals, ser, pages, refs, flows, notes }), T = tellStory(S, ser, q.days, span);
   const pageRows = pages.rows.map(r => ({ key: r.key, value: r.visitors, prev: r.prev?.visitors }));
-  const line = S.c.visitors >= MIN_VISITORS ? await aiLine(env, () => factSheet({ site, span, S, T, ser, pages, flows }), budget) : null;
+  const line = S.c.visitors >= MIN_VISITORS ? await aiLine(env, () => factSheet({ site, span, S, T, ser, pages, flows, notes }), budget) : null;
   return [`${displayHost(site)}, the week of ${fmtDay(dayDate(q.start, 0))}`, plain(T.html), ...(line ? [line] : []),
     ...(S.c.visitors || S.p.visitors ? supporting(S, pageRows, T.page) : []), ...(link ? [link] : [])].join('\n');
 }
 
 // A schedule on the Free plan may make 50 subrequests, KV reads among them: here the sites, the dashboard's
 // address and the account. A site's week takes 6 to 9 queries (one more for each of its three lists when a
-// period needs a query of its own) and a query Cloudflare refuses at first is asked again, so sites are told
+// period needs a query of its own) and a KV read for its notes, and a query Cloudflare refuses at first is
+// asked again, so sites are told
 // one at a time while the fewest could fit, and none may take the requests the message needs. A site that
 // runs out is named with those that didn't fit. Its Workers AI request is made only while there's room.
 export const SUBREQUESTS = 50 - 3;
-const PER_SITE = 6;
+const PER_SITE = 7;
 
 const names = list => list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
 

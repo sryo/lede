@@ -121,7 +121,7 @@ test('a long message goes as a few that each fit, cut between sites, then lines,
 });
 
 test('a story longer than Discord takes goes as several messages, all of it, in order', async () => {
-  const sites = Array.from({ length: 7 }, (_, i) => `site${i}.example.com`);
+  const sites = Array.from({ length: 6 }, (_, i) => `site${i}.example.com`);
   const long = '/about/' + 'owls-'.repeat(60);
   const f = fakes({ rows: sql => weekRows(sql).map(r => (r.key === '/about' ? { ...r, key: long } : r)) });
   await run(WEEKLY, env({ ALERT_WEBHOOK: 'https://discord.com/api/webhooks/1/abc', STORE: memoryKV({ sites: JSON.stringify(sites) }) }), f, MONDAY);
@@ -133,14 +133,28 @@ test('a story longer than Discord takes goes as several messages, all of it, in 
 
 test('the week’s story stops before a Free schedule runs out of requests, and names the sites left out', async () => {
   const sites = Array.from({ length: 10 }, (_, i) => `s${i}.org`);
-  const f = fakes();
-  await run(WEEKLY, env({ STORE: memoryKV({ sites: JSON.stringify(sites) }) }), f, MONDAY);
+  const f = fakes(), e = env({ STORE: memoryKV({ sites: JSON.stringify(sites) }) });
+  await run(WEEKLY, e, f, MONDAY);
   assert.ok(f.sql.length <= SUBREQUESTS, `${f.sql.length} queries`);
-  assert.ok(f.sql.length + f.sent.length <= 50, 'Cloudflare’s 50, with the message');
+  assert.ok(f.sql.length + e.STORE.reads + f.sent.length <= 50, 'Cloudflare’s 50, with each site’s notes and the message');
   const body = f.sent.map(s => s.body).join('\n\n');
-  assert.match(body, /^s6\.org, the week of/m);
-  assert.ok(!/^s7\.org, the week/m.test(body));
-  assert.match(body, /\n\nToo many sites for one message, so s7\.org, s8\.org and s9\.org aren’t in it\. Their week is on the dashboard\.$/);
+  assert.match(body, /^s5\.org, the week of/m);
+  assert.ok(!/^s6\.org, the week/m.test(body));
+  assert.match(body, /\n\nToo many sites for one message, so s6\.org, s7\.org, s8\.org and s9\.org aren’t in it\. Their week is on the dashboard\.$/);
+});
+
+test('the week’s story says what came after the owner’s note, read with one KV read', async () => {
+  const e = env(), read = [], get = e.STORE.get;
+  e.STORE.get = key => { read.push(key); return get(key); };
+  e.STORE.map.set('settings:example.com', JSON.stringify({ notes: [{ day: '2026-10-21', text: 'Posted on Hacker News' }] }));
+  // From Wednesday on, about 200 a day instead of 143.
+  const rows = sql => sql.includes('AS d, count(DISTINCT visitor)')
+    ? [1, 0].flatMap(p => Array.from({ length: 7 }, (_, d) => ({ p, d: String(p ? d + 7 : d), visitors: String(p && d >= 2 ? 200 : 143), visits: '200', views: '300', bounces: '90', total_time: '6000' })))
+    : weekRows(sql);
+  const f = fakes({ rows });
+  await run(WEEKLY, e, f, MONDAY);
+  assert.match(f.sent[0].body, /after you posted on Hacker News \(Wed, Oct 21\)\./);
+  assert.equal(read.filter(k => k.startsWith('settings:')).length, 1);
 });
 
 test('a busy week, with queries asked twice, still fits in a Free schedule’s 50 requests', async () => {
