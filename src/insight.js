@@ -140,7 +140,9 @@ export const check = (text, facts) => !problem(text, facts);
 /* ---------- asking Workers AI ---------- */
 
 const RULES = `You write one extra line for Lede, a web analytics dashboard, under a summary sentence the site's owner already reads.
-- Write one or two plain sentences, at most 280 characters in all, that connect findings the summary doesn't already say: sources, the pages their visits began on, reading time, page speed, search words, the owner's notes.
+- Write one or two plain sentences, at most 280 characters in all, that connect two kinds of facts the summary doesn't already put together: a source and the pages its visits began on, a page's reading time and its speed, a search word and a page, a note and what came after it. Don't just repeat one finding or one source's numbers.
+- Write "about" before a rounded count, never before a percentage, and name what a number counts (visitors, views, seconds) as the facts do.
+- For example, from other facts: "Readers from news.ycombinator.com mostly began on /pricing, where they stay 2m 10s, the longest of any page. Worth checking: /pricing loads in 4.1 s, the slowest of the top pages."
 - Use only numbers, pages, sites and names exactly as the facts write them. Don't work out new numbers: no sums, differences, ratios or percentages of your own.
 - Never say why something happened, or that something the owner did caused it. No "because", "due to", "thanks to", "led to" or "drove". Saying something came after the owner's note is fine.
 - You may end with one suggestion, as one of the two sentences, starting "Worth checking:".
@@ -176,7 +178,9 @@ export async function insight(env, facts) {
   if (!env.AI?.run) return null;
   let out;
   try {
-    out = await env.AI.run(MODEL, { messages: [{ role: 'system', content: RULES }, { role: 'user', content: `Facts:\n${facts}` }], max_tokens: 160 });
+    // Gemma 4 thinks before it answers unless told not to, and the thinking alone fills max_tokens.
+    out = await env.AI.run(MODEL, { messages: [{ role: 'system', content: RULES }, { role: 'user', content: `Facts:\n${facts}` }], max_tokens: 160,
+      chat_template_kwargs: { enable_thinking: false } });
   } catch (e) { failed(e); return null; }
   const text = tidy(textOf(out));
   if (!text || /^nothing to add/i.test(text)) return null;
