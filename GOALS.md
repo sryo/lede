@@ -35,9 +35,9 @@ When two conflict, the higher one wins.
 
 1. **Insight at a glance.** Every screen opens with what happened and where it came from, in
    one sentence ("Hacker News sent 3 times as many visitors to /pricing"), and says what the
-   owner did just before, never that it was the cause. A second line may link findings the
-   first can't fit, with only numbers Lede measured, never a cause, and at most one
-   suggestion, labelled as one. The numbers come after, to back it up. No query builder, no
+   owner did just before, never that it was the cause. A second line may say one link between
+   findings the first can't fit, a link Lede worked out itself, with only its numbers, never
+   a cause, and at most one suggestion, labelled as one. The numbers come after, to back it up. No query builder, no
    wall of reports.
 2. **Easy.** One line on the site and the first useful sentence follows. Nothing to
    configure, no account anywhere but Cloudflare, installed in minutes. Every error says

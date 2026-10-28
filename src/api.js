@@ -298,7 +298,7 @@ async function insightFor(q, env, ask) {
   const S = readStory({ totals, ser, pages, refs, flows, notes }), T = tellStory(S, ser, q.days);
   const facts = factSheet({ site: q.site, span: { now: `in the last ${q.days} days`, before: `the ${q.days} days before` },
     S, T, ser, pages, flows, notes, engagement: await ask.seen('engagement'), keywords: await ask.seen('keywords') });
-  return lineFor(env, `insight:${q.site}:${q.days}`, facts);
+  return facts ? lineFor(env, `insight:${q.site}:${q.days}`, facts) : null;
 }
 
 // ask.stat(name, params) answers as /api/<name> would for the same query, sharing its queries when both are

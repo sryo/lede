@@ -117,10 +117,13 @@ function supporting(S, pageRows, toldPage) {
   return lines;
 }
 
-// The line Workers AI adds after the sentence (src/insight.js), when the schedule has a request left for it.
-async function aiLine(env, facts, budget) {
+// The line Workers AI adds after the sentence (src/insight.js), when there is something to connect and the
+// schedule has a request left for it.
+async function aiLine(env, sheet, budget) {
   if (env.DEMO === 'true') return DEMO_INSIGHT;
-  return env.AI?.run && budget.take() ? insight(env, facts()) : null;
+  if (!env.AI?.run) return null;
+  const facts = sheet();
+  return facts && budget.take() ? insight(env, facts) : null;
 }
 
 // The owner's notes, so the sentence can say what came after one: one KV read, counted as a request, so

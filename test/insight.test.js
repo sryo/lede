@@ -25,50 +25,53 @@ const span = { now: 'this week', before: 'the week before' };
 const S = readStory({ totals, ser, pages, refs, flows }), T = tellStory(S, ser, 7, span);
 const facts = factSheet({ site: 'example.com', span, S, T, ser, pages, flows, engagement, keywords, notes: [{ day: '2026-10-24', text: 'Posted on Hacker News' }] });
 
-test('the fact sheet holds rounded totals, the sentence, sources, pages, landings, speed, words and notes, and no addresses', () => {
-  assert.match(facts, /Total: 1,200 visitors; the week before: 1,000 \(\+220, \+22%\)/, 'counts of 100 or more to 2 significant figures');
-  assert.match(facts, /Summary the owner already reads: Hacker News sent .+/);
-  assert.match(facts, /- Hacker News \(news\.ycombinator\.com\): 300; 80; \+220, \+275%; bounce 80%/);
-  assert.match(facts, /- \/pricing: 400; 100/);
-  assert.match(facts, /- Hacker News \(news\.ycombinator\.com\) → \/pricing: 250; 40/);
-  assert.match(facts, /- \/pricing: 0m 20s; LCP 4\.7 s \(poor\), INP 560 ms \(poor\), CLS 0\.09 \(good\)/, 'durations to 10 s, speeds to 10 ms');
-  assert.match(facts, /- \/: 2m 10s; LCP 1\.8 s \(good\), CLS 0\.02 \(good\)\n/, 'INP from 20 taps is too few to say');
-  assert.match(facts, /“pricing” 12; 4/);
-  assert.match(facts, /Sat, Oct 24: “Posted on Hacker News” \(400 visitors that day\)/);
+test('the sheet is candidates Lede worked out, each joining two kinds of facts, rounded, with no addresses', () => {
+  assert.match(facts, /^Site: example\.com\. Compared: this week, against the week before\. Total: 1,200 visitors, 1,000 before\./);
+  assert.match(facts, /Summary the owner already reads \(don’t repeat it\)|Summary the owner already reads \(don't repeat it\): Hacker News sent .+/);
+  assert.match(facts, /\n\d\. Visits from Hacker News \(news\.ycombinator\.com\) that began on \/pricing: 250 visitors this week, 40 the week before; \/pricing had 400 visitors in all, 100 before\./, 'a source and where its visits began');
+  assert.match(facts, /\. Visits from google\.com bounce 30%, against 47% for all visits; most of them began on \/, 500 visitors\./, 'a source that bounces unlike the site');
+  assert.match(facts, /\. \/pricing: the slowest of the top pages to load, LCP 4\.7 s \(poor\), INP 560 ms \(poor\); readers stay 0m 20s/, 'speed and reading time; INP from 20 taps on / is too few');
+  assert.match(facts, /\. “pricing” was searched on the site by 12 visitors this week, 4 the week before; \/pricing had 400 visitors/, 'a search word and the page it names');
+  assert.match(facts, /\. After your note on Sat, Oct 24 \(“Posted on Hacker News”\): 400 visitors that day, against 150 on a usual day/);
   assert.doesNotMatch(facts, /https?:|visitor id/i);
+  const quiet = factSheet({ site: 'example.com', span, S, T, ser, pages: { rows: [] }, flows: { flows: [], prev: [] } });
+  assert.equal(quiet.includes('Candidates:'), true, 'the note still connects');
+  assert.equal(factSheet({ site: 'example.com', span, S: { ...S, sources: [] }, T, ser: { ...ser, cur: { visitors: [0] } }, pages: { rows: [] }, flows: { flows: [], prev: [] } }), '', 'nothing to connect: no sheet, no ask');
 });
 
-test('a line that uses the facts, however it writes the numbers, passes', () => {
-  assert.equal(problem('Most of Hacker News’s 300 visitors began on /pricing, where half left within 20 s and LCP is 4.7 s. Worth checking: what /pricing loads first.', facts), '');
-  assert.ok(check('About 1.2k visitors came, 22% more, and readers of the home page stayed 2m 10s.', facts));
-  assert.ok(check('About 1,200 visitors, and news.ycombinator.com sent 300 of them, mostly to /pricing.', facts));
-  assert.ok(check('Hacker News readers bounced more (80%) after your note on Oct 24.', facts), '“after your note” is timing, not a cause');
-  assert.ok(check('The home page held readers for 130 seconds.', facts), '2m 10s written in seconds');
+test('a line backed by one candidate passes, however it writes the numbers', () => {
+  assert.equal(problem('Visits from Hacker News that began on /pricing rose to 250 this week, from 40. Worth checking: what /pricing shows them first.', facts), '');
+  assert.ok(check('/pricing is the slowest top page, LCP 4.7 s, and readers stay only 20 seconds.', facts));
+  assert.ok(check('Visits from google.com bounce 30%, well under the 47% of all visits, and most began on /.', facts));
+  assert.ok(check('Searches for “pricing” went from 4 to 12 visitors, and /pricing had about 400.', facts));
+  assert.ok(check('After your note on Oct 24, about 400 visitors came that day, against 150 usually.', facts), '“after your note” is timing, not a cause');
 });
 
-test('a made-up number, page or site, a cause, or too long a line is turned down', () => {
-  assert.match(problem('Hacker News sent 312 visitors to /pricing.', facts), /number that isn’t in the facts \(312\)/);
-  assert.match(problem('About 1,240 visitors came.', facts), /number/, 'the sheet says about 1,200');
-  assert.match(problem('47 visitors bounced.', facts), /number/, '47 is only in the facts as a share');
+test('a line that joins two candidates, or makes up a number, page or site, a cause, or runs long is turned down', () => {
+  assert.match(problem('Hacker News visits began on /pricing, which loads in 4.7 s.', facts), /no one candidate backs it/, 'two true facts joined into one');
+  assert.match(problem('Visits from google.com bounce 30% and began on /pricing.', facts), /no one candidate backs it/);
+  assert.match(problem('Visits from Hacker News that began on /pricing: 312 this week.', facts), /number that isn’t in the facts \(312\)/);
+  assert.match(problem('Visits from Hacker News that began on /pricing: about 1,240.', facts), /number/);
   assert.match(problem('Readers of /blog stayed longest.', facts), /page that isn’t in the facts \(\/blog\)/);
   assert.match(problem('reddit.com sent more readers to /pricing.', facts), /site that isn’t in the facts \(reddit\.com\)/);
   assert.match(problem('See https://example.com/pricing for more.', facts), /address/);
   for (const why of ['because of your post', 'due to your post', 'which drove readers to it', 'thanks to your note', 'and that led to more sign-ups', 'which caused the rise'])
-    assert.match(problem(`Hacker News sent 300 visitors to /pricing, ${why}.`, facts), /why something happened/, why);
-  assert.match(problem('Hacker News sent 300 visitors. They landed on /pricing. Worth checking: /pricing.', facts), /more than two sentences/);
-  assert.match(problem(`Hacker News sent 300 visitors to /pricing${', and so on'.repeat(30)}.`, facts), /over 280/);
+    assert.match(problem(`Hacker News sent 250 visitors to /pricing, ${why}.`, facts), /why something happened/, why);
+  assert.match(problem('Hacker News sent 250 visitors. They landed on /pricing. Worth checking: /pricing.', facts), /more than two sentences/);
+  assert.match(problem(`Hacker News sent 250 visitors to /pricing${', and so on'.repeat(30)}.`, facts), /over 280/);
   assert.equal(check('', facts), false);
 });
 
 test('insight asks Workers AI with the rules and the facts, reads either answer shape, and checks it', async () => {
   const asked = [];
   const env = answer => ({ AI: { run: async (model, input) => { asked.push({ model, input }); return answer; } } });
-  assert.equal(await insight(env({ response: ' “Hacker News sent 300 visitors to /pricing.” ' }), facts), 'Hacker News sent 300 visitors to /pricing.');
+  assert.equal(await insight(env({ response: ' 1. “Hacker News sent 250 visitors to /pricing.” ' }), facts), 'Hacker News sent 250 visitors to /pricing.', 'the candidate’s number is dropped');
   assert.equal(asked[0].model, MODEL);
   assert.equal(asked[0].input.max_tokens, 160);
   assert.match(asked[0].input.messages[0].content, /Never say why something happened/);
   assert.ok(asked[0].input.messages[1].content.endsWith(facts));
-  assert.equal(await insight(env({ choices: [{ message: { content: 'Google sent 600 visitors.' } }] }), facts), 'Google sent 600 visitors.');
+  assert.equal(await insight(env({ choices: [{ message: { content: 'google.com visits bounce 30%.' } }] }), facts), 'google.com visits bounce 30%.');
+  assert.equal(await insight(env({ response: '“pricing” was searched by 12 visitors, and /pricing had 400.' }), facts), '“pricing” was searched by 12 visitors, and /pricing had 400.', 'a quoted word keeps its quotes');
   assert.equal(await insight(env({ response: 'Nothing to add.' }), facts), null);
   const errors = [], error = console.error;
   console.error = m => errors.push(m);
@@ -76,7 +79,7 @@ test('insight asks Workers AI with the rules and the facts, reads either answer 
     assert.equal(await insight(env({ response: 'Hacker News sent 999 visitors.' }), facts), null);
     assert.equal(await insight({}, facts), null, 'no binding');
   } finally { console.error = error; }
-  assert.match(errors[0], /didn’t pass Lede’s checks \(it has a number that isn’t in the facts \(999\)\)/);
+  assert.match(errors[0], /didn’t pass Lede’s checks \(.*number that isn’t in the facts \(999\)/);
 });
 
 /* ---------- the route ---------- */
@@ -189,27 +192,27 @@ test('the weekly message adds the line after the sentence, and counts the Worker
 
 test('a kept line is shown while it passes the checks; a new one is asked at most once an hour per site and period', async () => {
   const H = 3600_000, T0 = Date.UTC(2026, 9, 28, 9), errors = [], error = console.error;
-  let runs = 0, answer = 'Hacker News sent 300 visitors to /pricing.';
+  let runs = 0, answer = 'Hacker News sent 250 visitors to /pricing.';
   const env = { STORE: memoryKV(), AI: { run: async () => { runs++; return { response: answer }; } } };
   const ask = async (f, at) => lineFor(env, 'k1', f, T0 + at * H);
-  const other = facts.replace('“pricing” 12; 4', '“pricing” 13; 4');
-  const no300 = other.replace('300; 80', '310; 80').replace('+300, +300%', '+310, +310%'), no600 = no300.replace('600; 600', '610; 610');
+  const other = facts.replace('by 12 visitors', 'by 13 visitors');
+  const no250 = other.replace('250 visitors this week', '260 visitors this week'), no30 = no250.replace('bounce 30%', 'bounce 31%');
   console.error = m => errors.push(m);
   try {
     assert.equal(await ask(facts, 0), answer);
     assert.deepEqual(JSON.parse(env.STORE.puts[0].v), { text: answer, hash: await hashOf(facts), at: T0, tried: T0 });
     assert.equal(await ask(other, 5), answer, 'new facts, but the line still holds and is under 6 hours old');
     assert.equal(runs, 1);
-    answer = 'Google sent 600 visitors.';
-    assert.equal(await ask(no300, 5.5), answer, 'the line no longer holds: asked again');
+    answer = 'google.com visits bounce 30%.';
+    assert.equal(await ask(no250, 5.5), answer, 'the line no longer holds: asked again');
     assert.equal(runs, 2);
-    assert.equal(await ask(no600, 6), null, 'nor does the new one, but it was asked under an hour ago');
+    assert.equal(await ask(no30, 6), null, 'nor does the new one, but it was asked under an hour ago');
     assert.equal(runs, 2);
-    answer = 'Google sent 610 visitors.';
-    assert.equal(await ask(no600, 6.5), answer);
-    assert.equal(await ask(no600, 13), answer, 'the same facts keep their line past 6 hours');
+    answer = 'google.com visits bounce 31%.';
+    assert.equal(await ask(no30, 6.5), answer);
+    assert.equal(await ask(no30, 13), answer, 'the same facts keep their line past 6 hours');
     assert.equal(runs, 3);
-    answer = 'Google sent 600 visitors.';
+    answer = 'google.com visits bounce 30%.';
     assert.equal(await ask(other, 13), answer);
     assert.equal(runs, 4);
     assert.equal(env.STORE.puts.at(-1).opts.expirationTtl, 86400);
@@ -224,7 +227,7 @@ test('a failed try is kept for an hour, and one instance asks once at a time', a
   try {
     assert.deepEqual(await Promise.all([lineFor(env, 'k2', facts, T0), lineFor(env, 'k2', facts, T0)]), [null, null]);
     assert.equal(runs, 1, 'both loads wait for the one request');
-    const other = facts.replace('“pricing” 12; 4', '“pricing” 13; 4');
+    const other = facts.replace('by 12 visitors', 'by 13 visitors');
     assert.equal(await lineFor(env, 'k2', other, T0 + .5 * H), null);
     assert.equal(runs, 1, 'not again within the hour');
     assert.equal(await lineFor({ ...env, STORE: memoryKV() }, 'k2', other, T0 + .5 * H), null, 'nor after KV lost it, in this instance');
