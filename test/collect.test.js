@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEvent, identify, visitHour, collect } from '../src/collect.js';
+import { parseEvent, identify, visitHour, collect, senderCap, SENDER_LIMIT, SENDER_WINDOW } from '../src/collect.js';
 import { channelFor } from '../src/channels.js';
 import { FIELDS } from '../src/schema.js';
 
@@ -172,4 +172,78 @@ test('collect writes engagement as doubles and the link in its own blob, hashed 
   assert.deepEqual(points.map(p => p.doubles), [[0, 0], [12000, 80], [0, 0]]);
   assert.deepEqual(rows.map(r => r.target), ['', '', 'example.com/files/guide.pdf']);
   assert.ok(rows.every(r => r.visitor === rows[0].visitor && r.visit === rows[0].visit && r.path === '/docs'));
+});
+
+test('the sender cap lets everything under the limit through', () => {
+  const allow = senderCap({ limit: 60, window: 60e3, max: 100 });
+  for (let i = 0; i < 60; i++) assert.equal(allow('a', i * 100), true, `event ${i + 1}`);
+});
+
+test('the sender cap cuts a burst over the limit, and starts again with the next window', () => {
+  const allow = senderCap({ limit: 60, window: 60e3, max: 100 });
+  const sent = Array.from({ length: 500 }, (_, i) => allow('a', 1000 + i)).filter(Boolean).length;
+  assert.equal(sent, 60);
+  assert.equal(allow('a', 1000 + 59_999), false, 'still the same minute');
+  assert.equal(allow('a', 1000 + 60e3), true, 'a new minute');
+});
+
+test('the sender cap counts each sender on its own', () => {
+  const allow = senderCap({ limit: 3, window: 60e3, max: 100 });
+  for (let i = 0; i < 3; i++) allow('a', 0);
+  assert.equal(allow('a', 0), false);
+  assert.equal(allow('b', 0), true);
+});
+
+test('the sender cap remembers a bounded number of senders', () => {
+  const allow = senderCap({ limit: 1, window: 60e3, max: 50 });
+  for (let i = 0; i < 10_000; i++) allow('s' + i, i);
+  assert.ok(allow.size() <= 50, `remembers ${allow.size()}`);
+  // The newest senders are the ones kept.
+  assert.equal(allow('s9999', 10_000), false);
+});
+
+test('the sender cap never cuts a person reading, even a fast one', () => {
+  const allow = senderCap({ limit: SENDER_LIMIT, window: SENDER_WINDOW, max: 100 });
+  // An hour of reading: a page every 5 s for the first minute (each a view and an engagement event),
+  // four link clicks, one page left open with a ping every 3 minutes, and 20 restored tabs at once.
+  const times = [];
+  for (let s = 0; s < 60; s += 5) times.push(s * 1e3, s * 1e3 + 4e3);
+  times.push(10e3, 20e3, 30e3, 40e3);
+  for (let m = 3; m < 60; m += 3) times.push(m * 60e3);
+  for (let i = 0; i < 20; i++) times.push(30 * 60e3 + i * 50);
+  times.sort((a, b) => a - b);
+  assert.ok(times.every(t => allow('reader', t)));
+});
+
+test('collect answers a sender over the cap like any dropped beacon, and writes nothing', async () => {
+  const points = [];
+  const kv = new Map([['sites', '["example.com"]'], ['salt', 's']]);
+  const env = { STORE: { get: async k => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v), delete: async k => kv.delete(k) }, EVENTS: { writeDataPoint: p => points.push(p) } };
+  const send = ip => collect(new Request('https://worker.test/lede', {
+    method: 'POST', headers: { ...BEACON, 'User-Agent': SAFARI, 'CF-Connecting-IP': ip }, body: JSON.stringify({ u: 'https://example.com/' }),
+  }), env);
+  const answers = [];
+  for (let i = 0; i < SENDER_LIMIT + 40; i++) answers.push((await send('203.0.113.9')).status);
+  assert.ok(answers.every(s => s === 204));
+  assert.equal(points.length, SENDER_LIMIT);
+  await send('203.0.113.10');
+  assert.equal(points.length, SENDER_LIMIT + 1, 'another sender still counts');
+});
+
+test('collect also asks the Workers rate limiter when one is bound', async () => {
+  const points = [], keys = [];
+  const kv = new Map([['sites', '["example.com"]'], ['salt', 's']]);
+  const env = {
+    STORE: { get: async k => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v), delete: async k => kv.delete(k) }, EVENTS: { writeDataPoint: p => points.push(p) },
+    BEACON_LIMIT: { limit: async ({ key }) => (keys.push(key), { success: keys.length < 2 }) },
+  };
+  const send = () => collect(new Request('https://worker.test/lede', {
+    method: 'POST', headers: { ...BEACON, 'User-Agent': SAFARI, 'CF-Connecting-IP': '198.51.100.7' }, body: JSON.stringify({ u: 'https://example.com/' }),
+  }), env);
+  assert.equal((await send()).status, 204);
+  assert.equal((await send()).status, 204);
+  assert.equal(points.length, 1);
+  assert.match(keys[0], /^[0-9a-f]{8,14}$/, 'the key is a hash, not the address');
+  assert.ok(!keys[0].includes('198.51'));
+  assert.equal(keys[0], keys[1]);
 });

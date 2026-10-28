@@ -29,4 +29,7 @@
   //   RESPECT_GPC         "true" leaves out browsers that send Global Privacy Control
   //   ALERTS              "weekly", "spikes" or "weekly,spikes" (the default) once ALERT_WEBHOOK is set
   //   DASHBOARD_URL       the dashboard's address for the links in alerts, when it isn't where you last signed in
+  // Optional: Cloudflare's rate limiter, so the 60 events a minute per sender (src/collect.js) also counts
+  // across Worker instances. Not on by default, since Cloudflare doesn't say the Free plan includes it:
+  //   "ratelimits": [{ "name": "BEACON_LIMIT", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } }]
 }

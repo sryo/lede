@@ -104,6 +104,52 @@ export async function identify(salt, site, ip, ua, now, started = now) {
   return { visitor, visit };
 }
 
+// The free plan allows 100,000 Analytics Engine writes a day, so one script, or one page stuck in a loop,
+// could use them all and leave the owner with no stats. A person sends far fewer: a view and an
+// engagement event per page, a few link clicks and a ping every 3 minutes. Even someone flicking
+// through a page every 5 seconds sends about 25 a minute, so 60 a minute per sender (an address on
+// one site) is never reached by a reader, while a loop firing many a second is cut within the minute.
+export const SENDER_LIMIT = 60;
+export const SENDER_WINDOW = 60e3;
+
+// Counts events per sender in fixed windows, in this Worker instance's memory (nothing is written).
+// A sender whose window ended is re-added at the end, so the Map stays in order of window start and
+// the oldest windows are dropped first once it holds `max` senders.
+export function senderCap({ limit, window, max }) {
+  const seen = new Map();
+  const allow = (key, now) => {
+    let w = seen.get(key);
+    if (!w || now - w.start >= window) {
+      seen.delete(key);
+      w = { start: now, n: 0 };
+      seen.set(key, w);
+      for (const [k, old] of seen) {
+        if (seen.size <= max && now - old.start < window) break;
+        seen.delete(k);
+      }
+    }
+    return ++w.n <= limit;
+  };
+  allow.size = () => seen.size;
+  return allow;
+}
+
+// A 53-bit hash (cyrb53) for the sender's key. It's only held in memory for a minute and is salted, so it
+// needs no SHA-256, which would double the hashing every beacon pays for.
+function senderKey(text) {
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16);
+}
+
+const underCap = senderCap({ limit: SENDER_LIMIT, window: SENDER_WINDOW, max: 10_000 });
+
 // Browsers say which page sent the beacon. One that says another site's page is a copy or a forgery.
 function fromSite(origin, site) {
   if (origin == null) return true;
@@ -127,7 +173,16 @@ export async function collect(req, env) {
   if (!ev || !fromSite(req.headers.get('Origin'), ev.site)) return new Response(null, { status: 204, headers: CORS });
 
   const now = new Date();
-  const ids = await identify(await getSalt(env, now), ev.site, req.headers.get('CF-Connecting-IP') || '', ua, now, visitHour(body.h, now));
+  const salt = await getSalt(env, now);
+  const ip = req.headers.get('CF-Connecting-IP') || '';
+  // The sender is a hash, so no address is kept in memory. BEACON_LIMIT is Cloudflare's rate limiter,
+  // used when it's bound in wrangler.jsonc (see docs/how-it-works.md, Limits); it counts across this
+  // location's Worker instances, which the in-memory cap can't.
+  const sender = senderKey(`${salt}|${ip}|${ev.site}`);
+  if (!underCap(sender, now.getTime()) || (env.BEACON_LIMIT && !(await env.BEACON_LIMIT.limit({ key: sender })).success)) {
+    return new Response(null, { status: 204, headers: CORS });
+  }
+  const ids = await identify(salt, ev.site, ip, ua, now, visitHour(body.h, now));
   env.EVENTS.writeDataPoint(toDataPoint({ ...ev, ...ids, country: req.cf?.country || '' }));
   return new Response(null, { status: 204, headers: CORS });
 }
