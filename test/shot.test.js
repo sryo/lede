@@ -182,7 +182,7 @@ test('shot endpoint: the demo shows a bundled picture of /owls, and Cloudflare i
     assert.equal(res.headers.get('Content-Type'), 'image/jpeg');
     const bytes = new Uint8Array(await res.arrayBuffer());
     assert.deepEqual([bytes[0], bytes[1]], [0xff, 0xd8], 'a jpeg');
-    assert.ok(bytes.length < 120_000, `small: ${bytes.length} bytes`);
+    assert.ok(bytes.length < 16_000, `small, since every Worker carries it: ${bytes.length} bytes`);
     const other = await call(e, '/api/shot?site=example.com&path=/robin');
     assert.deepEqual(await other.json(), { og: null, why: 'budget' }, 'other pages show the plain column, as when the day’s browser time is spent');
   } finally { globalThis.fetch = before; }

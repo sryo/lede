@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readStory, tellStory, bounceSplit, bounceCaption, waterfall, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
-  scrollPicture, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate } from '../public/story.js';
+  scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -710,6 +710,23 @@ test('scroll picture: none under the reads threshold, only the sentence', () => 
   assert.equal(scrollPicture({ views: 400 }), null);
 });
 
+test('scroll numbers: with no picture, the shares either side of the drop and at the end', () => {
+  const nums = r => scrollNumbers(r).map(x => [x.value, x.label, x.drop]);
+  assert.deepEqual(nums(read(900, .93, .87, .81, .76, .43, .4, .37, .35, .34, .33)),
+    [['76%', 'past 40%', false], ['43%', 'past the middle', true], ['33%', 'reach the end', false]]);
+  assert.deepEqual(nums(read(900, .9, .7, .45, .4, .35, .3, .28, .26, .24, .22)).map(x => x[1]), ['past 20%', 'past 30%', 'reach the end']);
+  // A drop in the first tenth: nobody is "past 0%", so the middle comes in instead.
+  assert.deepEqual(nums(read(900, .8, .75, .7, .66, .62, .58, .55, .52, .5, .48)),
+    [['80%', 'past 10%', true], ['62%', 'past the middle', false], ['48%', 'reach the end', false]]);
+  // A drop in the last tenth is the end itself.
+  assert.deepEqual(nums(read(900, 1, .98, .96, .94, .92, .9, .88, .86, .84, .6)),
+    [['84%', 'past 90%', false], ['60%', 'reach the end', true]]);
+  // No drop stands out: the top, the middle and the end, none in violet.
+  assert.deepEqual(nums(read(900, .96, .92, .88, .84, .8, .76, .72, .68, .64, .6)),
+    [['96%', 'past 10%', false], ['80%', 'past the middle', false], ['60%', 'reach the end', false]]);
+  assert.equal(scrollNumbers(read(12, .5, .4, .3, .2, .1, .1, .1, .1, .1, .1)), null, 'too few reads: the sentence alone');
+});
+
 test('scroll picture: the caption says what the picture is and when it was taken', () => {
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'shot' }), 'Picture of /owls taken today. Readers counted over 30 days.');
   assert.equal(pictureCaption({ path: '/', days: 7, kind: 'shot' }), 'Picture of the home page taken today. Readers counted over 7 days.');
@@ -719,9 +736,9 @@ test('scroll picture: the caption says what the picture is and when it was taken
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'budget' }), 'The picture /owls shows when shared, until a picture of the page tomorrow. Readers counted over 30 days.');
   // Waiting won't help when the token can't take pictures, so it says what to do.
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'permission' }),
-    'To show a picture of the page here, give Lede’s Cloudflare token the Browser Rendering permission. Readers counted over 30 days.');
+    'To show a picture of the page here, give Lede’s Cloudflare token the Browser Run permission. Readers counted over 30 days.');
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'permission' }),
-    'The picture /owls shows when shared. For a picture of the page, give Lede’s Cloudflare token the Browser Rendering permission. Readers counted over 30 days.');
+    'The picture /owls shows when shared. For a picture of the page, give Lede’s Cloudflare token the Browser Run permission. Readers counted over 30 days.');
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'wait' }), 'Readers counted over 30 days.', 'while the picture is on its way');
   assert.equal(pictureCaption({ path: '/a<b', days: 30, kind: 'shot' }), 'Picture of /a&lt;b taken today. Readers counted over 30 days.', 'escaped');
 });

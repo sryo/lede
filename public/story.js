@@ -605,10 +605,20 @@ export function scrollPicture(r) {
   };
 }
 
+// With no picture to shade: the share still reading either side of the drop (drop: true after it) and at the end,
+// or, with no drop worth naming, at the top, the middle and the end.
+export function scrollNumbers(r) {
+  const S = scrollStory(r);
+  if (!S || S.few) return null;
+  const R = r.reach, d = S.drop;
+  return [...new Set([...(d > 0 ? [d - 1, d] : [0, 4]), 9])].map(i =>
+    ({ value: fmtPct(R[i]), label: i === 9 ? 'reach the end' : i === 4 ? 'past the middle' : `past ${i + 1}0%`, drop: i === d }));
+}
+
 // Under the picture: what it is and when it was taken, or why there is none yet. kind is shot (Cloudflare's
 // picture of the page), og (the picture the page shares on social sites), none, or wait (still on its way).
 export function pictureCaption({ path, days, kind, why }) {
-  const page = esc(pageName(path)), fix = 'give Lede’s Cloudflare token the Browser Rendering permission';
+  const page = esc(pageName(path)), fix = 'give Lede’s Cloudflare token the Browser Run permission';
   const what = kind === 'shot' ? `Picture of ${page} taken today. `
     : kind === 'og' ? (why === 'permission' ? `The picture ${page} shows when shared. For a picture of the page, ${fix}. ` : `The picture ${page} shows when shared, until a picture of the page tomorrow. `)
       : kind === 'none' ? (why === 'permission' ? `To show a picture of the page here, ${fix}. ` : 'Picture of the page tomorrow. ') : '';
