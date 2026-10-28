@@ -190,11 +190,11 @@ test('a funnel is named by its steps', () => {
 test('the funnel chart: violet for visits that go on, a pale neutral for visits lost, never the bounce red', () => {
   const bars = funnelBars([120, 30, 9], 1, 200);
   assert.equal(bars[0].lost, 0, 'nothing is lost before the first step');
-  assert.equal(bars[2].lostFill, 'var(--line)', 'an ordinary drop is the pale neutral');
+  assert.equal(bars[2].lostFill, 'var(--lost-p)', 'an ordinary drop is a paler neutral than the biggest, but still visible');
   assert.equal(bars[1].lostFill, 'var(--lost)', 'the biggest drop is a slightly stronger neutral');
   assert.ok(bars[1].hot && !bars[2].hot, 'only the biggest drop is picked out');
   assert.ok(!JSON.stringify(funnelBars([120, 30, 9], 1, 200)).includes('bnc'));
-  assert.ok(funnelBars([12, 4, 1], -1, 200).every(b => !b.hot && (b.lostFill === 'var(--line)' || !b.lost)), 'too few to say: no drop picked out');
+  assert.ok(funnelBars([12, 4, 1], -1, 200).every(b => !b.hot && (b.lostFill === 'var(--lost-p)' || !b.lost)), 'too few to say: no drop picked out');
 });
 
 test('the funnel chart scales to the first step, and the bar with the lost visits on it reaches the step before', () => {

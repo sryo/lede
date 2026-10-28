@@ -772,7 +772,7 @@ export function funnelStory({ steps, cur }, days) {
 // visits lost on the way to it, up to the step before: a pale neutral, stronger for the biggest drop. Never bounce red.
 export function funnelBars(cur, drop, span) {
   const hs = cur.map(v => v && Math.max(8, Math.round(span * v / cur[0])));
-  return hs.map((h, i) => ({ v: cur[i], h, lost: i && Math.max(0, hs[i - 1] - h), hot: i === drop, lostFill: `var(--${i === drop ? 'lost' : 'line'})` }));
+  return hs.map((h, i) => ({ v: cur[i], h, lost: i && Math.max(0, hs[i - 1] - h), hot: i === drop, lostFill: `var(--${i === drop ? 'lost' : 'lost-p'})` }));
 }
 
 export const FUNNEL_EMPTY = 'A funnel shows where visits drop off on their way to a page that matters, such as a sign-up.';
