@@ -14,14 +14,15 @@
   var KEY = 'lede_source', VISIT = 'lede_visit', MINUTE = 60e3, HOUR = 3600e3, IDLE = 30 * 60e3, PING = 3 * 60e3, SETTLE = 5000;
   var FILE = /\.(pdf|csv|txt|rtf|docx?|xlsx?|pptx?|od[tsp]|epub|zip|rar|7z|gz|tgz|bz2|dmg|pkg|exe|msi|deb|rpm|apk|iso|mp[34]|wav|flac|m4a|mov|avi|mkv|webm|wmv)$/i;
   var engage = script.getAttribute('data-engagement') !== 'false';
-  var last, view, record, seen = 0, beat = 0, input = 0;
+  var last, view, record, inside, seen = 0, beat = 0, input = 0;
 
   var bare = function (host) { return host.replace(/^www\./, ''); };
 
   // Where the visit came from: the referring site (protocol and host; the rest of its address isn't
   // needed) and the landing page's tags. A link within the site that carries tags doesn't change it.
   function source() {
-    var from = '', inside = false, saved = null, ref;
+    var from = '', saved = null, ref;
+    inside = false;
     try {
       ref = new URL(document.referrer);
       inside = bare(ref.hostname) === bare(location.hostname);
@@ -41,11 +42,13 @@
   // Half an hour without a page or a ping starts a new one. A tab's first visit starts on the hour, so a
   // tab opened beside it during that hour joins it, and a visit that runs past the hour stays one visit.
   // A later visit in the same tab starts on the minute, so it isn't taken for the one before.
+  // A new tab opened from a link on the site carries on the visit of the tab it came from, so its views
+  // count as later ones (n starts at 2) and the visit isn't counted again, nor as a bounce.
   // The page keeps its own copy, for when sessionStorage can't be used.
   function visit(views) {
     var now = Date.now(), v = record;
     try { v = JSON.parse(sessionStorage.getItem(VISIT)) || v; } catch (e) {}
-    if (!v || !(now - v.t < IDLE)) v = { h: now - now % (v ? MINUTE : HOUR), n: 0 };
+    if (!v || !(now - v.t < IDLE)) v = { h: now - now % (v ? MINUTE : HOUR), n: v || !inside ? 0 : 2 };
     v.t = now;
     v.n = (v.n || 0) + views;
     record = v;

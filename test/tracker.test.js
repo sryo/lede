@@ -174,6 +174,9 @@ test('tracker: each page view says where it falls in its visit, up to 3', () => 
   page('https://example.com/a', { storage });
   assert.equal(page('https://example.com/b', { storage }).sent[0].k, 2, 'counted across page loads in the tab');
   assert.equal(page('https://example.com/b').sent[0].k, 1, 'a new tab is a new count');
+  assert.equal(page('https://example.com/b', { referrer: 'https://www.example.com/a' }).sent[0].k, 3,
+    'a new tab opened from a link on the site carries on that visit, so it adds no visit or bounce');
+  assert.equal(page('https://example.com/b', { referrer: 'https://news.ycombinator.com/' }).sent[0].k, 1);
 });
 
 test('tracker: a visit carries on while someone reads one page for long, and its pings say so', () => {
