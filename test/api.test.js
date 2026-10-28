@@ -233,10 +233,16 @@ test('a refused query is not asked again, and says what to check', async () => {
   try {
     let asked = 0;
     const store = sqlStore(ENV, async () => (asked++, new Response('bad query', { status: 400 })));
-    await assert.rejects(store.summary(parseQuery(url('summary?days=3'), SITES)), e => e.status === 502 && /Asking again won’t help/.test(e.message) && /DATASET in wrangler\.jsonc/.test(e.message));
+    await assert.rejects(store.summary(parseQuery(url('summary?days=3'), SITES)), e => e.status === 502 && /Asking again won’t help/.test(e.message) && /wrangler tail/.test(e.message) && !/DATASET/.test(e.message));
     assert.equal(asked, 1);
-    const missing = sqlStore({ ...ENV, DATASET: 'stats' }, async () => new Response('{"errors":[{"message":"unknown table: stats"}]}', { status: 422 }));
-    await assert.rejects(missing.summary(parseQuery(url('summary?days=3'), SITES)), e => /^Cloudflare has no stats called “stats” yet\. Open a page of your site/.test(e.message));
+    const answer = message => sqlStore({ ...ENV, DATASET: 'stats' }, async () => new Response(JSON.stringify({ errors: [{ message }] }), { status: 422 }));
+    for (const said of ['unknown table: stats', 'Table default.stats doesn’t exist', 'dataset stats not found']) {
+      await assert.rejects(answer(said).summary(parseQuery(url('summary?days=3'), SITES)), e => /^Cloudflare has no stats called “stats” yet\. Open a page of your site/.test(e.message), said);
+    }
+    // About the query itself, even when it names the dataset: the dataset isn't what to check.
+    for (const said of ['unknown column double9 in table stats', 'Unknown function quantileExactWeighted', 'table not found']) {
+      await assert.rejects(answer(said).summary(parseQuery(url('summary?days=3'), SITES)), e => /^Cloudflare refused Lede’s stats query \(422\)/.test(e.message) && !/DATASET/.test(e.message), said);
+    }
   } finally { console.error = realError; }
 });
 

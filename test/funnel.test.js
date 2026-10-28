@@ -84,8 +84,12 @@ test('a funnel is two to five different pages, each starting with a slash', () =
   assert.deepEqual(parseFunnel(['/a', '/b', '/c', '/d', '/e']).length, 5);
   assert.deepEqual(parseFunnel(['/Pricing/', '/café?x=1']), ['/Pricing', '/caf%C3%A9'], 'read as the pages Lede stores');
   assert.throws(() => parseFunnel(['/a', '/a/']), e => e.status === 400, 'the same page twice');
-  for (const bad of [null, ['/a'], ['/a', '/b', '/c', '/d', '/e', '/f'], ['/a', 'b'], ['/a', '/a'], ['/a', '/' + 'x'.repeat(200)], ['/a', 3]]) {
+  for (const bad of [null, ['/a'], ['/a', '/b', '/c', '/d', '/e', '/f'], ['/a', '/a']]) {
     assert.throws(() => parseFunnel(bad), e => e.status === 400 && /two to five/.test(e.message), JSON.stringify(bad)?.slice(0, 40));
+  }
+  assert.throws(() => parseFunnel(['/a', '/a/']), e => /\/pricing\/ is \/pricing/.test(e.message), 'says why it is the same page');
+  for (const bad of [['/a', 'b'], ['/a', '/' + 'x'.repeat(200)], ['/a', 3], ['/a', '/' + 'é'.repeat(34)]]) {
+    assert.throws(() => parseFunnel(bad), e => e.status === 400 && /Each step.*200 characters, where an accented letter counts as six/.test(e.message), JSON.stringify(bad)?.slice(0, 40));
   }
 });
 

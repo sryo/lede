@@ -60,12 +60,13 @@ export async function runSql(env, sql, fetchImpl = fetch, wait = ms => new Promi
     if (res.status === 401 || res.status === 403) throw new HttpError(502, 'Your Cloudflare token can’t read the stats. Make a new one with the link in docs/how-it-works.md, under “Deploy from the command line”, then run npx wrangler secret put ANALYTICS_TOKEN and paste it.');
     // Any other refusal won't go away by asking again. Analytics Engine makes a dataset on its first
     // write, so one it can't find has had no visit yet, or is read under another name than it's written.
+    // Only an answer that names the dataset as missing says so: the rest are about the query itself.
     if (res.status >= 400 && res.status < 500 && res.status !== 429) {
       const ds = env.DATASET || 'lede';
-      if (/table|dataset/i.test(text) && /not|unknown|exist/i.test(text)) {
+      if (text.includes(ds) && !/column/i.test(text) && /unknown (table|dataset)|not (be )?found|(does not|doesn['’]t) exist/i.test(text)) {
         throw new HttpError(502, `Cloudflare has no stats called “${ds}” yet. Open a page of your site that has Lede’s line, then reload. If it still says this, check that DATASET in wrangler.jsonc matches the dataset under analytics_engine_datasets.`);
       }
-      throw new HttpError(502, `Cloudflare refused Lede’s stats query (${res.status}). Asking again won’t help: check that DATASET in wrangler.jsonc matches the dataset under analytics_engine_datasets, then deploy again.`);
+      throw new HttpError(502, `Cloudflare refused Lede’s stats query (${res.status}). Asking again won’t help. The Worker’s logs say what Cloudflare didn’t accept: run npx wrangler tail, then reload.`);
     }
     throw new HttpError(502, 'Cloudflare didn’t send the stats back. Try again in a minute.');
   }
@@ -167,15 +168,33 @@ const json = (body, status = 200, maxAge = 0) => new Response(JSON.stringify(bod
   headers: { 'Content-Type': 'application/json', 'Cache-Control': BROWSER(maxAge) },
 });
 
-// Goal pages: up to ten paths, each starting with a slash, read as stored pages (see pagePath). Each is
-// at most 200 bytes once encoded, so ten of them, written as hex, keep the query well under 10 KiB.
+// A goal or funnel step read as a stored page (see pagePath), or null when it isn't one. Encoded, as
+// pagePath leaves it, it's at most 200 characters, so an accented letter counts as six (é is %C3%A9).
+const PAGE_CHARS = 200;
+const LONG = `up to ${PAGE_CHARS} characters, where an accented letter counts as six`;
+function pageOf(s) {
+  if (typeof s !== 'string' || !s.startsWith('/') || s.length > 512) return null;
+  const page = pagePath(s);
+  return page.length <= PAGE_CHARS ? page : null;
+}
+
+// Goal pages: up to ten. Ten of them, written as hex, keep the query well under 10 KiB.
 export function parseGoals(list) {
-  const pages = Array.isArray(list) && list.every(g => typeof g === 'string' && g.startsWith('/') && g.length <= 512) ? list.map(pagePath) : null;
-  if (!pages || pages.length > 10 || !pages.every(g => new TextEncoder().encode(g).length <= 200)) {
-    throw new HttpError(400, 'Goals are up to ten pages, each starting with “/” and up to 200 characters, like /signup.');
+  const pages = Array.isArray(list) ? list.map(pageOf) : null;
+  if (!pages || pages.length > 10 || pages.includes(null)) {
+    throw new HttpError(400, `Goals are up to ten pages, each starting with “/” and ${LONG}, like /signup.`);
   }
   return [...new Set(pages)];
 }
+
+// Goals and funnels saved by older versions can fail today's checks (a longer page, /a and /a/ as two
+// steps), and the dashboard sends them back as saved. So they are read as they would be saved now,
+// leaving out what can't be, and no card fails on every load.
+const listOf = v => Array.isArray(v) ? v : [];
+const storedGoals = list => [...new Set(listOf(list).map(pageOf).filter(Boolean))].slice(0, 10);
+const storedFunnels = list => [...new Map(listOf(list)
+  .map(f => [...new Set(listOf(f).map(pageOf).filter(Boolean))].slice(0, 5))
+  .filter(f => f.length >= 2).map(f => [f.join('\n'), f])).values()].slice(0, 5);
 
 // Goals, funnels and notes are kept in KV under one key per site (see settings.js), so everyone who
 // opens the dashboard sees the same ones. Reading the goals also answers with the notes and the funnels,
@@ -183,7 +202,11 @@ export function parseGoals(list) {
 // Overview asks for funnel numbers only when there is a funnel.
 // Until the owner changes them, the sample site shows a note and a funnel.
 function settingsOf(saved, q, demo) {
-  return { goals: saved.goals || [], funnels: saved.funnels || (demo ? [DEMO_FUNNEL] : []), notes: saved.notes || (demo ? demoNotes(q) : []) };
+  return {
+    goals: storedGoals(saved.goals),
+    funnels: saved.funnels ? storedFunnels(saved.funnels) : demo ? [DEMO_FUNNEL] : [],
+    notes: saved.notes || (demo ? demoNotes(q) : []),
+  };
 }
 
 async function goals(req, q, env, demo) {
@@ -231,12 +254,13 @@ async function notes(req, url, q, env, demo) {
 export const withChannels = out => ({ ...out, rows: out.rows.map(r => ({ ...r, channel: channelFor(r.key, new URLSearchParams()) })) });
 
 // A funnel: two to five different pages a visit goes through, in order, read as stored pages (see
-// pagePath). At most 200 characters each once encoded, so five of them, written as hex up to three
-// times each, keep the query under 10 KiB.
+// pageOf). Five of them, written as hex up to three times each, keep the query under 10 KiB.
 export function parseFunnel(steps) {
-  const pages = Array.isArray(steps) && steps.every(s => typeof s === 'string' && s.startsWith('/') && s.length <= 512) ? steps.map(pagePath) : [];
-  const ok = pages.length >= 2 && pages.length <= 5 && new Set(pages).size === pages.length && pages.every(s => s.length <= 200);
-  if (!ok) throw new HttpError(400, 'A funnel is two to five different pages, each starting with “/”.');
+  const pages = Array.isArray(steps) ? steps.map(pageOf) : [];
+  if (pages.includes(null)) throw new HttpError(400, `Each step of a funnel is a page starting with “/”, ${LONG}.`);
+  if (pages.length < 2 || pages.length > 5 || new Set(pages).size < pages.length) {
+    throw new HttpError(400, 'A funnel is two to five different pages, each starting with “/”. A slash at the end doesn’t make another page: /pricing/ is /pricing.');
+  }
   return pages;
 }
 

@@ -143,7 +143,23 @@ test('goals are read as the pages Lede stores: no trailing slash, encoded as bro
   assert.deepEqual(await saved.json(), { goals: ['/Pricing', '/caf%C3%A9', '/thanks'] });
   const long = await call('goals?site=example.com', env, { method: 'PUT', body: JSON.stringify({ goals: ['/' + 'é'.repeat(40)] }) });
   assert.equal(long.status, 400, '40 characters, but 240 once encoded');
-  assert.match((await long.json()).error, /up to 200 characters/);
+  assert.match((await long.json()).error, /up to 200 characters, where an accented letter counts as six/);
+});
+
+test('goals and funnels saved by an older version are read as they would be saved now, so no card fails on every load', async () => {
+  const settings = {
+    goals: ['/signup/', '/signup', '/' + 'x'.repeat(300), 'nope'],
+    funnels: [['/pricing', '/pricing/'], ['/a', '/b/', '/' + 'é'.repeat(40)], ['/a/', '/b'], ['/c', '/d']],
+  };
+  const env = { STORE: memoryKV({ sites: '["example.com"]', 'settings:example.com': JSON.stringify(settings) }) };
+  const read = await (await call('goals?site=example.com', env)).json();
+  assert.deepEqual(read.goals, ['/signup']);
+  assert.deepEqual(read.funnels, [['/a', '/b'], ['/c', '/d']], 'one page twice is no funnel; a step too long is left out');
+  assert.deepEqual((await (await call('funnels?site=example.com', env)).json()).funnels, read.funnels);
+  // What the dashboard sends back as it opens is accepted.
+  const goals = read.goals.map(g => `goal=${encodeURIComponent(g)}`).join('&');
+  for (const f of read.funnels) assert.equal((await call(`funnel?site=example.com&${f.map(s => `steps=${encodeURIComponent(s)}`).join('&')}`, { ...env, DEMO: 'true' })).status, 200);
+  assert.equal((await call(`conversions?site=example.com&${goals}`, { ...env, DEMO: 'true' })).status, 200);
 });
 
 test('goals, funnels and notes share one key per site; the old keys are read until it is first saved', async () => {
