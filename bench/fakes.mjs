@@ -2,7 +2,7 @@
 // bench can measure what a change costs against the free limits without touching Cloudflare.
 
 export function counters() {
-  return { sql: 0, writes: 0, kvReads: 0, kvWrites: 0, kvLists: 0, api: 0, beacons: 0, screenshots: 0, browserMs: 0 };
+  return { sql: 0, writes: 0, kvReads: 0, kvWrites: 0, kvLists: 0, api: 0, beacons: 0, screenshots: 0, browserMs: 0, ai: 0, aiTokens: 0, webhooks: 0 };
 }
 
 // KV as Workers has it, for what Lede uses: text or bytes, metadata, and listing by prefix. Expiry isn't
@@ -36,13 +36,26 @@ export function memoryKV(count, init = {}) {
 
 export const events = count => ({ writeDataPoint() { count.writes++; } });
 
+// Workers AI, counting each ask and the tokens it sends (a token for about every 4 characters; Neurons
+// follow tokens). What comes back is the model saying it has nothing to add, so a line is never shown and
+// what's counted is the cost of asking.
+export function fakeAI(count) {
+  return {
+    async run(model, { messages = [] } = {}) {
+      count.ai++;
+      count.aiTokens += Math.ceil(messages.reduce((n, m) => n + String(m.content ?? '').length, 0) / 4);
+      return { response: 'Nothing to add.' };
+    },
+  };
+}
+
 // Answers each query by its shape, with enough rows for every chart to draw. Fixed rows, so two runs
 // of the same code do the same work.
 const PAGES = ['/', '/blog', '/docs', '/pricing', '/about', '/blog/launch', '/docs/install', '/changelog'];
 const REFS = ['google.com', '', 'news.ycombinator.com', 'twitter.com', 'github.com', 'duckduckgo.com', 'reddit.com', 'bing.com'];
 const COUNTRIES = ['US', 'AR', 'DE', 'GB', 'FR', 'BR', 'JP', 'IN'];
 // Live rows are stamped against the clock the bench starts with, so who is here now stays the same.
-const NOW = Math.floor(Date.now() / 1000);
+export const NOW = Math.floor(Date.now() / 1000);
 const both = f => [...f(1), ...f(0)];
 const READ = [.95, .9, .85, .8, .5, .45, .4, .38, .36, .35];
 const keyed = keys => both(p => keys.map((key, i) => ({ p, key, visitors: String((40 - i * 4) * (p ? 2 : 1)), visits: String(50 - i * 4), views: String(90 - i * 8), bounces: String(20 - i), total_time: String(3000 - i * 200), d: String(i % 30) })));
@@ -86,8 +99,10 @@ function siteRows(sql) {
 const JPEG = Uint8Array.from(atob('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA='), c => c.charCodeAt(0));
 export const SHOT_MS = 3000;
 
-// A fetch that answers the Analytics Engine SQL API, the account lookup and Browser Rendering's screenshot;
-// anything else is refused. profile.big answers as a big site does (see fill); it can be changed between calls.
+export const WEBHOOK = 'https://hooks.bench.test/lede';
+
+// A fetch that answers the Analytics Engine SQL API, the account lookup, Browser Rendering's screenshot and
+// the alert webhook; anything else is refused. profile.big answers as a big site does (see fill); it can be changed between calls.
 export function fakeFetch(count, profile = {}) {
   return async (url, init = {}) => {
     const u = String(url);
@@ -101,6 +116,7 @@ export function fakeFetch(count, profile = {}) {
       const data = rowsFor(String(init.body), profile.big);
       return new Response(JSON.stringify({ meta: [], data, rows: data.length }), { status: 200 });
     }
+    if (u === WEBHOOK) { count.webhooks++; return new Response('ok'); }
     if (u === 'https://api.cloudflare.com/client/v4/accounts') return new Response(JSON.stringify({ success: true, result: [{ id: 'acc' }] }));
     throw new Error(`bench: unexpected fetch to ${u}`);
   };
@@ -113,6 +129,7 @@ export function benchEnv(count, { demo = false, assets } = {}) {
     ...(demo ? { DEMO: 'true' } : { ANALYTICS_TOKEN: 'tok', ACCOUNT_ID: 'acc' }),
     STORE: memoryKV(count, { sites: JSON.stringify(SITES) }),
     EVENTS: events(count),
+    AI: fakeAI(count),
     ASSETS: assets,
   };
 }

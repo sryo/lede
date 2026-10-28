@@ -73,14 +73,27 @@ export function noiseFrom(aa) {
   return out;
 }
 
-// Headroom against the free limits: how many of each a day before Cloudflare stops serving.
+// What the schedules cost a day, whoever opens the dashboard: the spike check every 15 minutes, and the
+// week's story once a week. Counts missing from an older run are taken as none.
+const SPIKE_RUNS = 96, WEEK = 7;
+export function scheduleDay(counts) {
+  const day = what => SPIKE_RUNS * (counts[`cron: spikes ${what}`] ?? 0) + (counts[`cron: weekly ${what}`] ?? 0) / WEEK;
+  return { queries: day('queries'), kvReads: day('kv reads'), kvWrites: day('kv writes'), ai: day('ai calls'), aiTokens: day('ai tokens') };
+}
+
+// Headroom against the free limits: how many of each a day before Cloudflare stops serving, after what
+// the schedules take of the same allowance.
 export function headroom(counts) {
-  const per = (limit, n) => (n > 0 ? Math.floor(limit / n).toLocaleString('en-US') : 'unlimited');
+  const n = x => (Math.round(x * 10) / 10).toLocaleString('en-US');
+  const per = (limit, x) => (x > 0 ? Math.floor(limit / x).toLocaleString('en-US') : 'unlimited');
+  const day = scheduleDay(counts);
   return [
-    `dashboard home loads a day before 10k queries: ${per(10000, counts['queries: /'])}`,
+    `the schedules a day: ${n(day.queries)} queries, ${n(day.kvReads)} KV reads, ${n(day.kvWrites)} KV writes, ${n(day.ai)} Workers AI asks`,
+    `dashboard home loads a day before 10k queries: ${per(10000 - day.queries, counts['queries: /'])}`,
     `visits a day before 100k writes: ${per(100000, counts['visit: writes'])}`,
     `visits a day before 100k Worker requests: ${per(100000, counts['visit: requests'])}`,
-    `visits a day before 1k KV writes: ${per(1000, counts['visit: kv writes'])}`,
+    `visits a day before 1k KV writes: ${per(1000 - day.kvWrites, counts['visit: kv writes'])}`,
+    `KV writes a day left after the schedules: ${Math.floor(1000 - day.kvWrites).toLocaleString('en-US')}`,
   ];
 }
 

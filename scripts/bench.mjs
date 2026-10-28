@@ -2,8 +2,9 @@
 // Measures Lede against a git ref (default: the ref in bench/baseline.json) so a change can show it
 // keeps or improves what it costs. Three kinds of numbers:
 //   bytes    what customer sites download (t.js) and what the dashboard loads, raw, gzip and brotli
-//   counts   Analytics Engine queries, /api calls, writes and KV use per dashboard page and per visit,
-//            the things Cloudflare's free limits count; exact, so any increase is a regression
+//   counts   Analytics Engine queries, /api calls, KV use and Workers AI asks and tokens per dashboard page,
+//            requests, writes and KV use per visit, and the same for one run of each schedule: the things
+//            Cloudflare's free limits count; exact, so any increase is a regression
 //   timings  the Worker per visit and per stats answer (Node), and in headless Chrome Canary with the
 //            CPU slowed 4x: what t.js adds to a page load, and how long the dashboard home takes to draw
 // Timings run base and working tree in turn, rep after rep, so machine noise hits both alike; then
@@ -80,6 +81,11 @@ function startServer(root, demo) {
   });
 }
 const getJSON = async url => (await fetch(url)).json();
+
+// What one spike check and one week's story cost; they run whether or not anyone opens the dashboard.
+function cronCounts(root) {
+  return JSON.parse(execFileSync(process.execPath, [join(ROOT, 'bench/cron.mjs'), '--root', root]).toString());
+}
 
 function workerTimes(root) {
   return JSON.parse(execFileSync(process.execPath, [join(ROOT, 'bench/worker.mjs'), '--root', root, '--iters', '150']).toString());
@@ -186,6 +192,12 @@ async function countsOf(root, chrome) {
       // Pictures of the page come out of a daily allowance of browser time, so each one counts.
       out[`screenshots: ${view}`] = c.screenshots ?? 0;
       out[`browser ms: ${view}`] = c.browserMs ?? 0;
+      // KV's free day is 1,000 writes and lists, and Workers AI's is 10,000 Neurons, which follow tokens.
+      out[`kv reads: ${view}`] = c.kvReads;
+      out[`kv writes: ${view}`] = c.kvWrites;
+      out[`kv lists: ${view}`] = c.kvLists;
+      out[`ai calls: ${view}`] = c.ai ?? 0;
+      out[`ai tokens: ${view}`] = c.aiTokens ?? 0;
       if (view === '/') {
         // The same page again a moment later, as someone reloading it does.
         await getJSON(server.base + '/__bench/reset');
@@ -216,7 +228,7 @@ async function countsOf(root, chrome) {
     out['visit: kv reads'] = c.kvReads;
     out['visit: kv writes'] = c.kvWrites;
   } finally { await tab.close(); server.proc.kill(); }
-  return out;
+  return { ...out, ...cronCounts(root) };
 }
 
 async function browserTimes(server, chrome) {

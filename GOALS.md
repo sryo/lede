@@ -63,7 +63,7 @@ And we go the extra mile: the edge case handled, the sentence rewritten, the byt
 | 3 | screens checked at full size, in both themes and on a phone, before a release | by eye |
 | 4 | each feature has empty, tiny and large-data cases in the tests and the demo | `test/`, `src/demo.js` |
 | 5 | t.js bytes (raw, gzip, brotli), t.js run time, dashboard bytes, home drawn, blocking | `npm run bench` |
-| 6 | queries per dashboard page, requests and writes per visit, KV use, headroom | `npm run bench` |
+| 6 | queries per dashboard page, requests and writes per visit, KV use, Workers AI asks and tokens, the schedules' cost, headroom | `npm run bench` |
 
 Every change is measured (see "Measuring changes" in `docs/how-it-works.md`). Goals 5 and 6
 may not get worse, and a change made for them must make them better. When the bench blocks a

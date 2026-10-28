@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compare, timing, noiseFrom, headroom } from '../scripts/compare.mjs';
+import { compare, timing, noiseFrom, headroom, scheduleDay } from '../scripts/compare.mjs';
+import { counters, fakeAI, fakeFetch, WEBHOOK } from '../bench/fakes.mjs';
 import { baselineRef } from '../scripts/bench.mjs';
 
 const side = (times, extra = {}) => ({ rev: 'x', bytes: { 't.js gzip': 100 }, counts: { 'queries: /': 10 }, times, ...extra });
@@ -40,11 +41,36 @@ test('the noise threshold is twice what unchanged code swings, at least 5%', () 
 
 test('headroom says how much a day fits in the free limits', () => {
   assert.deepEqual(headroom({ 'queries: /': 10, 'visit: writes': 2, 'visit: requests': 2, 'visit: kv writes': 0 }), [
+    'the schedules a day: 0 queries, 0 KV reads, 0 KV writes, 0 Workers AI asks',
     'dashboard home loads a day before 10k queries: 1,000',
     'visits a day before 100k writes: 50,000',
     'visits a day before 100k Worker requests: 50,000',
     'visits a day before 1k KV writes: unlimited',
+    'KV writes a day left after the schedules: 1,000',
   ]);
+});
+
+test('the schedules cost every day: 96 spike checks and a seventh of the week\'s story', () => {
+  const counts = { 'cron: spikes queries': 2, 'cron: spikes kv reads': 1, 'cron: spikes kv writes': 0, 'cron: spikes ai calls': 0, 'cron: spikes ai tokens': 0,
+    'cron: weekly queries': 14, 'cron: weekly kv reads': 7, 'cron: weekly kv writes': 7, 'cron: weekly ai calls': 2, 'cron: weekly ai tokens': 700 };
+  assert.deepEqual(scheduleDay(counts), { queries: 194, kvReads: 97, kvWrites: 1, ai: 2 / 7, aiTokens: 100 });
+  const lines = headroom({ ...counts, 'queries: /': 8, 'visit: writes': 2, 'visit: requests': 2, 'visit: kv writes': 0 });
+  assert.equal(lines[0], 'the schedules a day: 194 queries, 97 KV reads, 1 KV writes, 0.3 Workers AI asks');
+  assert.equal(lines[1], 'dashboard home loads a day before 10k queries: 1,225');
+  assert.equal(lines.at(-1), 'KV writes a day left after the schedules: 999');
+});
+
+test('the Workers AI stand-in counts each ask and about how many tokens it sends', async () => {
+  const count = counters(), ai = fakeAI(count);
+  await ai.run('@cf/model', { messages: [{ role: 'system', content: 'x'.repeat(40) }, { role: 'user', content: 'y'.repeat(9) }], max_tokens: 160 });
+  assert.equal(count.ai, 1);
+  assert.equal(count.aiTokens, 13, 'a token for every 4 characters, rounded up');
+});
+
+test('a message to the alert webhook is counted, not refused', async () => {
+  const count = counters(), res = await fakeFetch(count)(WEBHOOK, { method: 'POST', body: 'hi' });
+  assert.equal(res.ok, true);
+  assert.equal(count.webhooks, 1);
 });
 
 test('the bench measures against the commit a saved baseline was taken at', () => {
