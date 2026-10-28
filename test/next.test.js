@@ -121,6 +121,22 @@ test('SQL store: when the row limit cuts a visit short, that visit is dropped ra
   assert.equal(out.cur.views, (NEXT.rows - 1) / 2 + 0.5 | 0);
 });
 
+test('SQL store: when one period fills the first answer, the other is asked for on its own, and both say whether they were sampled', async () => {
+  const calls = [];
+  const id = i => i.toString(16).padStart(12, '0');
+  const fetchImpl = async (_, init) => {
+    calls.push(init.body);
+    if (init.body.includes(' IN (')) return new Response(JSON.stringify({ data: [] }));
+    const prev = init.body.includes(' OR ') ? [{ p: 0, v: id(1) }] : Array.from({ length: NEXT.keep + 1 }, (_, i) => ({ p: 0, v: id(i) }));
+    const cur = Array.from({ length: NEXT.both - prev.length }, (_, i) => ({ p: 1, v: id(i) }));
+    return new Response(JSON.stringify({ data: init.body.includes(' OR ') ? [...cur, ...prev] : prev }));
+  };
+  const out = await sqlStore(ENV, fetchImpl).next(parseQuery(url('next?path=/pricing'), SITES));
+  assert.equal(calls.length, 3, 'both, then the previous period alone, then the rows');
+  assert.ok(calls[1].endsWith(`LIMIT ${NEXT.keep + 1}`) && !calls[1].includes(' OR '));
+  assert.deepEqual([out.sampled, out.prevSampled], [true, true]);
+});
+
 test('SQL store: a page nobody viewed asks once and answers empty', async () => {
   const calls = [];
   const fetchImpl = async (e, init) => { calls.push(init.body); return new Response(JSON.stringify({ data: [] }), { status: 200 }); };

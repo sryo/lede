@@ -43,6 +43,13 @@ const READ = {
 // The share still reading 10%, 20%... 100% of the way down: everyone at the top, fading to the end's share.
 const REACH = Object.fromEntries(Object.entries(READ).map(([k, [, end, cliff]]) =>
   [k, BANDS.map(d => (end + (1 - end) * (1 - d / 100) ** 1.5) * (cliff && d > cliff[0] ? 1 - cliff[1] : 1))]));
+// Web Vitals at the 75th percentile: LCP and INP in ms, CLS ×1000 as stored. /owls is slow on phones, its
+// call recordings loading late; /by-song shifts as its charts load; /about has no data yet.
+const VITALS = {
+  '/': [1800, 120, 40], '/robin': [2100, 140, 30], '/by-song': [2600, 180, 280], '/feeders': [1900, 110, 60], '/owls': [4700, 560, 90],
+  '/migration': [2300, 150, 50], '/heron': [1700, 90, 20], '/wren': [2000, 130, 0], '/nests': [2200, 160, 70], '/swift': [1950, 100, 40],
+  '/kingfisher': [2050, 210, 110],
+};
 // How far down on average (%), from those shares.
 const DEPTH = Object.fromEntries(Object.entries(REACH).map(([k, r]) => [k, (.5 + r.reduce((a, b) => a + b) - r[9] / 2) * 10]));
 // Links off the site and files to download: the page they're on, and the share of its visitors who click.
@@ -255,8 +262,9 @@ export function demoNotes(q) {
 
 export const demoStore = {
   async summary(q) {
-    const w = windows(q);
-    return { cur: metrics(agg(q.filters, ...w.cur)), prev: metrics(agg(q.filters, ...w.prev)) };
+    const w = windows(q), cur = metrics(agg(q.filters, ...w.cur)), prev = metrics(agg(q.filters, ...w.prev));
+    // The sample site has always had visitors, so a filter nothing matches is a quiet site, not a new one.
+    return { cur, prev, sampled: false, prevSampled: false, ...(!cur.views && !prev.views && { ever: true }) };
   },
   async series(q) {
     const w = windows(q);
@@ -286,9 +294,9 @@ export const demoStore = {
       .sort((a, b) => b.visitors - a.visitors);
     return { dim, rows: mergeRows(rows(w.cur), rows(w.prev)) };
   },
-  async flows(q) {
-    const w = windows(q);
-    return { flows: demoFlows(q.filters, w.cur), prev: demoFlows(q.filters, w.prev) };
+  async flows(q, landing) {
+    const w = windows(q), only = list => landing == null ? list : list.filter(r => r.page === landing);
+    return { flows: only(demoFlows(q.filters, w.cur)), prev: only(demoFlows(q.filters, w.prev)) };
   },
   async firsts(q) {
     const w = windows(q), f = q.filters, m = data();
@@ -357,7 +365,9 @@ export const demoStore = {
     // Four in five page views send one; the rest are glances or tabs the browser closed first.
     // Sources whose visitors stay longer read longer. One page also gets how many got each tenth of the way down.
     const rows = ([d0, d1]) => PATHS.map((P, pi) => {
-      const r = { key: P.key, n: 0, ms: 0, depth: 0 };
+      const [lcp, inp, cls] = VITALS[P.key] || [0, 0, 0];
+      // The median read is shorter than the mean: a few long reads pull the mean up.
+      const r = { key: P.key, n: 0, ms: 0, depth: 0, median_ms: READ[P.key][0] * 800, lcp, inp, cls, lcp_n: 0, inp_n: 0, cls_n: 0 };
       if (f.path != null && P.key !== f.path) return r;
       SOURCES.forEach((S, si) => {
         if ((f.referrer != null && S.key !== f.referrer) || (f.channel != null && S.ch !== f.channel)) return;
@@ -367,6 +377,8 @@ export const demoStore = {
         r.ms += n * READ[P.key][0] * 1000 * S.dm;
         r.depth += n * DEPTH[P.key];
       });
+      // Most views measure LCP and CLS; fewer have a tap or key press for INP. A page with no data has none.
+      if (lcp) Object.assign(r, { lcp_n: r.n * .7, inp_n: r.n * .3, cls_n: r.n * .7 });
       if (f.path != null) BANDS.forEach((d, i) => { r[`r${d}`] = r.n * REACH[P.key][i]; });
       return r;
     }).filter(r => r.n >= 1).sort((a, b) => b.n - a.n);
@@ -432,7 +444,7 @@ export const demoStore = {
       next.sort((a, b) => b.views - a.views)[0].views += rest;
       return { views, left, visits: Math.round(views / 1.15), next: next.filter(r => r.views > 0) };
     };
-    return { path, sampled: false, cur: one(w.cur, false), prev: one(w.prev, true) };
+    return { path, sampled: false, prevSampled: false, cur: one(w.cur, false), prev: one(w.prev, true) };
   },
   async live() {
     const now = Math.floor(Date.now() / 1000);

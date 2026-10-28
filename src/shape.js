@@ -25,16 +25,28 @@ export function byPeriod(rows) {
 // A period with no visits has no row, where a query over just that period would have answered zeros.
 const NONE = { visitors: 0, visits: 0, views: 0, bounces: 0, total_time: 0 };
 
-// sampled: Analytics Engine kept only a sample of some of this period's views.
+// When a period was sampled, visits and bounces come from the view steps (see summarySql). Time on site
+// stays per visit counted: only the visits that kept two or more views have one.
+function counted(r, flat) {
+  const m = metrics(r);
+  if (!flat || r.v1 == null) return m;
+  const visits = num(r.v1);
+  return { ...m, visits, bounce: visits ? Math.max(0, visits - num(r.v2)) / visits : 0 };
+}
+const isSampled = rows => rows.some(r => num(r.sampled) > 0);
+
+// sampled, prevSampled: Analytics Engine kept only a sample of some of that period's views.
 export function toSummary(rows) {
   const { cur: [cur = NONE], prev: [prev = NONE] } = byPeriod(rows);
-  return { cur: metrics(cur), prev: metrics(prev), sampled: num(cur.sampled) > 0 };
+  const sampled = isSampled([cur]), prevSampled = isSampled([prev]);
+  return { cur: counted(cur, sampled), prev: counted(prev, prevSampled), sampled, prevSampled };
 }
 
 // first: the day rows count from, when d doesn't start at this period's first day.
 export function toSeries(rows, days, first = 0) {
   const out = { visitors: [], visits: [], views: [], bounce: [], duration: [] };
-  const byDay = new Map(rows.map(r => [num(r.d) - first, metrics(r)]));
+  const flat = isSampled(rows);
+  const byDay = new Map(rows.map(r => [num(r.d) - first, counted(r, flat)]));
   const empty = metrics({ bounces: 0, total_time: 0 });
   for (let d = 0; d < days; d++) {
     const m = byDay.get(d) || empty;
@@ -68,6 +80,15 @@ export function toFunnel(rows, steps) {
 }
 
 export const toFirsts = rows => rows.map(r => ({ key: r.key ?? '', day: num(r.d), visitors: num(r.visitors) }));
+// The same, from a breakdown's merged rows (see mergeRows).
+export const firstsOf = rows => rows.filter(r => r.first != null && r.visitors > 0).map(r => ({ key: r.key, day: r.first, visitors: r.visitors }));
+
+// A page as collect.js stores it: the path of the address, percent-encoded as browsers send it, without
+// a trailing slash, so a goal typed as /Café/ matches the views of /caf%C3%A9.
+export function pagePath(s) {
+  const p = new URL('https://x' + s).pathname;
+  return p.length > 1 ? p.replace(/\/+$/, '') : '/';
+}
 
 export function toHourly(rows, days) {
   const out = Array(days * 24).fill(0);
@@ -79,10 +100,11 @@ export function toHourly(rows, days) {
 }
 
 // Keys only seen in the previous period are kept with zero visitors, so a source that
-// stopped sending anyone still shows up as a loss.
+// stopped sending anyone still shows up as a loss. first: the day of this period the key was first seen,
+// when the rows say (breakdowns do).
 export function mergeRows(cur, prev) {
   const before = new Map(prev.map(r => [r.key ?? '', metrics(r)]));
-  const rows = cur.map(r => ({ key: r.key ?? '', ...metrics(r), prev: before.get(r.key ?? '') || null }));
+  const rows = cur.map(r => ({ key: r.key ?? '', ...metrics(r), ...(r.d != null && { first: num(r.d) }), prev: before.get(r.key ?? '') || null }));
   const seen = new Set(rows.map(r => r.key));
   for (const [key, m] of before) if (!seen.has(key)) rows.push({ key, ...metrics({}), prev: m });
   return rows;
@@ -128,10 +150,17 @@ export function shapeLive(rows, nowSec) {
 }
 
 // Engagement rows carry sums (see engagementSql). Each page gets the page views that sent one, how many
-// seconds they were read on average, and how far down, as a share of the page. A single page also gets
-// reach: the share of those views still there 10%, 20%... 100% of the way down.
+// seconds they were read on average, and how far down, as a share of the page; the median engaged ms
+// (one long read doesn't move it); and the 75th percentile of LCP and INP in ms and of CLS as its score
+// (stored ×1000), each null when no view measured it. A single page also gets reach: the share of those
+// views still there 10%, 20%... 100% of the way down.
+const vital = (r, k, scale = 1) => num(r[`${k}_n`]) > 0 ? num(r[k]) / scale : null;
 const reading = r => {
   const n = num(r.n), out = { views: n, time: n ? num(r.ms) / n / 1000 : 0, scroll: n ? num(r.depth) / n / 100 : 0 };
+  out.median = num(r.median_ms);
+  out.lcp = vital(r, 'lcp');
+  out.inp = vital(r, 'inp');
+  out.cls = vital(r, 'cls', 1000);
   if (r.r10 != null) out.reach = BANDS.map(d => n ? num(r[`r${d}`]) / n : 0);
   return out;
 };

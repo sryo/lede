@@ -1,6 +1,6 @@
 import * as Q from './queries.js';
-import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, toFirsts, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience, pickVisits, pairNext, toFunnel } from './shape.js';
-import { getSites, addSite, getAccountId } from './settings.js';
+import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, firstsOf, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience, pickVisits, pairNext, toFunnel, pagePath } from './shape.js';
+import { getSites, addSite, getAccountId, getSettings, saveSettings } from './settings.js';
 import { HttpError } from './errors.js';
 import { demoStore, demoNotes, DEMO_FUNNEL } from './demo.js';
 import { channelFor } from './channels.js';
@@ -58,6 +58,15 @@ export async function runSql(env, sql, fetchImpl = fetch, wait = ms => new Promi
   if (!res.ok) {
     console.error(`Analytics Engine query failed (${res.status}): ${text.slice(0, 300)}`);
     if (res.status === 401 || res.status === 403) throw new HttpError(502, 'Your Cloudflare token can’t read the stats. Make a new one with the link in docs/how-it-works.md, under “Deploy from the command line”, then run npx wrangler secret put ANALYTICS_TOKEN and paste it.');
+    // Any other refusal won't go away by asking again. Analytics Engine makes a dataset on its first
+    // write, so one it can't find has had no visit yet, or is read under another name than it's written.
+    if (res.status >= 400 && res.status < 500 && res.status !== 429) {
+      const ds = env.DATASET || 'lede';
+      if (/table|dataset/i.test(text) && /not|unknown|exist/i.test(text)) {
+        throw new HttpError(502, `Cloudflare has no stats called “${ds}” yet. Open a page of your site that has Lede’s line, then reload. If it still says this, check that DATASET in wrangler.jsonc matches the dataset under analytics_engine_datasets.`);
+      }
+      throw new HttpError(502, `Cloudflare refused Lede’s stats query (${res.status}). Asking again won’t help: check that DATASET in wrangler.jsonc matches the dataset under analytics_engine_datasets, then deploy again.`);
+    }
     throw new HttpError(502, 'Cloudflare didn’t send the stats back. Try again in a minute.');
   }
   return JSON.parse(text).data;
@@ -78,8 +87,12 @@ export function sqlStore(env, fetchImpl = fetch) {
     return out;
   };
   return {
+    // ever: with nothing in either period, whether the site has had any view at all, so a new site
+    // can be told apart from one gone quiet. Asked only then.
     async summary(q) {
-      return toSummary(await run(Q.summarySql(ds, q)));
+      const out = toSummary(await run(Q.summarySql(ds, q)));
+      if (!out.cur.views && !out.prev.views) out.ever = (await run(Q.everSql(ds, q.site))).length > 0;
+      return out;
     },
     async series(q) {
       const [days, top] = await Promise.all([run(Q.seriesSql(ds, q)), run(Q.topSourceSql(ds, q))]);
@@ -89,27 +102,31 @@ export function sqlStore(env, fetchImpl = fetch) {
       const { cur, prev } = await lists(only => Q.breakdownSql(ds, q, dim, only), Q.LISTS.breakdown);
       return { dim, rows: mergeRows(cur, prev) };
     },
-    async flows(q) {
-      const { cur, prev } = await lists(only => Q.flowSql(ds, q, only), Q.LISTS.flows);
+    async flows(q, landing) {
+      const { cur, prev } = await lists(only => Q.flowSql(ds, q, only, landing), Q.LISTS.flows);
       return { flows: toFlows(cur), prev: toFlows(prev) };
-    },
-    async firsts(q) {
-      const [pages, sources] = await Promise.all(['path', 'referrer'].map(dim => run(Q.firstSeenSql(ds, q, dim))));
-      return { start: q.start, pages: toFirsts(pages), sources: toFirsts(sources) };
     },
     async hourly(q) {
       const from = Q.hourlyStart(q);
       return { start: from, days: q.days, visitors: toHourly(await run(Q.hourlySql(ds, q, from, q.end)), q.days) };
     },
-    // Where readers of the page went next; see Q.NEXT for why it takes two queries.
+    // Where readers of the page went next; see Q.NEXT for why it takes two queries. When the first fills
+    // its limit, a period with no more than keep of its visits in it may have been cut short by the
+    // other, so it's asked for on its own.
     async next(q) {
       const path = q.filters.path;
-      const picked = pickVisits(await run(Q.nextVisitsSql(ds, q)), Q.NEXT.keep);
+      let found = await run(Q.nextVisitsSql(ds, q));
+      if (found.length >= Q.NEXT.both) {
+        const by = byPeriod(found);
+        for (const only of ['cur', 'prev']) if (by[only].length <= Q.NEXT.keep) by[only] = await run(Q.nextVisitsSql(ds, q, only));
+        found = [...by.cur, ...by.prev];
+      }
+      const picked = pickVisits(found, Q.NEXT.keep);
       let rows = picked.ids.length ? await run(Q.nextRowsSql(ds, q, picked.ids)) : [];
       // Rows come in visit order, so a full answer may have cut the last visit short, which would read as leaving.
       if (rows.length >= Q.NEXT.rows) rows = rows.filter(r => r.v !== rows.at(-1).v);
       rows = rows.filter(r => picked.keep.has(`${Number(r.p) === 1 ? 1 : 0}|${r.v}`));
-      return { path, sampled: picked.sampled.cur, ...pairNext(rows, path) };
+      return { path, sampled: picked.sampled.cur, prevSampled: picked.sampled.prev, ...pairNext(rows, path) };
     },
     async live(q, nowSec = Math.floor(Date.now() / 1000)) {
       return shapeLive(await run(Q.liveSql(ds, q.site)), nowSec);
@@ -143,31 +160,40 @@ export function sqlStore(env, fetchImpl = fetch) {
   };
 }
 
+// Stats are behind the password, so only the viewer's own browser may keep a copy.
+const BROWSER = maxAge => maxAge ? `private, max-age=${maxAge}` : 'no-store';
 const json = (body, status = 200, maxAge = 0) => new Response(JSON.stringify(body), {
   status,
-  headers: { 'Content-Type': 'application/json', 'Cache-Control': maxAge ? `max-age=${maxAge}` : 'no-store' },
+  headers: { 'Content-Type': 'application/json', 'Cache-Control': BROWSER(maxAge) },
 });
 
-// Goal pages: up to ten paths, each starting with a slash.
+// Goal pages: up to ten paths, each starting with a slash, read as stored pages (see pagePath). Each is
+// at most 200 bytes once encoded, so ten of them, written as hex, keep the query well under 10 KiB.
 export function parseGoals(list) {
-  if (!Array.isArray(list) || list.length > 10 || !list.every(g => typeof g === 'string' && g.startsWith('/') && g.length <= 512)) {
-    throw new HttpError(400, 'Goals are up to ten pages, each starting with “/”, like /signup.');
+  const pages = Array.isArray(list) && list.every(g => typeof g === 'string' && g.startsWith('/') && g.length <= 512) ? list.map(pagePath) : null;
+  if (!pages || pages.length > 10 || !pages.every(g => new TextEncoder().encode(g).length <= 200)) {
+    throw new HttpError(400, 'Goals are up to ten pages, each starting with “/” and up to 200 characters, like /signup.');
   }
-  return [...new Set(list)];
+  return [...new Set(pages)];
 }
 
-// Goals are kept in KV, so everyone who opens the dashboard sees the same ones. Reading them also
-// answers with the notes and the funnels, since the dashboard needs them as it opens: one request instead of three,
-// and the Overview asks for funnel numbers only when there is a funnel.
+// Goals, funnels and notes are kept in KV under one key per site (see settings.js), so everyone who
+// opens the dashboard sees the same ones. Reading the goals also answers with the notes and the funnels,
+// since the dashboard needs them as it opens: one request and one read instead of three, and the
+// Overview asks for funnel numbers only when there is a funnel.
+// Until the owner changes them, the sample site shows a note and a funnel.
+function settingsOf(saved, q, demo) {
+  return { goals: saved.goals || [], funnels: saved.funnels || (demo ? [DEMO_FUNNEL] : []), notes: saved.notes || (demo ? demoNotes(q) : []) };
+}
+
 async function goals(req, q, env, demo) {
-  const key = `goals:${q.site}`;
+  const saved = await getSettings(env, q.site);
   if (req.method === 'PUT') {
     const list = parseGoals((await req.json().catch(() => ({}))).goals);
-    await env.STORE.put(key, JSON.stringify(list));
+    await saveSettings(env, q.site, { ...saved, goals: list });
     return { goals: list };
   }
-  const [list, saved, f] = await Promise.all([env.STORE.get(key), readNotes(q, env, demo), funnels(req, q, env)]);
-  return { goals: JSON.parse(list || '[]'), notes: saved, ...f };
+  return settingsOf(saved, q, demo);
 }
 
 // The owner's notes on days ("Posted on Hacker News"): one per day, YYYY-MM-DD in the owner's time zone.
@@ -184,15 +210,9 @@ export function parseNote(body) {
   return { day, text };
 }
 
-// Until the owner changes the demo's notes, it shows the one it comes with.
-async function readNotes(q, env, demo) {
-  const saved = await env.STORE.get(`notes:${q.site}`);
-  return saved ? JSON.parse(saved) : demo ? demoNotes(q) : [];
-}
-
 // Each change is one KV write, and one that changes nothing writes nothing.
 async function notes(req, url, q, env, demo) {
-  const list = await readNotes(q, env, demo);
+  const saved = await getSettings(env, q.site), list = settingsOf(saved, q, demo).notes;
   if (req.method === 'GET') return { notes: list };
   let next;
   if (req.method === 'PUT') {
@@ -203,20 +223,21 @@ async function notes(req, url, q, env, demo) {
     if (!isDay(day)) throw new HttpError(400, 'Say which day’s note to remove, like ?day=2026-10-16.');
     next = list.filter(n => n.day !== day);
   } else throw new HttpError(405, 'Notes are read with GET, saved with PUT and removed with DELETE.');
-  if (JSON.stringify(next) !== JSON.stringify(list)) await env.STORE.put(`notes:${q.site}`, JSON.stringify(next));
+  if (JSON.stringify(next) !== JSON.stringify(list)) await saveSettings(env, q.site, { ...saved, notes: next });
   return { notes: next };
 }
 
 // The channel a referrer host falls in when no UTM tags say otherwise.
 export const withChannels = out => ({ ...out, rows: out.rows.map(r => ({ ...r, channel: channelFor(r.key, new URLSearchParams()) })) });
 
-// A funnel: two to five different pages a visit goes through, in order. Steps are shorter than goals
-// (200 characters), so five of them, written twice each as hex, keep the query well under 10 KiB.
+// A funnel: two to five different pages a visit goes through, in order, read as stored pages (see
+// pagePath). At most 200 characters each once encoded, so five of them, written as hex up to three
+// times each, keep the query under 10 KiB.
 export function parseFunnel(steps) {
-  const ok = Array.isArray(steps) && steps.length >= 2 && steps.length <= 5 && new Set(steps).size === steps.length
-    && steps.every(s => typeof s === 'string' && s.startsWith('/') && s.length <= 200);
+  const pages = Array.isArray(steps) && steps.every(s => typeof s === 'string' && s.startsWith('/') && s.length <= 512) ? steps.map(pagePath) : [];
+  const ok = pages.length >= 2 && pages.length <= 5 && new Set(pages).size === pages.length && pages.every(s => s.length <= 200);
   if (!ok) throw new HttpError(400, 'A funnel is two to five different pages, each starting with “/”.');
-  return steps;
+  return pages;
 }
 
 export function parseFunnels(list) {
@@ -225,34 +246,48 @@ export function parseFunnels(list) {
   return [...byKey.values()];
 }
 
-// Funnels are kept in KV beside the goals. The sample site shows one until a list is saved.
-async function funnels(req, q, env) {
-  const key = `funnels:${q.site}`;
+async function funnels(req, q, env, demo) {
+  const saved = await getSettings(env, q.site);
   if (req.method === 'PUT') {
     const list = parseFunnels((await req.json().catch(() => ({}))).funnels);
-    await env.STORE.put(key, JSON.stringify(list));
+    await saveSettings(env, q.site, { ...saved, funnels: list });
     return { funnels: list };
   }
-  const saved = await env.STORE.get(key);
-  return { funnels: saved ? JSON.parse(saved) : env.DEMO === 'true' ? [DEMO_FUNNEL] : [] };
+  return { funnels: settingsOf(saved, q, demo).funnels };
 }
 
-async function route(name, url, env, store, req) {
+// The isolate's copy of the sites, read again only when the site asked for isn't in it: one just added.
+async function sitesFor(url, env) {
+  const sites = await getSites(env), want = url.searchParams.get('site')?.toLowerCase();
+  return sites.length && (!want || sites.includes(want)) ? sites : getSites(env, { fresh: true });
+}
+
+// breakdown(dim) answers as /api/breakdown would for the same query, sharing its queries when both are asked at once.
+async function route(name, url, env, store, req, breakdown) {
   const demo = env.DEMO === 'true';
   if (name === 'sites') {
     if (req.method === 'POST') return { sites: await addSite(env, (await req.json().catch(() => ({}))).site), demo };
     return { sites: await getSites(env, { fresh: true }), demo };
   }
-  const q = parseQuery(url, await getSites(env, { fresh: true }));
+  const q = parseQuery(url, await sitesFor(url, env));
   if (name === 'goals') return goals(req, q, env, demo);
   if (name === 'notes') return notes(req, url, q, env, demo);
-  if (name === 'funnels') return funnels(req, q, env);
+  if (name === 'funnels') return funnels(req, q, env, demo);
   switch (name) {
-    case 'summary': return store.summary(q);
+    case 'summary': return { ...await store.summary(q), split: Q.monthSplit(q) };
     case 'series': return store.series(q);
-    case 'flows': return store.flows(q);
+    case 'flows': {
+      const landing = url.searchParams.get('landing');
+      if (landing != null && landing.length > 512) throw new HttpError(400, 'The landing filter is too long.');
+      return store.flows(q, landing ?? undefined);
+    }
     case 'hourly': return store.hourly(q);
-    case 'firsts': return store.firsts(q);
+    // The day each page and source was first seen comes with the breakdowns; this answers it on its own.
+    case 'firsts': {
+      if (store.firsts) return store.firsts(q);
+      const [pages, sources] = await Promise.all([breakdown('path'), breakdown('referrer')]);
+      return { start: q.start, pages: firstsOf(pages.rows), sources: firstsOf(sources.rows) };
+    }
     case 'live': return store.live(q);
     case 'engagement': return store.engagement(q);
     case 'links': return store.links(q);
@@ -278,8 +313,10 @@ async function route(name, url, env, store, req) {
 
 // The edge cache only works on a custom domain, so each isolate also keeps recent answers itself.
 // The promise is kept, so a dashboard asking the same thing twice at once runs the queries once.
+// Answers are kept by route and parameters, whatever order the parameters come in.
 const recent = new Map();
 const RECENT_MAX = 200;
+const keyOf = url => `${url.pathname}?${new URLSearchParams([...url.searchParams].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))}`;
 
 function remember(key, seconds, answer) {
   const hit = recent.get(key);
@@ -298,15 +335,30 @@ export async function handleApi(req, env, ctx) {
   const maxAge = settings ? 0 : CACHE_SECONDS[name] || CACHE_SECONDS.default;
   // Each stats request runs several SQL queries, so successful answers are cached briefly at the edge.
   const cache = !demo && !settings && typeof caches !== 'undefined' ? caches.default : null;
+  // The edge keeps its copy for s-maxage; the viewer's browser gets the private header either way.
   if (cache) {
     const hit = await cache.match(req.url);
-    if (hit) return hit;
+    if (hit) {
+      const res = new Response(hit.body, hit);
+      res.headers.set('Cache-Control', BROWSER(maxAge));
+      return res;
+    }
   }
   try {
-    const answer = () => route(name, url, env, demo ? demoStore : sqlStore(env), req);
-    const body = await (demo || settings || req.method !== 'GET' ? answer() : remember(req.url, maxAge, answer));
+    const store = demo ? demoStore : sqlStore(env);
+    const kept = (u, answer) => (demo || settings || req.method !== 'GET' ? answer() : remember(keyOf(u), maxAge, answer));
+    const breakdown = dim => {
+      const u = new URL(url);
+      u.pathname = '/api/breakdown';
+      u.searchParams.set('dim', dim);
+      return kept(u, () => route('breakdown', u, env, store, req, breakdown));
+    };
+    const body = await kept(url, () => route(name, url, env, store, req, breakdown));
     const res = json(body, 200, maxAge);
-    if (cache) ctx.waitUntil(cache.put(req.url, res.clone()));
+    if (cache) {
+      const copy = new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json', 'Cache-Control': `s-maxage=${maxAge}` } });
+      ctx.waitUntil(cache.put(req.url, copy));
+    }
     return res;
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);

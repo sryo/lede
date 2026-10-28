@@ -25,16 +25,35 @@ test('a funnel is one query over both periods that only reads the step pages', (
   assert.ok(sql.includes(`toDateTime(${q.prevStart})`) && sql.includes(`toDateTime(${q.start})`), 'both periods');
   const only = `(hex(blob2) = '${hexOf('/pricing')}' OR hex(blob2) = '${hexOf('/signup')}' OR hex(blob2) = '${hexOf('/thanks')}')`;
   assert.ok(sql.includes(only), 'rows for other pages are never read into the visits');
-  STEPS.forEach((s, i) => assert.ok(sql.includes(`min(if(hex(blob2) = '${hexOf(s)}', toUnixTimestamp(timestamp), 4294967295)) AS t${i}`), `first time of step ${i}`));
+  const first = s => `min(if(hex(blob2) = '${hexOf(s)}', toUnixTimestamp(timestamp), 4294967295))`, last = s => `max(if(hex(blob2) = '${hexOf(s)}', toUnixTimestamp(timestamp), 0))`;
+  assert.ok(sql.includes(`${first('/pricing')} AS a0`) && sql.includes(`${first('/signup')} AS a1`) && !sql.includes('AS a2'), 'first views, but the last step\'s');
+  assert.ok(sql.includes(`${last('/signup')} AS z1`) && sql.includes(`${last('/thanks')} AS z2`) && !sql.includes('AS z0'), 'last views, but the first step\'s');
   assert.match(sql, /blob8 = 'pageview'/, 'page views only');
 });
 
-test('each step counts visits whose first view of it came strictly after the step before', () => {
-  const q = parseQuery(url('funnel?days=7'), SITES, Date.UTC(2026, 9, 27, 15));
-  const sql = funnelSql('lede', q, STEPS);
-  assert.ok(sql.includes('countIf(t0 < 4294967295) AS s0'));
-  assert.ok(sql.includes('countIf(t0 < t1 AND t1 < 4294967295) AS s1'));
-  assert.ok(sql.includes('countIf(t0 < t1 AND t1 < t2 AND t2 < 4294967295) AS s2'));
+// Runs the funnel's per-step conditions on a visit's views, given as [page, second] in any order.
+function reaches(steps, views) {
+  const sql = funnelSql('lede', parseQuery(url('funnel?days=7'), SITES, Date.UTC(2026, 9, 27, 15)), steps);
+  const at = s => views.filter(([p]) => p === s).map(([, t]) => t);
+  const v = {};
+  steps.forEach((s, i) => { v[`a${i}`] = Math.min(4294967295, ...at(s)); v[`z${i}`] = Math.max(0, ...at(s)); });
+  return steps.map((_, k) => {
+    const part = sql.slice('SELECT p, '.length, sql.indexOf(' FROM')).split(/, (?=countIf)/)[k];
+    const cond = part.slice('countIf('.length, part.lastIndexOf(') AS'));
+    const js = cond.replaceAll(' AND ', ' && ').replace(/\bif\(/g, 'pick(');
+    return new Function('pick', ...Object.keys(v), `return ${js}`)((c, x, y) => (c ? x : y), ...Object.values(v));
+  });
+}
+
+test('a step counts any view of its page after the step before, not only the first', () => {
+  assert.deepEqual(reaches(STEPS, [['/pricing', 10], ['/signup', 20], ['/thanks', 30]]), [true, true, true]);
+  // Signed up on an earlier look, then came back through pricing and signed up again.
+  assert.deepEqual(reaches(STEPS, [['/signup', 5], ['/pricing', 10], ['/signup', 20], ['/thanks', 30]]), [true, true, true]);
+  assert.deepEqual(reaches(STEPS, [['/thanks', 5], ['/pricing', 10], ['/signup', 20]]), [true, true, false], 'a step seen only before the one before');
+  assert.deepEqual(reaches(STEPS, [['/signup', 5], ['/pricing', 10]]), [true, false, false]);
+  assert.deepEqual(reaches(STEPS, [['/signup', 5], ['/thanks', 30]]), [false, false, false], 'nothing counts without the first step');
+  assert.deepEqual(reaches(STEPS, [['/pricing', 10], ['/signup', 10]]), [true, false, false], 'strictly after');
+  assert.deepEqual(reaches(['/a', '/b'], [['/b', 1], ['/a', 2], ['/b', 3]]), [true, true]);
 });
 
 test('a funnel ignores the dashboard filters: a path filter would leave out every other step', () => {
@@ -63,6 +82,8 @@ test('the SQL store asks one query per funnel', async () => {
 test('a funnel is two to five different pages, each starting with a slash', () => {
   assert.deepEqual(parseFunnel(['/a', '/b']), ['/a', '/b']);
   assert.deepEqual(parseFunnel(['/a', '/b', '/c', '/d', '/e']).length, 5);
+  assert.deepEqual(parseFunnel(['/Pricing/', '/café?x=1']), ['/Pricing', '/caf%C3%A9'], 'read as the pages Lede stores');
+  assert.throws(() => parseFunnel(['/a', '/a/']), e => e.status === 400, 'the same page twice');
   for (const bad of [null, ['/a'], ['/a', '/b', '/c', '/d', '/e', '/f'], ['/a', 'b'], ['/a', '/a'], ['/a', '/' + 'x'.repeat(200)], ['/a', 3]]) {
     assert.throws(() => parseFunnel(bad), e => e.status === 400 && /two to five/.test(e.message), JSON.stringify(bad)?.slice(0, 40));
   }

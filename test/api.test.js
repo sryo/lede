@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseQuery, sqlStore, handleApi, runSql } from '../src/api.js';
-import { ranges, where, hexOf, breakdownSql, flowSql, hourlySql, firstSeenSql, conversionsSql, engagementSql, linksSql, liveSql, summarySql, seriesSql, topSourceSql, DAY } from '../src/queries.js';
+import { ranges, where, hexOf, breakdownSql, flowSql, hourlySql, conversionsSql, engagementSql, linksSql, liveSql, summarySql, seriesSql, topSourceSql, DAY } from '../src/queries.js';
 import { demoStore } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
 import { mergeRows, shapeLive, toEngagement, toAudience } from '../src/shape.js';
@@ -55,7 +55,8 @@ test('flows key each visit by its first referrer and first page; hours count fro
   assert.match(flows, /argMin\(blob2, timestamp\) AS landing/);
   assert.match(flows, /GROUP BY p, src, landing/);
   assert.match(hourlySql('lede', q, 3600, 7200), /intDiv\(toUnixTimestamp\(timestamp\) - 3600, 3600\) AS hr/);
-  assert.ok(firstSeenSql('lede', q, 'referrer').startsWith(`SELECT blob4 AS key, intDiv(toUnixTimestamp(min(timestamp)) - ${q.start}, 86400) AS d`));
+  assert.ok(breakdownSql('lede', q, 'path').includes(`intDiv(toUnixTimestamp(min(timestamp)) - ${q.start}, 86400) AS d FROM`), 'the day a page was first seen');
+  assert.ok(breakdownSql('lede', q, 'referrer').includes(`intDiv(min(t0) - ${q.start}, 86400) AS d FROM`), 'the day a source first sent a visit');
 });
 
 // A fake SQL API that answers by recognizing which query it was sent. Queries that compare the two
@@ -82,7 +83,7 @@ function fakeSql(calls) {
     else if (sql.includes('AS ms')) data = [{ p: 1, key: '/docs', n: '20', ms: '900000', depth: '1500' }, { p: 1, key: '/new', n: '1', ms: '2000', depth: '100' }, { p: 0, key: '/docs', n: '10', ms: '300000', depth: '500' }];
     else if (sql.includes('AS kind')) data = [{ p: 1, kind: 'outbound', key: 'github.com/acme', visitors: '6', clicks: '9' }, { p: 1, kind: 'download', key: 'example.com/guide.pdf', visitors: '2', clicks: '2' },
       { p: 0, kind: 'outbound', key: 'github.com/acme', visitors: '3', clicks: '4' }];
-    else if (sql.includes('AS key')) data = [{ p: 1, key: 'google.com', visitors: '7', visits: '8', views: '12', bounces: '2', total_time: '300' }, { p: 1, key: '', visitors: '3', visits: '3', views: '3', bounces: '3', total_time: '0' }, { p: 0, key: '', visitors: '2', visits: '2', views: '2', bounces: '1', total_time: '0' }];
+    else if (sql.includes('AS key')) data = [{ p: 1, key: 'google.com', visitors: '7', visits: '8', views: '12', bounces: '2', total_time: '300', d: '2' }, { p: 1, key: '', visitors: '3', visits: '3', views: '3', bounces: '3', total_time: '0', d: '0' }, { p: 0, key: '', visitors: '2', visits: '2', views: '2', bounces: '1', total_time: '0' }];
     else data = [{ p: 0, visitors: '50', visits: '120', views: '240', bounces: '60', total_time: '6000', sampled: '0' }, { p: 1, visitors: '100', visits: '120', views: '240', bounces: '60', total_time: '6000', sampled: '0' }];
     return new Response(JSON.stringify({ meta: [], data, rows: data.length }), { status: 200 });
   };
@@ -227,6 +228,97 @@ test('a token that may not read the stats is named as the cause, with how to mak
   } finally { console.error = realError; }
 });
 
+test('a refused query is not asked again, and says what to check', async () => {
+  const realError = console.error; console.error = () => {};
+  try {
+    let asked = 0;
+    const store = sqlStore(ENV, async () => (asked++, new Response('bad query', { status: 400 })));
+    await assert.rejects(store.summary(parseQuery(url('summary?days=3'), SITES)), e => e.status === 502 && /Asking again won’t help/.test(e.message) && /DATASET in wrangler\.jsonc/.test(e.message));
+    assert.equal(asked, 1);
+    const missing = sqlStore({ ...ENV, DATASET: 'stats' }, async () => new Response('{"errors":[{"message":"unknown table: stats"}]}', { status: 422 }));
+    await assert.rejects(missing.summary(parseQuery(url('summary?days=3'), SITES)), e => /^Cloudflare has no stats called “stats” yet\. Open a page of your site/.test(e.message));
+  } finally { console.error = realError; }
+});
+
+test('the dataset the stats are read from is the one the Worker writes to', async () => {
+  const { readFileSync } = await import('node:fs');
+  const config = readFileSync(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
+  const written = config.match(/"analytics_engine_datasets":\s*\[\{\s*"binding":\s*"EVENTS",\s*"dataset":\s*"(\w+)"/)[1];
+  const vars = config.match(/"DATASET":\s*"(\w+)"/);
+  let sql;
+  await sqlStore({ ACCOUNT_ID: 'acc', ANALYTICS_TOKEN: 'tok', ...(vars && { DATASET: vars[1] }) }, async (_, init) => (sql = init.body, new Response('{"data":[]}'))).hourly(parseQuery(url('hourly?days=1'), SITES));
+  assert.ok(sql.includes(` FROM ${written} WHERE`), `read from ${written}`);
+});
+
+test('engagement answers the median read and Web Vitals per page, CLS as its score, null with no data', async () => {
+  const store = sqlStore(ENV, async () => new Response(JSON.stringify({ data: [
+    { p: 1, key: '/docs', n: '20', ms: '900000', depth: '1500', median_ms: '31000', lcp: '2600', lcp_n: '14', inp: '240', inp_n: '5', cls: '120', cls_n: '14' },
+    { p: 1, key: '/old', n: '3', ms: '9000', depth: '100', median_ms: '2000', lcp: '0', lcp_n: '0', inp: '0', inp_n: '0', cls: '0', cls_n: '0' },
+  ] })));
+  const { rows } = await store.engagement(parseQuery(url('engagement?days=7'), SITES));
+  assert.deepEqual([rows[0].median, rows[0].lcp, rows[0].inp, rows[0].cls], [31000, 2600, 240, .12]);
+  assert.deepEqual([rows[1].lcp, rows[1].inp, rows[1].cls], [null, null, null]);
+});
+
+test('demo: pages have a median read under their mean, and Web Vitals, one poor on LCP', async () => {
+  const { rows } = await demoStore.engagement(parseQuery(url('engagement?days=30'), SITES));
+  for (const r of rows) assert.ok(r.median > 0 && r.median / 1000 < r.time * 1.2, r.key);
+  assert.ok(rows.find(r => r.key === '/owls').lcp > 4000);
+  assert.equal(rows.find(r => r.key === '/about').lcp, null, 'a page with no data yet');
+  assert.ok(rows.every(r => r.cls == null || r.cls < 1), 'CLS as a score');
+});
+
+test('flows can be just the visits that landed on one page', async () => {
+  const q = parseQuery(url('flows?days=7'), SITES);
+  assert.ok(flowSql('lede', q, undefined, '/blog').includes(`FROM lede WHERE`) && flowSql('lede', q, undefined, '/blog').includes(`) WHERE hex(landing) = '${hexOf('/blog')}' GROUP BY p, src, landing`));
+  assert.ok(!flowSql('lede', q).includes('hex(landing)'));
+  const env = { STORE: memoryKV({ sites: '["example.com"]' }), DEMO: 'true' };
+  const res = await handleApi(new Request('https://worker.test/api/flows?days=30&landing=/owls'), env, { waitUntil() {} });
+  const { flows, prev } = await res.json();
+  assert.ok(flows.length > 0 && flows.every(f => f.page === '/owls') && prev.every(f => f.page === '/owls'));
+});
+
+test('breakdowns say the day each key was first seen, so the home screen asks no query for it', async () => {
+  const calls = [];
+  const env = { ...ENV, STORE: memoryKV({ sites: '["example.com"]' }) };
+  const fetchImpl = fakeSql(calls);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (u, init) => fetchImpl(u, init);
+  try {
+    const qs = 'site=example.com&days=3&tz=0&n=firsts-test';
+    const get = path => handleApi(new Request(`https://worker.test/api/${path}`), env, { waitUntil() {} }).then(r => r.json());
+    const [paths, refs, firsts] = await Promise.all([get(`breakdown?${qs}&dim=path`), get(`breakdown?${qs}&dim=referrer`), get(`firsts?${qs}`)]);
+    assert.equal(calls.length, 2, 'firsts reuses the two breakdowns');
+    assert.deepEqual(firsts.sources, refs.rows.filter(r => r.visitors > 0).map(r => ({ key: r.key, day: r.first, visitors: r.visitors })));
+    assert.equal(firsts.pages.length, paths.rows.filter(r => r.visitors > 0).length);
+    // Asked on its own, in another order, it runs them itself.
+    await get(`firsts?days=3&site=example.com&tz=0&n=alone`);
+    assert.equal(calls.length, 4);
+  } finally { globalThis.fetch = realFetch; }
+  const merged = mergeRows([{ key: '/new', visitors: '4', d: '2' }], []);
+  assert.equal(merged[0].first, 2);
+});
+
+test('stats may be kept by the viewer\'s browser only; the edge keeps its own copy', async () => {
+  const put = [];
+  const cache = { match: async () => undefined, put: async (k, r) => put.push([k, r]) };
+  globalThis.caches = { default: cache };
+  try {
+    const env = { ...ENV, STORE: memoryKV({ sites: '["example.com"]' }) };
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = fakeSql([]);
+    let res;
+    const waits = [];
+    try { res = await handleApi(new Request('https://worker.test/api/summary?days=3&n=cache'), env, { waitUntil: p => waits.push(p) }); await Promise.all(waits); } finally { globalThis.fetch = realFetch; }
+    assert.equal(res.headers.get('Cache-Control'), 'private, max-age=60');
+    assert.equal(put[0][1].headers.get('Cache-Control'), 's-maxage=60');
+    cache.match = async () => new Response('{"cur":{}}', { headers: { 'Cache-Control': 's-maxage=60' } });
+    const hit = await handleApi(new Request('https://worker.test/api/summary?days=3&n=cache'), env, { waitUntil() {} });
+    assert.equal(hit.headers.get('Cache-Control'), 'private, max-age=60');
+    assert.deepEqual(await hit.json(), { cur: {} });
+  } finally { delete globalThis.caches; }
+});
+
 async function busyAndQuiet(store, label) {
   const q = parseQuery(url('series?days=30'), SITES);
   const ser = await store.series(q);
@@ -274,10 +366,10 @@ test('changes are refused when another site sends them with the saved password',
     method, headers: { Cookie: cookie, ...headers }, body: method === 'PUT' ? JSON.stringify({ day: '2026-10-16', text: 'Hi' }) : undefined,
   }), env, { waitUntil() {} });
   assert.equal((await note('PUT', { Origin: 'https://evil.test' })).status, 403);
-  assert.equal(kv.get('notes:example.com'), undefined);
+  assert.equal(kv.get('settings:example.com'), undefined);
   assert.equal((await note('PUT', { Origin: 'https://lede.test' })).status, 200);
   assert.equal((await note('DELETE', { 'Sec-Fetch-Site': 'cross-site' }, '&day=2026-10-16')).status, 403);
-  assert.equal(JSON.parse(kv.get('notes:example.com')).length, 1);
+  assert.equal(JSON.parse(kv.get('settings:example.com')).notes.length, 1);
 });
 
 test('a rate-limited stats query is tried once more', async () => {
@@ -294,7 +386,7 @@ test('stats count page views only; engagement and link queries ask for their own
   const q = parseQuery(url('summary?days=7&path=%2Fdocs'), SITES);
   assert.ok(where(q, 0, 10).includes(`blob8 = 'pageview'`));
   const all = [summarySql, seriesSql, topSourceSql, flowSql].map(f => f('lede', q))
-    .concat(hourlySql('lede', q, q.start, q.end), breakdownSql('lede', q, 'path'), breakdownSql('lede', q, 'referrer'), firstSeenSql('lede', q, 'path'), conversionsSql('lede', q, q.start, q.end, ['/a']));
+    .concat(hourlySql('lede', q, q.start, q.end), breakdownSql('lede', q, 'path'), breakdownSql('lede', q, 'referrer'), conversionsSql('lede', q, q.start, q.end, ['/a']));
   for (const sql of all) {
     assert.ok(sql.includes(`blob8 = 'pageview'`), sql);
     assert.ok(!sql.includes(`'ping'`), 'a ping is not a page view, a visit or a bounce');
@@ -317,7 +409,8 @@ test('SQL store averages engagement per page and splits links from downloads', a
   calls.prevStart = q.prevStart;
   const store = sqlStore(ENV, fakeSql(calls));
   const { rows } = await store.engagement(q);
-  assert.deepEqual(rows[0], { key: '/docs', views: 20, time: 45, scroll: .75, prev: { views: 10, time: 30, scroll: .5 } });
+  const none = { median: 0, lcp: null, inp: null, cls: null };
+  assert.deepEqual(rows[0], { key: '/docs', views: 20, time: 45, scroll: .75, ...none, prev: { views: 10, time: 30, scroll: .5, ...none } });
   assert.equal(rows[1].prev, null);
   const links = await store.links(q);
   assert.deepEqual(links.outbound, [{ key: 'github.com/acme', visitors: 6, clicks: 9, prev: 3 }]);

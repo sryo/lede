@@ -2,10 +2,12 @@
 //   sites          JSON list of hostnames that may send events, added from the dashboard
 //   salt:YYYY-MM   random secret that hashes that month's visitors; deletes itself when the month is over
 //   account        Cloudflare account ID, read from the API token the first time stats are asked for
-//   goals:<site>   JSON list of goal paths
+//   settings:<site> JSON {goals, funnels, notes}: goal paths, funnels (lists of paths) and the owner's notes
+//                  on days, {day: YYYY-MM-DD, text}; a field not there was never saved. Read and written in
+//                  api.js. Older versions kept each in its own key (goals:<site>, funnels:<site>,
+//                  notes:<site>), which are read until the site's settings are first saved.
 //   origin         the dashboard's address, for the links in alerts; saved when the dashboard opens
 //   spike:<site>   the day's spike alerts sent so far; deletes itself after two days
-//   notes:<site>   JSON list of the owner's notes on days, {day: YYYY-MM-DD, text}, read and written in api.js
 //   shot:… og:…    a page's picture for its view, and its share picture; see src/shot.js
 import { HttpError } from './errors.js';
 
@@ -47,6 +49,18 @@ export async function getSites(env, { fresh = false } = {}) {
   const read = async () => JSON.parse(await store.get('sites') || '[]');
   return fresh ? read() : remembered(store, 'sites', read);
 }
+
+// One read when the site's settings were saved since they moved to one key, four before that.
+const PARTS = ['goals', 'funnels', 'notes'];
+export async function getSettings(env, site) {
+  const store = storeOf(env);
+  const saved = await store.get(`settings:${site}`);
+  if (saved) return JSON.parse(saved);
+  const old = await Promise.all(PARTS.map(k => store.get(`${k}:${site}`)));
+  return Object.fromEntries(PARTS.flatMap((k, i) => old[i] == null ? [] : [[k, JSON.parse(old[i])]]));
+}
+
+export const saveSettings = (env, site, settings) => storeOf(env).put(`settings:${site}`, JSON.stringify(settings));
 
 export async function addSite(env, input) {
   const site = normalizeSite(input);

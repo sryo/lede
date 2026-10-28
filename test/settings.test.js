@@ -137,6 +137,43 @@ test('goals are saved for everyone who opens the dashboard', async () => {
   assert.equal(bad.status, 400);
 });
 
+test('goals are read as the pages Lede stores: no trailing slash, encoded as browsers send them', async () => {
+  const env = { STORE: memoryKV({ sites: '["example.com"]' }) };
+  const saved = await call('goals?site=example.com', env, { method: 'PUT', body: JSON.stringify({ goals: ['/Pricing/', '/café', '/caf%C3%A9', '/thanks?from=mail'] }) });
+  assert.deepEqual(await saved.json(), { goals: ['/Pricing', '/caf%C3%A9', '/thanks'] });
+  const long = await call('goals?site=example.com', env, { method: 'PUT', body: JSON.stringify({ goals: ['/' + 'é'.repeat(40)] }) });
+  assert.equal(long.status, 400, '40 characters, but 240 once encoded');
+  assert.match((await long.json()).error, /up to 200 characters/);
+});
+
+test('goals, funnels and notes share one key per site; the old keys are read until it is first saved', async () => {
+  const STORE = memoryKV({ sites: '["example.com"]', 'goals:example.com': '["/signup"]', 'notes:example.com': '[{"day":"2026-10-16","text":"Hi"}]' });
+  let reads = 0;
+  const get = STORE.get;
+  STORE.get = k => (reads++, get(k));
+  const env = { STORE };
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/signup'], funnels: [], notes: [{ day: '2026-10-16', text: 'Hi' }] });
+  await call('funnels?site=example.com', env, { method: 'PUT', body: JSON.stringify({ funnels: [['/', '/signup']] }) });
+  assert.deepEqual(JSON.parse(STORE.m.get('settings:example.com')), { goals: ['/signup'], notes: [{ day: '2026-10-16', text: 'Hi' }], funnels: [['/', '/signup']] });
+  reads = 0;
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/signup'], funnels: [['/', '/signup']], notes: [{ day: '2026-10-16', text: 'Hi' }] });
+  assert.equal(reads, 1, 'the sites come from the isolate\'s copy, and the settings are one read');
+});
+
+test('stats read the sites once a minute per isolate, and again at once for a site just added', async () => {
+  const STORE = memoryKV({ sites: '["a.example"]' });
+  let reads = 0;
+  const get = STORE.get;
+  STORE.get = k => (k === 'sites' && reads++, get(k));
+  const env = { STORE, DEMO: 'true' };
+  for (let i = 0; i < 3; i++) assert.equal((await call(`summary?site=a.example&n=${i}`, env)).status, 200);
+  assert.equal(reads, 1);
+  STORE.m.set('sites', '["a.example","b.example"]');
+  assert.equal((await call('summary?site=b.example', env)).status, 200, 'not in the copy, so read again');
+  assert.equal(reads, 2);
+  assert.equal((await call('summary?site=c.example', env)).status, 400);
+});
+
 test('notes on days are saved for everyone, one per day, and each change is one write', async () => {
   const env = { STORE: memoryKV({ sites: '["example.com"]' }) };
   let writes = 0;
