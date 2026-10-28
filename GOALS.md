@@ -59,5 +59,6 @@ And we go the extra mile: the edge case handled, the sentence rewritten, the byt
 
 Every change is measured (see "Measuring changes" in `docs/how-it-works.md`). Goals 5 and 6
 may not get worse, and a change made for them must make them better. When the bench blocks a
-change, only the owner can let it through, knowing the numbers; the commit then says what got
-worse, by how much, and why it's worth it.
+change, first make it pay for itself: a smaller version, or a saving elsewhere in the same
+change. Only when that fails, the owner may let it through, knowing the numbers; it should be
+rare, and the commit then says what got worse, by how much, and why it's worth it.
