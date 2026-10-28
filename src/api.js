@@ -288,19 +288,22 @@ async function sitesFor(url, env) {
   return sites.length && (!want || sites.includes(want)) ? sites : getSites(env, { fresh: true });
 }
 
-// The line under home's sentence (src/insight.js), or null. It reads the answers home just asked for, so a
-// home load that ran them costs only the reading times, page speeds and search words, which home doesn't ask
-// for but the line's best links need; a view that asked for them a moment ago has them kept.
+// The line under home's sentence (src/insight.js), or null. Within the hour after the last try the kept line
+// stands, with no query at all. Then the sheet is built from the answers home just asked for, plus the reading
+// times, page speeds and search words the line's best links need, which home doesn't ask for: 3 queries at
+// most once an hour per site and period, none when a view asked for them in the last minute.
 async function insightFor(q, env, ask) {
-  const [totals, ser, pages, refs, flows, saved, engagement, keywords] = await Promise.all([ask.stat('summary'), ask.stat('series'),
-    ask.stat('breakdown', { dim: 'path' }), ask.stat('breakdown', { dim: 'referrer' }), ask.stat('flows'), getSettings(env, q.site),
-    ask.stat('engagement').catch(() => null), ask.stat('keywords').catch(() => null)]);
-  if (totals.cur.visitors < MIN_VISITORS) return null;
-  const notes = settingsOf(saved, q, false).notes;
-  const S = readStory({ totals, ser, pages, refs, flows, notes }), T = tellStory(S, ser, q.days);
-  const facts = factSheet({ site: q.site, span: { now: `in the last ${q.days} days`, before: `the ${q.days} days before` },
-    S, T, ser, pages, flows, notes, engagement, keywords });
-  return facts ? lineFor(env, `insight:${q.site}:${q.days}`, facts) : null;
+  return lineFor(env, `insight:${q.site}:${q.days}`, async () => {
+    // Home just asked for the totals, so this costs nothing, and a small site stops here before the 3 queries.
+    if ((await ask.stat('summary')).cur.visitors < MIN_VISITORS) return null;
+    const [totals, ser, pages, refs, flows, saved, engagement, keywords] = await Promise.all([ask.stat('summary'), ask.stat('series'),
+      ask.stat('breakdown', { dim: 'path' }), ask.stat('breakdown', { dim: 'referrer' }), ask.stat('flows'), getSettings(env, q.site),
+      ask.stat('engagement').catch(() => null), ask.stat('keywords').catch(() => null)]);
+    const notes = settingsOf(saved, q, false).notes;
+    const S = readStory({ totals, ser, pages, refs, flows, notes }), T = tellStory(S, ser, q.days);
+    return factSheet({ site: q.site, span: { now: `in the last ${q.days} days`, before: `the ${q.days} days before` },
+      S, T, ser, pages, flows, notes, engagement, keywords });
+  });
 }
 
 // The owner's read-only links, newest first. POST makes one for a site, DELETE ?token= stops one.

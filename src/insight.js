@@ -236,20 +236,26 @@ export async function insight(env, facts) {
 /* ---------- keeping a line ---------- */
 
 const HOUR = 3600_000;
-const making = new Map(), failedAt = new Map();
+const making = new Map(), failedAt = new Map(), checkedAt = new Map();
 
 // One KV entry per site and period (key), {text, hash, at, tried}, so each costs at most one Workers AI
-// request and one KV write an hour. A line kept under 6 hours is shown while it still passes the checks
-// against today's sheet; a new one is asked for only when there's none, or when the sheet has changed and
-// the last try was an hour or more ago. A try that came to nothing is kept too, so it isn't asked again
-// on every load, and each instance asks once at a time.
-export async function lineFor(env, key, facts, now = Date.now()) {
-  const hash = await hashOf(facts);
+// request and one KV write an hour. sheet builds the facts, which costs queries home doesn't make, so within
+// the hour after the last try (or after this instance last checked the kept line) the kept line stands as it
+// is and no sheet is built. After that, a line kept under 6 hours is shown while it still passes the checks
+// against the new sheet; a new one is asked for only when there's none, or when the sheet has changed. A try
+// that came to nothing is kept too, so it isn't asked again on every load, and each instance asks once at a time.
+export async function lineFor(env, key, sheet, now = Date.now()) {
   let entry = null;
   try { entry = JSON.parse(await env.STORE.get(key) || 'null'); } catch {}
-  if (entry?.text && check(entry.text, facts) && (entry.hash === hash || now - entry.at < 6 * HOUR)) return entry.text;
+  const last = Math.max(entry ? entry.tried ?? entry.at : -Infinity, checkedAt.get(key) ?? -Infinity);
+  if (entry && now - last < HOUR) return entry.text || null;
   if (now - (failedAt.get(key) ?? -Infinity) < HOUR) return null;
-  if (entry && (entry.hash === hash || now - (entry.tried ?? entry.at) < HOUR)) return null;
+  const facts = typeof sheet === 'function' ? await sheet() : sheet;
+  // Too few visitors, or nothing to connect: not asked again for an hour, so a small site doesn't pay each load.
+  if (!facts) { failedAt.set(key, now); return null; }
+  const hash = await hashOf(facts);
+  if (entry?.text && check(entry.text, facts) && (entry.hash === hash || now - entry.at < 6 * HOUR)) { checkedAt.set(key, now); return entry.text; }
+  if (entry && entry.hash === hash) { checkedAt.set(key, now); return null; }
   if (!making.has(key)) making.set(key, make(env, key, facts, hash, entry, now).finally(() => making.delete(key)));
   return making.get(key);
 }

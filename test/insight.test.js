@@ -198,22 +198,29 @@ test('a kept line is shown while it passes the checks; a new one is asked at mos
   const other = facts.replace('by 12 visitors', 'by 13 visitors');
   const no250 = other.replace('250 visitors this week', '260 visitors this week'), no30 = no250.replace('bounce 30%', 'bounce 31%');
   console.error = m => errors.push(m);
+  let built = 0;
+  const lazy = f => async () => (built++, f);
   try {
     assert.equal(await ask(facts, 0), answer);
     assert.deepEqual(JSON.parse(env.STORE.puts[0].v), { text: answer, hash: await hashOf(facts), at: T0, tried: T0 });
-    assert.equal(await ask(other, 5), answer, 'new facts, but the line still holds and is under 6 hours old');
+    assert.equal(await ask(lazy(other), .5), answer, 'within the hour the kept line stands');
+    assert.equal(built, 0, 'and no sheet is built, so no query is made');
+    assert.equal(await ask(lazy(other), 5), answer, 'new facts, but the line still holds and is under 6 hours old');
+    assert.equal(built, 1);
+    assert.equal(await ask(lazy(other), 5.5), answer, 'checked within the hour: no sheet again');
+    assert.equal(built, 1);
     assert.equal(runs, 1);
     answer = 'google.com visits bounce 30%.';
-    assert.equal(await ask(no250, 5.5), answer, 'the line no longer holds: asked again');
+    assert.equal(await ask(no250, 6.1), answer, 'the line no longer holds: asked again');
     assert.equal(runs, 2);
-    assert.equal(await ask(no30, 6), null, 'nor does the new one, but it was asked under an hour ago');
+    assert.equal(await ask(no30, 6.5), answer, 'asked under an hour ago: the kept line stands');
     assert.equal(runs, 2);
     answer = 'google.com visits bounce 31%.';
-    assert.equal(await ask(no30, 6.5), answer);
-    assert.equal(await ask(no30, 13), answer, 'the same facts keep their line past 6 hours');
+    assert.equal(await ask(no30, 7.2), answer, 'an hour on, it no longer holds: asked again');
+    assert.equal(await ask(no30, 14), answer, 'the same facts keep their line past 6 hours');
     assert.equal(runs, 3);
     answer = 'google.com visits bounce 30%.';
-    assert.equal(await ask(other, 13), answer);
+    assert.equal(await ask(other, 15.1), answer);
     assert.equal(runs, 4);
     assert.equal(env.STORE.puts.at(-1).opts.expirationTtl, 86400);
   } finally { console.error = error; }
