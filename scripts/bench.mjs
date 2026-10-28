@@ -239,13 +239,22 @@ async function browserTimes(server, chrome) {
 
 /* ---------- the run ---------- */
 
+// --save-baseline records the rev it measured; a dirty one was the code of the commit that then recorded it.
+export function baselineRef(baseline, recordedIn) {
+  const rev = baseline.run?.rev ?? '';
+  const ref = rev.endsWith('+dirty') ? recordedIn : rev === 'unknown' ? '' : rev;
+  if (!ref) throw new Error(`bench/baseline.json names no commit to measure against (${rev || 'no rev'}); pass --base <ref>`);
+  return ref;
+}
+
 export async function run(opts) {
   const chromePath = opts.chrome || CHROMES.find(p => existsSync(p));
   if (!chromePath) throw new Error('no Chrome found; pass --chrome or set CHROME');
   let rev = 'unknown', dirty = false;
   try { rev = git('rev-parse', '--short', 'HEAD').trim(); dirty = git('status', '--porcelain', '--', 'src', 'public', 'dist').trim() !== ''; } catch {}
   const runSide = opts.run ? { rev: git('rev-parse', '--short', opts.run).trim(), root: exportRef(opts.run) } : { rev: rev + (dirty ? '+dirty' : ''), root: ROOT };
-  const baseRef = opts.saveBaseline ? null : opts.aa ? null : opts.base || JSON.parse(readFileSync(join(ROOT, 'bench/baseline.json'), 'utf8')).rev;
+  const baseRef = opts.saveBaseline ? null : opts.aa ? null : opts.base
+    || baselineRef(JSON.parse(readFileSync(join(ROOT, 'bench/baseline.json'), 'utf8')), git('log', '-1', '--format=%h', '--', 'bench/baseline.json').trim());
   const baseSide = opts.saveBaseline ? null : opts.aa ? { ...runSide } : { rev: git('rev-parse', '--short', baseRef).trim(), root: exportRef(baseRef) };
   const sides = baseSide ? [baseSide, runSide] : [runSide];
 

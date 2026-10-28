@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { compare, timing, noiseFrom, headroom } from '../scripts/compare.mjs';
+import { baselineRef } from '../scripts/bench.mjs';
 
 const side = (times, extra = {}) => ({ rev: 'x', bytes: { 't.js gzip': 100 }, counts: { 'queries: /': 10 }, times, ...extra });
 const reps = (v, n = 15, jitter = 0.01) => Array.from({ length: n }, (_, i) => v * (1 + (i % 3 - 1) * jitter));
@@ -44,4 +45,10 @@ test('headroom says how much a day fits in the free limits', () => {
     'visits a day before 100k Worker requests: 50,000',
     'visits a day before 1k KV writes: unlimited',
   ]);
+});
+
+test('the bench measures against the commit a saved baseline was taken at', () => {
+  assert.equal(baselineRef({ run: { rev: '64b0ea0' } }, 'a1f2474'), '64b0ea0');
+  assert.equal(baselineRef({ run: { rev: '64b0ea0+dirty' } }, 'a1f2474'), 'a1f2474', 'saved from uncommitted code, so the commit that recorded it');
+  assert.throws(() => baselineRef({ run: { rev: 'unknown' } }, ''), /--base/);
 });
