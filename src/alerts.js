@@ -120,38 +120,52 @@ function supporting(S, pageRows, toldPage) {
 
 async function weekText(store, site, nowMs, link) {
   const q = weekQuery(site, nowMs);
-  const [totals, ser, pages, refs, flows] = await Promise.all([store.summary(q), store.series(q), store.breakdown(q, 'path'),
+  // Every query settles before the next site starts, so none of this site's is still asking then.
+  const got = await Promise.allSettled([store.summary(q), store.series(q), store.breakdown(q, 'path'),
     store.breakdown(q, 'referrer').then(withChannels), store.flows(q)]);
+  const failed = got.find(g => g.status === 'rejected');
+  if (failed) throw failed.reason;
+  const [totals, ser, pages, refs, flows] = got.map(g => g.value);
   const S = readStory({ totals, ser, pages, refs, flows }), T = tellStory(S, ser, q.days, { now: 'this week', before: 'the week before' });
   const pageRows = pages.rows.map(r => ({ key: r.key, value: r.visitors, prev: r.prev?.visitors }));
   return [`${displayHost(site)}, the week of ${fmtDay(dayDate(q.start, 0))}`, plain(T.html),
     ...(S.c.visitors || S.p.visitors ? supporting(S, pageRows, T.page) : []), ...(link ? [link] : [])].join('\n');
 }
 
-// A schedule on the Free plan may make 50 requests. A site's week takes 6 queries (a few more when one
-// period needs a list of its own), so sites are told one at a time while that fits, and the rest of the
-// 50 is left for the account lookup and the message itself.
-export const SUBREQUESTS = 45;
+// A schedule on the Free plan may make 50 subrequests, KV reads among them: here the sites, the dashboard's
+// address and the account. A site's week takes 6 to 9 queries (one more for each of its three lists when a
+// period needs a query of its own) and a query Cloudflare refuses at first is asked again, so sites are told
+// one at a time while the fewest could fit, and none may take the requests the message needs. A site that
+// runs out is named with those that didn't fit.
+export const SUBREQUESTS = 50 - 3;
 const PER_SITE = 6;
 
 const names = list => list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`;
 
-async function weekly(env, store, nowMs, fetchImpl, used) {
+const tooMany = left => `Too many sites for one message, so ${names(left.map(displayHost))} ${left.length > 1 ? 'aren’t' : 'isn’t'} in it. Their week is on the dashboard.`;
+
+async function weekly(env, store, nowMs, fetchImpl, budget) {
   const sites = await getSites(env), origin = await dashboard(env);
   const link = site => origin && origin + viewToUrl(null, { days: 7, site: sites.length > 1 ? site : null });
-  const blocks = [], left = [];
+  const told = [], left = [];
+  const text = () => [...told.map(t => t.text), ...(left.length ? [tooMany(left)] : [])].join('\n\n');
+  const parts = () => (env.ALERT_WEBHOOK ? splitText(text(), fitsIn(env.ALERT_WEBHOOK)).length : 0);
   for (const site of sites) {
-    if (used() + PER_SITE > SUBREQUESTS) { left.push(site); continue; }
+    // Room for this site's block and the line naming the rest, each perhaps a part of its own.
+    const room = SUBREQUESTS - parts() - 2;
+    if (left.length || budget.used() + PER_SITE > room) { left.push(site); continue; }
+    budget.cap(room);
     try {
-      blocks.push(await weekText(store, site, nowMs, link(site)));
+      told.push({ site, text: await weekText(store, site, nowMs, link(site)) });
     } catch (e) {
-      console.error(`Couldn’t write the week’s story for ${site} (${e.message}). It tries again next Monday.`);
+      if (budget.used() >= room) left.push(site);
+      else console.error(`Couldn’t write the week’s story for ${site} (${e.message}). It tries again next Monday.`);
     }
   }
-  if (left.length) {
-    blocks.push(`Too many sites for one message, so ${names(left.map(displayHost))} ${left.length > 1 ? 'aren’t' : 'isn’t'} in it. Their week is on the dashboard.`);
-  }
-  if (blocks.length) await send(env, blocks.join('\n\n'), fetchImpl);
+  budget.cap(SUBREQUESTS);
+  // A block longer than one part could still leave the message too many; the last sites told make room.
+  while (told.length && budget.used() + parts() > SUBREQUESTS) left.unshift(told.pop().site);
+  if (told.length || left.length) await send(env, text(), fetchImpl);
 }
 
 /* ---------- spikes ---------- */
@@ -265,11 +279,12 @@ export async function runAlerts(cron, env, nowMs = Date.now(), fetchImpl = fetch
   const on = (env.ALERTS ?? 'weekly,spikes').split(',').map(s => s.trim().toLowerCase());
   const kind = cron === SPIKES ? 'spikes' : 'weekly';
   if (!on.includes(kind)) return;
-  let used = 0;
-  const counted = (...a) => (used++, fetchImpl(...a));
+  let used = 0, cap = Infinity;
+  const counted = (...a) => (used >= cap ? Promise.reject(new Error('no requests left on this schedule')) : (used++, fetchImpl(...a)));
+  const budget = { used: () => used, cap: n => { cap = n; } };
   try {
     const store = demo ? demoStore : alertStore(env, counted);
-    await (kind === 'spikes' ? spikes : weekly)(env, store, nowMs, counted, () => used);
+    await (kind === 'spikes' ? spikes : weekly)(env, store, nowMs, counted, budget);
   } catch (e) {
     console.error(`Couldn’t send Lede’s messages (${e.message}). They try again on the next schedule.`);
   }

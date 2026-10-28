@@ -143,6 +143,38 @@ test('the week’s story stops before a Free schedule runs out of requests, and 
   assert.match(body, /\n\nToo many sites for one message, so s7\.org, s8\.org and s9\.org aren’t in it\. Their week is on the dashboard\.$/);
 });
 
+test('a busy week, with queries asked twice, still fits in a Free schedule’s 50 requests', async () => {
+  // Each list's query over both weeks comes back full, so every list asks again for the week before: 9 queries a site.
+  const full = sql => {
+    const both = Number(sql.match(/LIMIT (1000|20000)$/)?.[1]), rows = weekRows(sql);
+    if (!both) return rows;
+    const row = rows.find(r => r.p === 1);
+    return Array.from({ length: both }, (_, i) => ({ ...row, ...('key' in row ? { key: `${row.key}${i}` } : { landing: `${row.landing}${i}` }) }));
+  };
+  const sites = Array.from({ length: 10 }, (_, i) => `s${i}.org`);
+  const f = fakes({ rows: full }), inner = f.fetchImpl;
+  // Some queries are refused once, and asked again.
+  let requests = 0, sql = 0;
+  const refused = new Set();
+  f.fetchImpl = async (u, init) => {
+    requests++;
+    if (String(u).endsWith('/analytics_engine/sql') && !refused.has(init.body) && ++sql % 3 === 2) {
+      refused.add(init.body);
+      return new Response('slow down', { status: 429 });
+    }
+    return inner(u, init);
+  };
+  inner.now = MONDAY;
+  await run(WEEKLY, env({ ALERT_WEBHOOK: 'https://discord.com/api/webhooks/1/abc', STORE: memoryKV({ sites: JSON.stringify(sites), origin: 'https://lede.example.workers.dev' }) }), f, MONDAY);
+  assert.ok(f.sent.length >= 1);
+  assert.ok(requests + 3 <= 50, `${requests} requests and 3 KV reads`);
+  const body = f.sent.map(s => JSON.parse(s.body).content).join('\n\n');
+  const told = body.match(/^s\d\.org(?=, the week of)/gm);
+  assert.ok(told.length >= 3, `${told.length} sites told`);
+  assert.deepEqual(told, sites.slice(0, told.length), 'in order');
+  assert.ok(body.endsWith(`so ${sites.slice(told.length).slice(0, -1).join(', ')} and s9.org aren’t in it. Their week is on the dashboard.`), 'the rest are named');
+});
+
 test('sentences lose their links and keep their words', () => {
   assert.equal(plain('<button type="button" class="link told" data-f="referrer" data-k="a">Hacker News</button> sent 3 &amp; 4 to /blog/<wbr>my‑post.'),
     'Hacker News sent 3 & 4 to /blog/my-post.');
