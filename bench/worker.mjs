@@ -1,6 +1,7 @@
 // Times the Worker in Node on one copy of Lede: handling a visit, and answering each stats route with
 // the fixed rows from fakes.mjs. Free Workers get 10 ms of CPU per request, so these are what count
 // against it (V8 in Node is close enough to workerd for comparing two versions, not for the absolute).
+// "big site:" times the routes whose answers grow with a site, with every list as long as its LIMIT.
 //   node bench/worker.mjs --root <dir> [--iters 200]   prints {op: median ms per call}
 
 import { join, resolve } from 'node:path';
@@ -12,8 +13,8 @@ const root = resolve(argv[argv.indexOf('--root') + 1]);
 const iters = argv.includes('--iters') ? +argv[argv.indexOf('--iters') + 1] : 200;
 
 crypto.subtle.timingSafeEqual ??= (a, b) => Buffer.from(a).equals(Buffer.from(b));
-const count = counters();
-globalThis.fetch = fakeFetch(count);
+const count = counters(), profile = { big: false };
+globalThis.fetch = fakeFetch(count, profile);
 const worker = (await import(pathToFileURL(join(root, 'src/index.js')).href)).default;
 const env = benchEnv(count, { assets: { fetch: async () => new Response('') } });
 const ctx = { waitUntil() {}, passThroughOnException() {} };
@@ -47,5 +48,8 @@ async function time(make) {
 }
 
 const out = { 'worker: visit': await time(beacon) };
-for (const r of ROUTES) out[`worker: ${r.replace('&dim=', ' ').replace('&goal=%2F', ' /')}`] = await time(i => stats(r, i));
+const label = r => r.replace('&dim=', ' ').replace('&goal=%2F', ' /');
+for (const r of ROUTES) out[`worker: ${label(r)}`] = await time(i => stats(r, i));
+profile.big = true;
+for (const r of ['flows', 'engagement', 'links', 'breakdown&dim=path', 'breakdown&dim=referrer']) out[`big site: ${label(r)}`] = await time(i => stats(r, i));
 console.log(JSON.stringify(out));
