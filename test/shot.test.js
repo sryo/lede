@@ -81,7 +81,7 @@ test('shot: the picture and the browser time it took go in one KV write that exp
 });
 
 test('shot: stops at five minutes of browser time a day, and starts again the next day', async () => {
-  const e = env(), f = cloudflare({ ms: 60_000 });
+  const count = counters(), e = env({ STORE: memoryKV(count, { sites: '["example.com"]' }) }), f = cloudflare({ ms: 60_000 });
   for (let i = 0; i < 5; i++) assert.ok((await ask(e, f, `/p${i}`)).jpeg, `picture ${i + 1}`);
   assert.equal(BUDGET_MS, 5 * 60_000);
   const spent = await ask(e, f, '/p5');
@@ -89,6 +89,9 @@ test('shot: stops at five minutes of browser time a day, and starts again the ne
   assert.equal(spent.jpeg, undefined);
   assert.equal(spent.why, 'budget');
   assert.equal(spent.og, 'https://example.com/owl.jpg', 'the page’s own share picture instead');
+  const lists = count.kvLists;
+  assert.equal((await ask(e, f, '/p6')).why, 'budget');
+  assert.equal(count.kvLists, lists, 'once the day’s time is spent, KV isn’t listed again that day');
   const tomorrow = await ask(e, f, '/p5', T0 + DAY);
   assert.ok(tomorrow.jpeg);
   assert.equal(f.shots(), 6);
@@ -116,19 +119,136 @@ test('shot: a token without the Browser Rendering permission falls back quietly,
   assert.equal(f.calls.filter(c => c.url.startsWith('https://example.com/')).length, 1, 'the share picture is remembered too');
 });
 
-test('shot: any other failure falls back the same way', async () => {
-  const e = env(), f = cloudflare({ status: 500 });
+const html = body => new Response(body, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+
+test('shot: a page Cloudflare can’t picture falls back the same way, and isn’t tried again that day', async () => {
+  const puts = [];
+  const e = env();
+  const put = e.STORE.put;
+  e.STORE.put = async (k, v, o) => { puts.push({ k, o }); return put(k, v, o); };
+  const f = cloudflare({ status: 422 });
   assert.deepEqual(await ask(e, f), { og: 'https://example.com/owl.jpg', why: 'failed' });
-  const thrown = async u => { if (String(u).endsWith('/screenshot')) throw new Error('network'); return new Response('<meta content="/img/share.png" property="og:image">'); };
-  assert.deepEqual(await ask(env(), thrown), { og: 'https://example.com/img/share.png', why: 'failed' }, 'a relative share picture is read against the page');
+  assert.equal(puts.find(p => p.k.startsWith('shot:')).o.expirationTtl, 86400);
+  await ask(e, f);
+  assert.equal(f.shots(), 1);
+});
+
+test('shot: a busy browser (429, 5xx or no answer) is asked again a minute later', async () => {
+  for (const status of [429, 500, 503]) {
+    const puts = [], e = env(), f = cloudflare({ status });
+    const put = e.STORE.put;
+    e.STORE.put = async (k, v, o) => { puts.push({ k, o }); return put(k, v, o); };
+    assert.deepEqual(await ask(e, f), { og: 'https://example.com/owl.jpg', why: 'busy' }, `${status}`);
+    assert.equal(puts.find(p => p.k.startsWith('shot:')).o.expirationTtl, 60, 'KV’s shortest expiry');
+  }
+  const thrown = async u => { if (String(u).endsWith('/screenshot')) throw new Error('network'); return html('<meta content="/img/share.png" property="og:image">'); };
+  assert.deepEqual(await ask(env(), thrown), { og: 'https://example.com/img/share.png', why: 'busy' }, 'a relative share picture is read against the page');
+});
+
+const putsOf = e => {
+  const puts = [], put = e.STORE.put;
+  e.STORE.put = async (k, v, o) => { puts.push({ k, o }); return put(k, v, o); };
+  return puts;
+};
+const answer = (status, ms) => async u => (String(u).endsWith('/screenshot')
+  ? new Response('no', { status, headers: ms ? { 'X-Browser-Ms-Used': String(ms) } : {} }) : html(''));
+
+test('shot: an answer that spent browser time stays in the day’s budget, and isn’t asked again that day', async () => {
+  const e = env(), puts = putsOf(e);
+  let shots = 0;
+  const slow = async u => (String(u).endsWith('/screenshot') ? (shots++, answer(504, 20_000)(u)) : html(''));
+  assert.deepEqual(await ask(e, slow), { og: null, why: 'failed' });
+  const marker = puts.find(p => p.k.startsWith('shot:'));
+  assert.equal(marker.o.expirationTtl, 86400, 'kept all day, so its 20 s are still counted');
+  assert.equal(marker.o.metadata.ms, 20_000);
+  assert.equal((await ask(e, slow, '/owls', T0 + 120e3)).why, 'failed');
+  assert.equal(shots, 1, 'not asked again a minute later');
+});
+
+test('shot: a 429 that comes again a minute later means the account’s browser time is spent for the day', async () => {
+  const count = counters(), e = env({ STORE: memoryKV(count, { sites: '["example.com"]' }) }), puts = putsOf(e);
+  let shots = 0;
+  const full = async u => (String(u).endsWith('/screenshot') ? (shots++, answer(429)(u)) : html(''));
+  assert.equal((await ask(e, full, '/a')).why, 'busy');
+  assert.equal((await ask(e, full, '/b', T0 + 10e3)).why, 'busy', 'two at once are only too many at once');
+  assert.equal((await ask(e, full, '/c', T0 + 61e3)).why, 'budget');
+  const day = puts.find(p => p.k === 'shot:2026-10-28:');
+  assert.equal(day.o.metadata.ms, BUDGET_MS, 'every instance now sees the day’s time as used');
+  assert.equal(day.o.expirationTtl, 86400);
+  const lists = count.kvLists;
+  assert.equal((await ask(e, full, '/d', T0 + 300e3)).why, 'budget');
+  assert.equal(shots, 3, 'no more calls today');
+  assert.equal(count.kvLists, lists, 'and no more KV lists');
+  assert.ok((await ask(e, cloudflare(), '/d', T0 + DAY)).jpeg, 'tomorrow it starts again');
+});
+
+test('shot: a picture between two 429s shows the account still has browser time', async () => {
+  const e = env();
+  let n = 0;
+  const f = async u => {
+    if (!String(u).endsWith('/screenshot')) return html('');
+    return ++n === 2 ? new Response(JPEG, { headers: { 'Content-Type': 'image/jpeg', 'X-Browser-Ms-Used': '3000' } }) : answer(429)(u);
+  };
+  assert.equal((await ask(e, f, '/a')).why, 'busy');
+  assert.ok((await ask(e, f, '/b', T0 + 30e3)).jpeg);
+  assert.equal((await ask(e, f, '/c', T0 + 120e3)).why, 'busy');
+});
+
+test('shot: a token that can’t tell which account to use isn’t asked again every minute', async () => {
+  const e = env({ ACCOUNT_ID: undefined }), puts = putsOf(e);
+  let lookups = 0;
+  const two = async u => {
+    if (String(u).endsWith('/client/v4/accounts')) return lookups++, new Response(JSON.stringify({ result: [{ id: 'a' }, { id: 'b' }] }));
+    if (String(u).endsWith('/screenshot')) throw new Error('unexpected');
+    return html('');
+  };
+  assert.deepEqual(await ask(e, two), { og: null, why: 'failed' });
+  assert.equal(puts.find(p => p.k.startsWith('shot:')).o.expirationTtl, 86400);
+  await ask(e, two, '/owls', T0 + 120e3);
+  assert.equal(lookups, 1);
+  const offline = async u => { if (String(u).endsWith('/client/v4/accounts')) throw new Error('offline'); return html(''); };
+  assert.equal((await ask(env({ ACCOUNT_ID: undefined }), offline)).why, 'busy', 'no answer at all is only busy');
+});
+
+test('shot: a failure never takes the place of a picture kept meanwhile', async () => {
+  const e = env();
+  const f = async u => {
+    if (!String(u).endsWith('/screenshot')) throw new Error('unexpected');
+    // Another open of the same page got its picture while this one waited.
+    await e.STORE.put('shot:2026-10-28:example.com/owls', JPEG.buffer.slice(0), { metadata: { ms: 3000, at: T0 - 5000 } });
+    return new Response('busy', { status: 503 });
+  };
+  const out = await ask(e, f);
+  assert.deepEqual(new Uint8Array(out.jpeg), JPEG);
+  assert.equal(out.at, T0 - 5000);
+  assert.ok((await e.STORE.getWithMetadata('shot:2026-10-28:example.com/owls', 'arrayBuffer')).value.byteLength, 'still there');
+});
+
+// A body that never ends: reading all of it would never finish.
+const endless = (chunk, type) => {
+  const bytes = new TextEncoder().encode(chunk);
+  return new Response(new ReadableStream({ pull: c => c.enqueue(bytes) }), { headers: { 'Content-Type': type } });
+};
+
+test('shot: only an HTML page is read for its share picture, and only its start', async () => {
+  const share = '<meta property="og:image" content="https://example.com/owl.jpg">';
+  const page = res => async u => (String(u).endsWith('/screenshot') ? new Response('', { status: 422 }) : res());
+  assert.equal((await ask(env(), page(() => new Response(share, { headers: { 'Content-Type': 'application/json' } })))).og, null, 'not a page');
+  assert.equal((await ask(env(), page(() => endless(share + 'x'.repeat(65536), 'text/html')))).og, 'https://example.com/owl.jpg', 'an endless page stops being read');
+  assert.equal((await ask(env(), page(() => html('x'.repeat(400_000) + share)))).og, null, 'past the first 300 KB');
+});
+
+test('shot: a picture past 2 MB is none, and isn’t read to its end', async () => {
+  const f = async u => (String(u).endsWith('/screenshot') ? endless('y'.repeat(65536), 'image/jpeg') : html(''));
+  assert.deepEqual(await ask(env(), f), { og: null, why: 'failed' });
 });
 
 test('shot: with no picture and no share picture, nothing, and the reason', async () => {
-  const f = cloudflare({ status: 500, html: '<html><head><title>Owls</title></head></html>' });
+  const f = cloudflare({ status: 422, html: '<html><head><title>Owls</title></head></html>' });
   assert.deepEqual(await ask(env(), f), { og: null, why: 'failed' });
   const down = async () => { throw new Error('down'); };
-  assert.deepEqual(await ask(env(), down), { og: null, why: 'failed' });
-  const odd = cloudflare({ status: 500, html: '<meta property="og:image" content="javascript:alert(1)">' });
+  assert.deepEqual(await ask(env(), down), { og: null, why: 'busy' });
+  const odd = cloudflare({ status: 422, html: '<meta property="og:image" content="javascript:alert(1)">' });
   assert.deepEqual(await ask(env(), odd), { og: null, why: 'failed' }, 'only a web address');
 });
 

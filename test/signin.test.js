@@ -55,3 +55,55 @@ test('the dashboard page, the tracker beacon and an open dashboard need no passw
   assert.equal((await call(open, '/api/sites')).status, 200);
   assert.equal((await signIn(open, 'anything')).status, 204);
 });
+
+test('an empty password, or only spaces, counts as none', async () => {
+  for (const DASHBOARD_PASSWORD of ['', '  ']) {
+    assert.equal((await call(env({ DASHBOARD_PASSWORD }), '/api/sites')).status, 200);
+    const res = await signIn(env({ DASHBOARD_PASSWORD }), '');
+    assert.equal(res.status, 204);
+    assert.equal(res.headers.get('Set-Cookie'), null);
+  }
+});
+
+const from = ip => ({ 'CF-Connecting-IP': ip });
+
+test('after 10 wrong passwords from one address, it waits 10 minutes, even for the right one', async () => {
+  const e = env();
+  for (let i = 0; i < 10; i++) assert.equal((await signIn(e, `guess${i}`, from('203.0.113.7'))).status, 401);
+  const stopped = await signIn(e, 'pw', from('203.0.113.7'));
+  assert.equal(stopped.status, 429);
+  assert.equal((await stopped.json()).error, 'Too many wrong passwords. Try again in 10 minutes.');
+  assert.ok(Number(stopped.headers.get('Retry-After')) > 590);
+  assert.equal(stopped.headers.get('Set-Cookie'), null);
+  assert.equal((await signIn(e, 'pw', from('198.51.100.2'))).status, 204, 'another address still signs in');
+  const now = Date.now;
+  try {
+    Date.now = () => now() + 10 * 60_000;
+    assert.equal((await signIn(e, 'pw', from('203.0.113.7'))).status, 204, 'ten minutes later');
+  } finally { Date.now = now; }
+});
+
+test('signing in clears the wrong tries before it', async () => {
+  const e = env();
+  for (let i = 0; i < 9; i++) await signIn(e, 'nope', from('192.0.2.9'));
+  assert.equal((await signIn(e, 'pw', from('192.0.2.9'))).status, 204);
+  for (let i = 0; i < 9; i++) assert.equal((await signIn(e, 'nope', from('192.0.2.9'))).status, 401);
+});
+
+test('Cloudflare’s rate limiter, when bound, counts sign-ins too, by a hash of the address', async () => {
+  const keys = [];
+  const e = env({ SIGNIN_LIMIT: { limit: async ({ key }) => (keys.push(key), { success: keys.length < 2 }) } });
+  assert.equal((await signIn(e, 'pw', from('192.0.2.50'))).status, 204);
+  const res = await signIn(e, 'pw', from('192.0.2.50'));
+  assert.equal(res.status, 429);
+  assert.equal(res.headers.get('Retry-After'), '60');
+  assert.match(keys[0], /^[0-9a-f]{64}$/);
+  assert.ok(!keys[0].includes('192.0.2.50'));
+});
+
+test('signing out clears the cookie, and only from the dashboard', async () => {
+  const out = await call(env(), '/api/signout', { method: 'POST', headers: { Origin: 'https://lede.test' } });
+  assert.equal(out.status, 204);
+  assert.match(out.headers.get('Set-Cookie'), /^lede=; Path=\/; HttpOnly; Secure; SameSite=Strict; Max-Age=0$/);
+  assert.equal((await call(env(), '/api/signout', { method: 'POST', headers: { Origin: 'https://evil.test' } })).status, 403);
+});

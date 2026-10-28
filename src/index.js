@@ -12,32 +12,70 @@ async function sameSecret(a, b) {
 
 const COOKIE = 'lede';
 const YEAR = 365 * 24 * 3600;
-const json = (body, status) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+const json = (body, status, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
+
+const sha = async text => [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))]
+  .map(b => b.toString(16).padStart(2, '0')).join('');
 
 // The cookie holds a hash of the password, so changing DASHBOARD_PASSWORD signs everyone out.
-async function pass(password) {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`lede|${password}`));
-  return [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, '0')).join('');
-}
+const pass = password => sha(`lede|${password}`);
+
+// A password left empty (or only spaces) when deploying means none, as if it weren't set.
+const secretOf = env => (env.DASHBOARD_PASSWORD?.trim() ? env.DASHBOARD_PASSWORD : '');
 
 // Only the stats need the password, and only when DASHBOARD_PASSWORD is set. The dashboard page
 // itself is public code; without the cookie it shows its own password card.
 async function signedIn(req, env) {
-  if (!env.DASHBOARD_PASSWORD) return true;
+  const secret = secretOf(env);
+  if (!secret) return true;
   const cookie = (req.headers.get('Cookie') || '').split(/;\s*/).find(c => c.startsWith(`${COOKIE}=`));
-  return !!cookie && sameSecret(cookie.slice(COOKIE.length + 1), await pass(env.DASHBOARD_PASSWORD));
+  return !!cookie && sameSecret(cookie.slice(COOKIE.length + 1), await pass(secret));
 }
 
+// Wrong passwords: TRIES per WINDOW from one address in each isolate, then 429 until the window ends.
+// The address is kept only as a hash, and only while it has tries counted. SIGNIN_LIMIT is Cloudflare's
+// rate limiter, used when it's bound in wrangler.jsonc; it counts across a location's Worker instances.
+const TRIES = 10;
+const WINDOW = 10 * 60_000;
+const MAX_ADDRESSES = 10_000;
+const misses = new Map();
+
+function waitFor(who, now) {
+  const m = misses.get(who);
+  if (m && now - m.start >= WINDOW) misses.delete(who);
+  return m && m.n >= TRIES && now - m.start < WINDOW ? Math.ceil((m.start + WINDOW - now) / 1000) : 0;
+}
+
+function missed(who, now) {
+  const m = misses.get(who);
+  if (m) { m.n++; return; }
+  if (misses.size >= MAX_ADDRESSES) misses.delete(misses.keys().next().value);
+  misses.set(who, { start: now, n: 1 });
+}
+
+const tooMany = seconds => {
+  const minutes = Math.ceil(seconds / 60);
+  return json({ error: `Too many wrong passwords. Try again in ${minutes} minute${minutes > 1 ? 's' : ''}.` }, 429, { 'Retry-After': String(seconds) });
+};
+
 async function signIn(req, env) {
+  const secret = secretOf(env);
+  if (!secret) return new Response(null, { status: 204 });
+  const who = await sha(`signin|${req.headers.get('CF-Connecting-IP') || ''}`), now = Date.now();
+  const wait = waitFor(who, now);
+  if (wait) return tooMany(wait);
+  if (env.SIGNIN_LIMIT && !(await env.SIGNIN_LIMIT.limit({ key: who })).success) return tooMany(60);
   const { password = '' } = await req.json().catch(() => ({}));
-  if (env.DASHBOARD_PASSWORD && !await sameSecret(String(password), env.DASHBOARD_PASSWORD)) {
+  if (!await sameSecret(String(password), secret)) {
+    missed(who, now);
     return json({ error: 'That’s not the password. Try again.' }, 401);
   }
-  const headers = env.DASHBOARD_PASSWORD
-    ? { 'Set-Cookie': `${COOKIE}=${await pass(env.DASHBOARD_PASSWORD)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${YEAR}` }
-    : {};
-  return new Response(null, { status: 204, headers });
+  misses.delete(who);
+  return new Response(null, { status: 204, headers: { 'Set-Cookie': `${COOKIE}=${await pass(secret)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${YEAR}` } });
 }
+
+// Signing out works whether or not the cookie is still good, so it's never refused.
+const signOut = () => new Response(null, { status: 204, headers: { 'Set-Cookie': `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0` } });
 
 // A page elsewhere could post a form here. Changes (signing in, adding a site, saving goals) are only
 // taken from the dashboard's own origin.
@@ -58,9 +96,10 @@ export default {
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
     if (crossSite(req, url)) return json({ error: 'Changes can only be made from the dashboard.' }, 403);
     const res = pathname === '/api/signin' && req.method === 'POST' ? await signIn(req, env)
-      : !await signedIn(req, env) ? json({ error: 'Enter your password.', signIn: true }, 401)
-        : pathname === '/api/shot' ? await handleShot(req, env)
-          : await handleApi(req, env, ctx);
+      : pathname === '/api/signout' && req.method === 'POST' ? signOut()
+        : !await signedIn(req, env) ? json({ error: 'Enter your password.', signIn: true }, 401)
+          : pathname === '/api/shot' ? await handleShot(req, env)
+            : await handleApi(req, env, ctx);
     // Alerts link to the dashboard, but a schedule doesn't know the Worker's address. The dashboard asks for
     // the sites when it opens, and signs in from the same address.
     if (res.ok && (pathname === '/api/signin' || pathname === '/api/sites')) ctx.waitUntil(rememberOrigin(env, url.origin));
