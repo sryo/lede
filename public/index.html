@@ -305,6 +305,11 @@ button.tile-title:hover{color:var(--ink)}
 .landed .lbl span{color:var(--muted)}
 .landed .lbl:hover b,.landed .lbl:hover{text-decoration:underline}
 .landed .lbl:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
+.cross .lbl{max-width:calc(32% - 14px)}
+.cross.narrow .lbl{max-width:calc(40% - 14px)}
+.cross .lbl.l{transform:translate(-100%,-50%);text-align:right}
+.cross-say{margin:0 0 12px;font-size:var(--fs-s)}
+.cross-say:empty{display:none}
 .tip{position:absolute;pointer-events:none;background:var(--tile);color:var(--ink);border-radius:8px;padding:4px 8px;font-size:var(--fs-xs);line-height:1.35;
   white-space:nowrap;transform:translate(-50%,calc(-100% - 8px));box-shadow:0 0 0 1px var(--line),0 6px 18px -6px rgba(0,0,0,.25);z-index:2}
 .tip b{font-variant-numeric:tabular-nums}
@@ -423,7 +428,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 <script type="module">
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, spikeSegment, waterfall, waterfallCaption, bounceSplit, bounceCaption,
-  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, keywordsStory, KEYWORDS_EMPTY,
+  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, keywordsStory, KEYWORDS_EMPTY, nextStory, nextItems,
   dayHint, ribbonHint, sourceHint, pageHint } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -1091,7 +1096,7 @@ async function renderFilter(body,f){
     <section class="card"><div class="card-title">Visitors per day${pr.visitors?` vs the ${DAYS} days before`:''}</div><div class="chart"></div>${overview&&HOME?'<div class="marks"></div>':own.length?'<div class="marks own"></div>':''}</section>
     ${overview&&HOME?`<section class="card"><div class="card-title">What happened</div>${HOME.events.length?'<div class="events-list"></div>':`<p class="muted" style="margin:0">Nothing unusual in the last ${DAYS} days.</p>`}</section>`:''}
     ${overview?'<section class="card"><div class="card-title heat-title">By weekday and hour</div><div class="chart"></div></section>':''}
-    ${f.path!=null?'<section class="card"><div class="card-title">Where visitors who landed here came from</div><div class="landed"></div><p class="say-sub landed-note"></p></section>':''}
+    ${f.path!=null?'<section class="card"><div class="card-title">Where readers came from, and where they went next</div><p class="cross-say"></p><div class="landed cross"></div><p class="say-sub landed-note"></p></section>':''}
     ${f.path!=null?'<section class="card goal-card" hidden></section>':''}
     ${f.path==null?'<section data-group="pages"></section>':''}
     ${f.referrer==null&&f.path==null?'<section data-group="sources"></section>':''}
@@ -1122,9 +1127,20 @@ async function renderFilter(body,f){
     // The page's sentence names the source most of its visitors arrived from; that one is emphasised.
     const by=new Map();for(const x of into)by.set(x.source,(by.get(x.source)||0)+x.visitors);
     const lead=[...by].sort((a,b)=>b[1]-a[1])[0];
-    drawCameFrom(body.querySelector('.landed'),into,new Set(lead&&sum(into.map(x=>x.visitors))>=20?[lead[0]]:[]));
-    const landed=sum(into.map(x=>x.visitors));
-    if(landed&&c.visitors>landed)body.querySelector('.landed-note').textContent=`${fmtInt(landed)} of the ${fmtInt(c.visitors)} visitors started their visit here; the rest arrived from another page.`;
+    const landed=sum(into.map(x=>x.visitors)),cross=body.querySelector('.cross'),note=body.querySelector('.landed-note');
+    const from=cameFromItems(into,new Set(lead&&landed>=20?[lead[0]]:[]),c.visitors);
+    drawCrossing(cross,from,[]);
+    const arrived=landed&&c.visitors>landed?`${fmtInt(landed)} of the ${fmtInt(c.visitors)} visitors started their visit here; the rest arrived from another page.`:'';
+    note.textContent=arrived;
+    // Two queries, so it comes in after the rest.
+    api('next',p).then(n=>{
+      if(stale(body,gen))return;
+      const st=nextStory(n);
+      if(!st)return;
+      body.querySelector('.cross-say').innerHTML=st.html;
+      if(st.note)note.textContent=arrived?`${arrived} ${st.note}`:st.note;
+      drawCrossing(cross,from,nextItems(n.cur,st.told),{shares:true});
+    },()=>{});
   }
   body.querySelectorAll('[data-group]').forEach(sec=>dimSection(sec,sec.dataset.group,f,true));
   // Neither is needed to read the rest, so they come in after it and are left out if they fail.
@@ -1284,45 +1300,61 @@ function drawLanded(el,flows,toldPage,pageRows){
   const rest=ranked.filter(r=>!top.includes(r));
   const items=top.map(([k,v])=>({key:k,label:k,value:v,story:k===toldPage,sub:!pageRows.find(r=>r.key===k)?.prev?'new page':''}));
   if(rest.length)items.push({key:null,label:`${rest.length} other ${rest.length===1?'page':'pages'}`,value:sum(rest.map(r=>r[1]))});
-  drawFan(el,items,{one:'src',many:'page',open:it=>b=>openFilter({path:it.key},it.label,b)});
+  drawCrossing(el,[],items,{edge:true,bar:'src'});
 }
 
-// The sources that sent a page its first visits, fanning into it.
-function drawCameFrom(el,flows,told){
+// The sources of visits that landed on a page, and visitors who came from another page.
+function cameFromItems(flows,told,visitors){
   const bySrc=new Map();
   for(const f of flows)bySrc.set(f.source,(bySrc.get(f.source)||0)+f.visitors);
-  const ranked=[...bySrc].sort((a,b)=>b[1]-a[1]),top=ranked.slice(0,5),rest=ranked.slice(5);
-  const items=top.map(([k,v])=>({key:k,label:labelOf('referrer',k),value:v,story:told.has(k)}));
-  if(rest.length)items.push({key:null,label:`${rest.length} other ${rest.length===1?'source':'sources'}`,value:sum(rest.map(r=>r[1]))});
-  drawFan(el,items,{one:'page',many:'src',open:it=>b=>openFilter({referrer:it.key},it.label,b)});
+  const ranked=[...bySrc].sort((a,b)=>b[1]-a[1]),top=ranked.slice(0,4),rest=ranked.slice(4),landed=sum(ranked.map(r=>r[1]));
+  const items=top.map(([k,v])=>({key:k,label:labelOf('referrer',k),value:v,kind:'src',story:told.has(k),hint:pageHint(labelOf('referrer',k),v)}));
+  if(rest.length)items.push({key:null,label:`${rest.length} other ${rest.length===1?'source':'sources'}`,value:sum(rest.map(r=>r[1])),kind:'src'});
+  if(visitors>landed)items.push({key:null,label:'Your other pages',value:visitors-landed,kind:'page',hint:`${fmtInt(visitors-landed)} visitors came from another page`});
+  return items;
 }
 
-// One bar on the left fanning into labelled bars on the right. Ribbons take the source colour; the named item is
-// at full strength. one/many: the subject colour of the single bar and of the bars it fans into.
-function drawFan(el,items,{one,many,open}){
-  const total=sum(items.map(i=>i.value));
-  if(!total){el.innerHTML='<div class="empty">No visits yet</div>';return}
+// Where readers came from fans into a bar from the left, where they went next out to the right, each side as
+// shares of its own total. edge: no left side, bar at the left edge. INK: ribbon, named ribbon, bar, named bar.
+const INK={src:['--src-p','--src','--src-ts','--src'],page:['--page-p','--page-t','--page-ts','--page'],left:['--line','--line','--muted','--muted'],landed:['--src-p','--src','--page-ts','--page']};
+function drawCrossing(el,left,right,{edge=false,shares=false,bar='page'}={}){
+  const tl=sum(left.map(i=>i.value)),tr=sum(right.map(i=>i.value));
+  if(!tl&&!tr){el.innerHTML='<div class="empty">No visits yet</div>';return}
+  const share=it=>shares&&tr>=20?fmtPct(it.value/tr):fmtInt(it.value);
+  if(shares)for(const it of right)it.hint=`${share(it)} of views of this page ${it.kind==='left'?'were the last of the visit':`went on to ${it.key!=null?it.label:'one of these'}`}`;
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
-    const gap=10,x1=6,x2=Math.round(W*.6),k=(H-gap*(items.length-1))/total,hL=total*k,y0=(H-hL)/2;
-    let ly=y0,ry=0,s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(items.map(i=>`${i.label} ${fmtInt(i.value)}`).join(', '))}">`;
-    const mids=[];
-    for(const it of items){
-      const h=it.value*k,a=ly,b=ry,m=(x1+x2)/2;
-      s+=`<path d="M${x1},${a} C${m},${a} ${m},${b} ${x2},${b} L${x2},${b+h} C${m},${b+h} ${m},${a+h} ${x1},${a+h} Z" fill="var(--src${it.story?'':'-p'})"/>`;
-      s+=`<rect x="${x2}" y="${b}" width="6" height="${Math.max(1,h)}" fill="var(--${many}${it.story?'':'-ts'})"/>`;
-      mids.push(b+h/2);ly+=h;ry+=h+gap;
-    }
-    s+=`<rect x="0" y="${y0}" width="6" height="${hL}" fill="var(--${one})"/></svg>`;
-    el.innerHTML=s;
-    const ys=spread(mids,items.some(i=>i.story)?20:18,H);
-    items.forEach((it,i)=>{
-      const b=document.createElement('button');b.type='button';b.className='lbl';
-      b.style.left=x2+14+'px';b.style.top=(it.story?Math.max(ys[i],20):ys[i])+'px';
-      b.innerHTML=it.story?`<b>${esc(it.label)}</b><br><span>${fmtInt(it.value)}${it.sub?` · ${it.sub}`:''}</span>`:`${esc(it.label)} <span>${fmtInt(it.value)}</span>`;
-      if(it.key!=null)b.onclick=open(it);else b.disabled=true;
+    // On a phone, labels take two lines.
+    const narrow=!edge&&W<520,gap=10,hc=H-gap*(Math.max(left.length,right.length)-1),y0=(H-hc)/2;
+    const cx=edge?0:Math.round(W/2)-3,xl=Math.round(W*(narrow?.4:.32)),xr=Math.round(W*(edge||narrow?.6:.68))-(edge?0:6);
+    el.classList.toggle('narrow',narrow);
+    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc([...left,...right].map(i=>`${i.label} ${fmtInt(i.value)}`).join(', '))}">`;
+    const labels=[];
+    const side=(items,total,x,to,isLeft)=>{
+      if(!total)return;
+      const k=hc/total,from=isLeft?x+6:x,m=(from+to)/2;
+      let yo=(H-hc-gap*(items.length-1))/2,yi=y0;const mids=[];
+      for(const it of items){
+        const h=it.value*k,ink=INK[it.kind]||INK.landed;
+        s+=`<path d="M${from},${yo} C${m},${yo} ${m},${yi} ${to},${yi} L${to},${yi+h} C${m},${yi+h} ${m},${yo+h} ${from},${yo+h} Z" fill="var(${ink[+!!it.story]})"/>`
+          +`<rect x="${x}" y="${yo}" width="6" height="${Math.max(1,h)}" fill="var(${ink[2+!!it.story]})"/>`;
+        mids.push(yo+h/2);yo+=h+gap;yi+=h;
+      }
+      const ys=spread(mids,narrow?32:items.some(i=>i.story)?20:18,H);
+      items.forEach((it,i)=>labels.push([it,ys[i],isLeft]));
+    };
+    side(left,tl,xl,cx,true);
+    side(right,tr,xr,cx+6,false);
+    el.innerHTML=s+`<rect x="${cx}" y="${y0}" width="6" height="${hc}" fill="var(--${bar})"/></svg>`;
+    for(const [it,y,isLeft] of labels){
+      const b=document.createElement('button');b.type='button';b.className=isLeft?'lbl l':'lbl';
+      b.style.left=(isLeft?xl-8:xr+14)+'px';b.style.top=(it.story||narrow?Math.max(y,20):y)+'px';
+      const v=isLeft?fmtInt(it.value):share(it);
+      b.innerHTML=it.story?`<b>${esc(it.label)}</b><br><span>${v}${it.sub?` · ${it.sub}`:''}</span>`:`${esc(it.label)}${narrow?'<br>':' '}<span>${v}</span>`;
+      if(it.hint)b.title=it.hint;
+      if(it.key!=null)b.onclick=()=>openFilter(isLeft?{referrer:it.key}:{path:it.key},it.label,b);else b.disabled=true;
       el.appendChild(b);
-    });
+    }
   });
 }
 

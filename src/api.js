@@ -1,5 +1,5 @@
 import * as Q from './queries.js';
-import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, toFirsts, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience } from './shape.js';
+import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, toFirsts, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience, pickVisits, pairNext } from './shape.js';
 import { getSites, addSite, getAccountId } from './settings.js';
 import { HttpError } from './errors.js';
 import { demoStore } from './demo.js';
@@ -100,6 +100,16 @@ export function sqlStore(env, fetchImpl = fetch) {
       const from = Q.hourlyStart(q);
       return { start: from, days: q.days, visitors: toHourly(await run(Q.hourlySql(ds, q, from, q.end)), q.days) };
     },
+    // Where readers of the page went next; see Q.NEXT for why it takes two queries.
+    async next(q) {
+      const path = q.filters.path;
+      const picked = pickVisits(await run(Q.nextVisitsSql(ds, q)), Q.NEXT.keep);
+      let rows = picked.ids.length ? await run(Q.nextRowsSql(ds, q, picked.ids)) : [];
+      // Rows come in visit order, so a full answer may have cut the last visit short, which would read as leaving.
+      if (rows.length >= Q.NEXT.rows) rows = rows.filter(r => r.v !== rows.at(-1).v);
+      rows = rows.filter(r => picked.keep.has(`${Number(r.p) === 1 ? 1 : 0}|${r.v}`));
+      return { path, sampled: picked.sampled.cur, ...pairNext(rows, path) };
+    },
     async live(q, nowSec = Math.floor(Date.now() / 1000)) {
       return shapeLive(await run(Q.liveSql(ds, q.site)), nowSec);
     },
@@ -175,6 +185,9 @@ async function route(name, url, env, store, req) {
     case 'links': return store.links(q);
     case 'keywords': return store.keywords(q);
     case 'audience': return store.audience(q);
+    case 'next':
+      if (q.filters.path == null) throw new HttpError(400, 'Say which page with ?path=.');
+      return store.next(q);
     case 'conversions': {
       const list = url.searchParams.getAll('goal');
       return store.conversions(q, parseGoals(list.length ? list : null));

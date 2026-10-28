@@ -66,6 +66,14 @@ const COUNTRIES = [['US', .38], ['GB', .14], ['CA', .1], ['AU', .07], ['DE', .06
 const USES = [['phone', 'safari', .26, 1.2], ['phone', 'chrome', .2, 1.2], ['phone', 'app', .07, 1.5], ['phone', 'samsung', .04, 1.2], ['computer', 'chrome', .18, .7],
   ['computer', 'safari', .08, .7], ['computer', 'edge', .06, .7], ['computer', 'firefox', .05, .65], ['tablet', 'safari', .04, 1], ['tablet', 'chrome', .02, 1]];
 const BM = USES.reduce((a, u) => a + u[2] * u[3], 0);
+// Where readers go after a page: the pages each one leads to most (others get a share by their traffic),
+// and readers of /feeders, newly linked to /nests, leave far less than they used to.
+const LEADS = {
+  '/': { '/robin': 4, '/by-song': 3, '/owls': 1.5 }, '/robin': { '/wren': 4, '/feeders': 2.5 }, '/by-song': { '/owls': 3, '/robin': 2 },
+  '/feeders': { '/nests': 8 }, '/owls': { '/by-song': 3 }, '/migration': { '/swift': 4, '/heron': 2 }, '/heron': { '/kingfisher': 4 },
+  '/wren': { '/robin': 3 }, '/nests': { '/feeders': 3 }, '/swift': { '/migration': 4 }, '/kingfisher': { '/heron': 3 }, '/about': {},
+};
+const LEFT_BEFORE = { '/feeders': .2 };
 const N = 90;
 // An ordinary month with one of each thing the dashboard notices: as autumn goes on, search sends
 // more people to /migration and AI assistants grow slowly; a new page, /swift, goes up; bsky.app starts
@@ -377,6 +385,22 @@ export const demoStore = {
       }));
     };
     return toAudience(rows(w.cur), rows(w.prev));
+  },
+  async next(q) {
+    const w = windows(q), path = q.filters.path, P = PATHS.find(P => P.key === path);
+    const one = (range, before) => {
+      const views = P ? Math.round(agg(q.filters, ...range).views) : 0;
+      if (!views) return { views: 0, left: 0, visits: 0, next: [] };
+      const left = Math.round(views * Math.min(.8, .3 * P.ex + .08 + (before ? LEFT_BEFORE[path] || 0 : 0)));
+      const weights = PATHS.filter(o => o.key !== path).map(o => [o.key, o.w * (LEADS[path][o.key] || 1) * (o.key === '/' ? .4 : 1)]);
+      const total = weights.reduce((a, [, x]) => a + x, 0);
+      let rest = views - left;
+      const next = weights.map(([key, x]) => ({ key, views: Math.floor((views - left) * x / total) }));
+      for (const r of next) rest -= r.views;
+      next.sort((a, b) => b.views - a.views)[0].views += rest;
+      return { views, left, visits: Math.round(views / 1.15), next: next.filter(r => r.views > 0) };
+    };
+    return { path, sampled: false, cur: one(w.cur, false), prev: one(w.prev, true) };
   },
   async live() {
     const now = Math.floor(Date.now() / 1000);

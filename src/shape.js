@@ -201,3 +201,53 @@ export function toKeywords(site, paid) {
   }
   return { site: wordList(people[1], people[0]), paid: wordList(ads[1], ads[0]) };
 }
+
+// From the visits that viewed a page (nextVisitsSql, ordered by ID), up to keep per period. Only IDs that
+// are 12 hex characters are taken, since they go into the next query as written. keep holds "p|id", so a
+// visit picked for one period doesn't bring in its part in the other. sampled: a period had more.
+export function pickVisits(rows, keep) {
+  const ids = [], seen = new Set(), picked = new Set(), n = { 1: 0, 0: 0 }, sampled = { cur: false, prev: false };
+  for (const r of rows) {
+    const p = num(r.p) === 1 ? 1 : 0, v = String(r.v ?? '');
+    if (!/^[0-9a-f]{12}$/.test(v)) continue;
+    if (n[p] >= keep) { sampled[p ? 'cur' : 'prev'] = true; continue; }
+    n[p]++;
+    picked.add(`${p}|${v}`);
+    if (!seen.has(v)) { seen.add(v); ids.push(v); }
+  }
+  return { ids, keep: picked, sampled };
+}
+
+// Pairs each view of path with the page viewed next in the same visit, or none: the reader left.
+// Views are put in time order first, and the same page viewed again straight after (a reload) is one view.
+// views: views of the page, left: views nothing followed, visits: visits that viewed it,
+// next: the pages that followed, most first.
+export function pairNext(rows, path) {
+  const visits = new Map();
+  for (const r of rows) {
+    const k = `${num(r.p) === 1 ? 1 : 0}|${r.v}`;
+    if (!visits.has(k)) visits.set(k, []);
+    visits.get(k).push(r);
+  }
+  const tally = () => ({ views: 0, left: 0, visits: 0, to: new Map() });
+  const out = { 1: tally(), 0: tally() };
+  for (const [k, list] of visits) {
+    list.sort((a, b) => num(a.t) - num(b.t));
+    const seq = [];
+    for (const r of list) if (seq.at(-1) !== (r.path ?? '')) seq.push(r.path ?? '');
+    const t = out[k[0]];
+    let seen = false;
+    seq.forEach((p, i) => {
+      if (p !== path) return;
+      seen = true;
+      t.views++;
+      if (i === seq.length - 1) t.left++;
+      else t.to.set(seq[i + 1], (t.to.get(seq[i + 1]) || 0) + 1);
+    });
+    if (seen) t.visits++;
+  }
+  const done = ({ views, left, visits, to }) => ({
+    views, left, visits, next: [...to].map(([key, n]) => ({ key, views: n })).sort((a, b) => b.views - a.views || (a.key < b.key ? -1 : 1)),
+  });
+  return { cur: done(out[1]), prev: done(out[0]) };
+}

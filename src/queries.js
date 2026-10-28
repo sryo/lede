@@ -227,3 +227,23 @@ export const siteSearchSql = (ds, q) =>
 export const paidWordsSql = (ds, q) =>
   `SELECT ${PERIOD(q)} AS p, ${COL.utmTerm} AS key, count(DISTINCT ${COL.visitor}) AS visitors FROM ${ds} `
   + `WHERE ${within(q)} AND ${COL.utmTerm} != '' GROUP BY p, key ORDER BY visitors DESC LIMIT 1000`;
+
+// What readers do after a page. This SQL has no window functions (no lag or lead) and no joins, and
+// IN only takes a written list, so the next page can't be found in one query. Instead: the first query
+// lists the visits that viewed the page in both periods, by the first 12 characters of their ID (48 bits,
+// so two visits of one site sharing them is vanishingly rare). Ordered by ID, which is a hash, the first
+// ones are a random sample. The second query reads every page view of up to keep of those visits per
+// period, and the Worker pairs each view of the page with the one after it (pairNext). keep is what fits
+// the SQL API's 10 KiB with the longest filters; rows is far more views than that many visits make.
+export const NEXT = { keep: 250, both: 2000, rows: 10000 };
+const VISIT_ID = `substring(${COL.visit}, 1, 12)`;
+
+export const nextVisitsSql = (ds, q) =>
+  `SELECT ${PERIOD(q)} AS p, ${VISIT_ID} AS v FROM ${ds} WHERE ${within(q)} GROUP BY p, v ORDER BY v LIMIT ${NEXT.both}`;
+
+// ids must already be checked to be 12 hex characters (pickVisits does), since they go in as written.
+export function nextRowsSql(ds, q, ids) {
+  const all = { ...q, filters: { ...q.filters, path: null } };
+  return `SELECT ${PERIOD(q)} AS p, ${VISIT_ID} AS v, ${COL.path} AS path, toUnixTimestamp(timestamp) AS t FROM ${ds} `
+    + `WHERE ${within(all)} AND ${VISIT_ID} IN (${ids.map(id => `'${id}'`).join(', ')}) ORDER BY v, t LIMIT ${NEXT.rows}`;
+}

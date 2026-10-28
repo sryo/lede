@@ -499,6 +499,45 @@ export function scrollStory(r) {
   return { few: false, drop, html, sub: drop < 0 ? null : `The steepest drop comes ${where}, where <b>${fmtPct(most)}</b> of readers stop.` };
 }
 
+// What readers do after a page (from /api/next): the two biggest steps, leaving the site or going on to a
+// page, as shares; on fewer than 20 views, as counts. told: the page the sentence names, for the fan.
+// A change in how many leave is told when both periods have 20 views and it is well clear of chance.
+export function nextStory(next) {
+  const c = next?.cur;
+  if (!c?.views) return null;
+  const page = next.path === '/' ? 'the home page' : pathHTML(next.path), top = c.next[0];
+  const to = r => `<b>${pathHTML(r.key)}</b>`;
+  const note = next.sampled ? `Worked out from ${fmtInt(c.visits)} visits picked at random.` : '';
+  if (c.views < 20) {
+    const parts = [];
+    if (c.left) parts.push(c.views === 1 ? 'it left the site after this page' : `${c.left} left the site after this page`);
+    if (top) parts.push(`${top.views} went on to ${to(top)}`);
+    return { html: `Only ${c.views} ${c.views === 1 ? 'view' : 'views'} so far: ${parts.join(' and ')}.`, note, told: null };
+  }
+  let html;
+  if (!top) html = `Everyone leaves the site after <b>${page}</b>.`;
+  else {
+    const leave = c.left ? `<b>${fmtPct(c.left / c.views)}</b> leave the site` : 'none leave the site';
+    const go = `<b>${fmtPct(top.views / c.views)}</b> go on to ${to(top)}`;
+    html = `After <b>${page}</b>, ${top.views > c.left ? `${go} and ${leave}` : `${leave} and ${go}`}.`;
+  }
+  const p = next.prev;
+  if (p?.views >= 20) {
+    const a = c.left / c.views, b = p.left / p.views, se = Math.sqrt(a * (1 - a) / c.views + b * (1 - b) / p.views);
+    if (Math.abs(a - b) >= .05 && Math.abs(a - b) > 2 * se) html += ` In the period before, ${fmtPct(b)} left.`;
+  }
+  return { html, note, told: top?.key ?? null };
+}
+
+// The steps after a page as the fan draws them: the top four pages, the rest as one, then leaving the site.
+export function nextItems(cur, told) {
+  const top = cur.next.slice(0, 4), rest = cur.next.slice(4);
+  const items = top.map(r => ({ key: r.key, label: r.key, value: r.views, kind: 'page', story: r.key === told }));
+  if (rest.length) items.push({ key: null, label: `${rest.length} other ${rest.length === 1 ? 'page' : 'pages'}`, value: sum(rest.map(r => r.views)), kind: 'page', story: false });
+  if (cur.left) items.push({ key: null, label: 'Left the site', value: cur.left, kind: 'left', story: false });
+  return items;
+}
+
 const COUNT_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
 export function eventsSentence(events, days) {
   if (!events.length) return `Nothing unusual in the last ${days} days.`;
