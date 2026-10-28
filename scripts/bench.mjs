@@ -183,6 +183,9 @@ async function countsOf(root, chrome) {
       const c = await getJSON(server.base + '/__bench/counts');
       out[`queries: ${view}`] = c.sql;
       out[`api calls: ${view}`] = c.api;
+      // Pictures of the page come out of a daily allowance of browser time, so each one counts.
+      out[`screenshots: ${view}`] = c.screenshots ?? 0;
+      out[`browser ms: ${view}`] = c.browserMs ?? 0;
       if (view === '/') {
         // The same page again a moment later, as someone reloading it does.
         await getJSON(server.base + '/__bench/reset');

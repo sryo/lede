@@ -20,6 +20,8 @@
   /* greys plus ink: canvas, window, tile, line (edges, tracks, hover, skeletons), before (--rule, below), muted text */
   --canvas:#FAF9F6; --win:#F3F1EC; --tile:#FFFFFF; --line:#E7E4DD;
   --ink:#1A1D2E; --muted:#5F6275;
+  /* a page with no picture yet: light, as most pages are, so the shade over it shows in both themes */
+  --paper:#EEEBE4;
   --time:#2F5BEA; --src:#FFAA00; --page:#8B5CF6; --bnc:#D7263D; --live:#12974A;
   /* text on a solid subject colour */
   --on-time:#FFFFFF; --on-src:#1A1D2E; --on-page:#FFFFFF; --on-bnc:#FFFFFF; --on-live:#FFFFFF;
@@ -36,6 +38,7 @@
   color-scheme:dark;
   --canvas:#0E0F13; --win:#15161C; --tile:#1D1F27; --line:#2C2F3A;
   --ink:#EDEEF3; --muted:#A3A6B6;
+  --paper:#B4B7C2;
   --time:#6B8CFF; --src:#FFC14D; --page:#A585FF; --bnc:#FF5C6B; --live:#3DDC84;
   --on-time:#0E0F13; --on-src:#0E0F13; --on-page:#0E0F13; --on-bnc:#0E0F13; --on-live:#0E0F13;
   --a-rest:62%; --a-pale:24%; --a-rest-s:82%; --a-pale-s:40%;
@@ -305,12 +308,20 @@ button.tile-title:hover{color:var(--ink)}
 .reach-body{display:flex;align-items:center;gap:16px 48px;flex-wrap:wrap}
 .reach-body>div:first-child{flex:0 1 480px}
 .card-say{margin:0;font-size:var(--fs-m);line-height:1.4}
-/* the page as a column, a bar per tenth */
-.reach{position:relative;display:grid;grid:repeat(10,14px)/auto 132px 32px;gap:3px 10px;align-items:center;font-size:var(--fs-xs);line-height:1;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
-.reach::before{content:"";position:absolute;grid-area:1/2/-1/3;inset:-6px;border-radius:6px;box-shadow:0 0 0 1px var(--line)}
-.reach i{height:100%;display:flex}
-.reach b{background:var(--page-t)} .reach u{background:var(--page-p)} .reach .on u{background:var(--page)}
-.on+span{color:var(--ink);font-weight:600}
+/* the page itself, darker further down where fewer still read; a plain page-shaped column until its picture comes */
+.reach-fig{margin:0;display:flex;flex-direction:column;gap:12px}
+.shotwrap{position:relative;display:flex;gap:12px}
+.shot{position:relative;flex:none;width:150px;height:360px;border-radius:6px;background:var(--paper);box-shadow:0 0 0 1px var(--line);transition:width .3s,height .3s}
+.shot img,.shot .shade{position:absolute;inset:0;width:100%;height:100%;border-radius:inherit}
+.shot img{opacity:0;transition:opacity .4s} .shot img.in{opacity:1}
+.shot i{position:absolute;left:0;right:0;height:10%}
+/* reaches across to its label */
+.shot b{position:absolute;left:0;right:-6px;height:2px;margin-top:-1px;background:var(--page);pointer-events:none}
+.ticks{position:relative;min-width:120px;font-size:var(--fs-xs);color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.ticks span{position:absolute;left:0;transform:translateY(-50%)}
+.ticks .t-top{transform:none} .ticks .t-end{transform:translateY(-100%)}
+.ticks .t-drop{color:var(--page);font-weight:700}
+.reach-fig figcaption{max-width:320px}
 .landed{position:relative;min-height:276px;height:28vh}
 .landed .lbl{all:unset;position:absolute;transform:translateY(-50%);font-size:var(--fs-xs);line-height:1.3;cursor:pointer;white-space:nowrap;max-width:calc(40% - 18px);overflow:hidden;text-overflow:ellipsis}
 .landed .lbl span{color:var(--muted)}
@@ -417,10 +428,11 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
   .lrow.online .cty,.lrow.online>.ppl,.lrow.lhead.online>span:nth-child(2){display:none}
   .lrow.lhead.online>span{white-space:nowrap}
   .lrow.rate{grid-template-columns:minmax(0,1fr) 44px 40px 56px 10px}
+  .shot{height:300px}
   .say{font-size:var(--fs-m)}
   .mix{grid-template-columns:1fr}.mix p{grid-column:1}
 }
-@media (prefers-reduced-motion:reduce){.blk{transition:none}}
+@media (prefers-reduced-motion:reduce){.blk,.shot,.shot img{transition:none}}
 </style>
 </head>
 <body>
@@ -441,7 +453,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 <script type="module">
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, spikeSegment, waterfall, waterfallCaption, bounceSplit, bounceCaption,
-  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems,
+  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems,
   dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -1171,21 +1183,53 @@ async function renderFilter(body,f){
     body.querySelector('.nums').insertAdjacentHTML('beforeend',
       n('Time on page',fmtDur(r.time),r.prev?changeWord(r.time,r.prev.time):'new','On average, counting only while the page was on screen and in front')
       +n('Scrolled',fmtPct(r.scroll),r.prev?pts(r.scroll,r.prev.scroll):'new','How far down the page people got, on average'));
-    drawReach(body,r);
+    drawReach(body,r,f.path);
   },()=>{});
   if(overview)api('audience').then(A=>{if(!stale(body,gen))drawAudience(body.querySelector('.aud'),A)},()=>{});
   if(overview)api('keywords').then(K=>{if(!stale(body,gen))drawKeywords(body.querySelector('.kw'),K)},()=>{});
   if(overview||f.path!=null)api('links',p).then(L=>{if(!stale(body,gen))drawLinks(body,L,c.visitors)},()=>{});
 }
 
-// How far down the page is read: a bar per tenth of the page, as wide as the share still reading, then, paler,
-// those who stopped in that tenth; solid where the sentence names the drop. Too few reads get the sentence alone.
-function drawReach(body,r){
-  const S=scrollStory(r),R=r.reach;if(!S)return;
-  const sec=document.createElement('section');sec.className='card';
-  sec.innerHTML=`<div class="card-title">How far down people read</div><div class="reach-body"><div><p class="card-say">${S.html}</p>${S.sub?`<p class="say-sub">${S.sub}</p>`:''}</div>${S.few?'':`<div class="reach" role="img" aria-label="Still reading at each tenth of the page: ${R.map(fmtPct).join(', ')}">`
-    +R.map((x,i)=>`<span>${['Top',,,,'Middle',,,,,'End'][i]||''}</span><i title="${i+1}0% of the way down: ${fmtPct(x)} still reading"${i===S.drop?' class="on"':''}><b style="width:${x*100}%"></b><u style="width:${((R[i-1]??1)-x)*100}%"></u></i><span>${fmtPct(x)}</span>`).join('')+'</div>'}</div>`;
+// How far down the page is read, over a picture of the page: darker further down where fewer still read, a
+// violet line where the sentence names the drop. The sentence and the shade over a plain page-shaped column draw
+// at once; the picture (or the page's share picture) fades in when it comes. Too few reads get the sentence alone.
+function drawReach(body,r,path){
+  const S=scrollStory(r),P=scrollPicture(r);if(!S)return;
+  const sec=document.createElement('section');sec.className='card reach-card';
+  const shade=P&&`linear-gradient(to bottom,${P.stops.map(x=>`rgb(14 15 19/${x.shade.toFixed(3)}) ${x.at*100}%`).join(',')})`;
+  sec.innerHTML=`<div class="card-title">How far down people read</div><div class="reach-body"><div><p class="card-say">${S.html}</p>${S.sub?`<p class="say-sub">${S.sub}</p>`:''}</div>${!P?'':`<figure class="reach-fig">
+    <div class="shotwrap"><div class="shot" role="img" aria-label="${esc(P.aria)}"><div class="shade" style="background:${shade}"></div>${P.bands.map((t,i)=>`<i style="top:${i*10}%" title="${t}"></i>`).join('')}${P.drop?`<b style="top:${P.drop.at*100}%"></b>`:''}</div>
+      <div class="ticks" aria-hidden="true"><span class="t-top" style="top:0">${P.top}</span>${P.drop?`<span class="t-drop" style="top:${P.drop.at*100}%">${P.drop.label}</span>`:''}<span class="t-end" style="top:100%">${P.end}</span></div></div>
+    <figcaption class="say-sub">${pictureCaption({path,days:DAYS,kind:'wait'})}</figcaption></figure>`}</div>`;
   body.querySelector('.nums').after(sec);
+  if(P)showPicture(sec,path);
+}
+
+// The day's picture of the page, kept by the Worker (src/shot.js). It keeps the page's shape: as tall as the
+// column, or, for a short page, as wide as it may be.
+async function showPicture(sec,path){
+  const shot=sec.querySelector('.shot'),cap=sec.querySelector('figcaption'),site=SITE;
+  const say=(kind,why)=>{cap.innerHTML=pictureCaption({path,days:DAYS,kind,why})};
+  const place=(src,kind,why,failed)=>{
+    const img=new Image();img.alt='';
+    img.onload=()=>{
+      if(!sec.isConnected)return;
+      const h=shot.offsetHeight,w=Math.min(280,Math.max(40,h*img.naturalWidth/img.naturalHeight));
+      shot.style.width=w+'px';shot.style.height=Math.min(h,w*img.naturalHeight/img.naturalWidth)+'px';
+      shot.prepend(img);requestAnimationFrame(()=>requestAnimationFrame(()=>img.classList.add('in')));
+      say(kind,why);
+    };
+    img.onerror=failed;img.src=src;
+  };
+  try{
+    const res=await fetch(`/api/shot?${new URLSearchParams({site,path})}`);
+    if(!sec.isConnected||site!==SITE)return;
+    if((res.headers.get('Content-Type')||'').startsWith('image/'))return place(URL.createObjectURL(await res.blob()),'shot',null,()=>say('none','failed'));
+    const b=await res.json();
+    if(!res.ok)return say('none','failed');
+    if(b.og)return place(b.og,'og',b.why,()=>say('none',b.why));
+    say('none',b.why);
+  }catch{if(sec.isConnected)say('none','failed')}
 }
 
 // Where readers are and what they use: the finding, then each list as one strip of shares, the row it names solid.

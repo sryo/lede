@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readStory, tellStory, bounceSplit, bounceCaption, waterfall, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
-  audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate } from '../public/story.js';
+  scrollPicture, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -672,4 +672,56 @@ test('the demo has a note on its busy day, and home cites it', async () => {
   assert.equal(S.note?.kind, 'day');
   assert.equal(ser.top[S.note.day], 'facebook.com');
   assert.match(strip(tellStory(S, ser, 30).html), /the day you shared \/owls in a Facebook birding group\.$/);
+});
+
+/* ---------- the picture of the page, shaded where readers have gone ---------- */
+
+test('scroll picture: darker further down, as fewer still read', () => {
+  const owls = read(900, .93, .87, .81, .76, .43, .4, .37, .35, .34, .33);
+  const P = scrollPicture(owls);
+  assert.equal(P.stops.length, 11, 'the top, then the end of each tenth');
+  assert.deepEqual(P.stops.map(s => s.at), [0, .1, .2, .3, .4, .5, .6, .7, .8, .9, 1]);
+  assert.equal(P.stops[0].shade, 0, 'everyone sees the top');
+  for (let i = 1; i < 11; i++) assert.ok(P.stops[i].shade >= P.stops[i - 1].shade, 'never lighter further down');
+  close(P.stops[5].shade / P.stops[10].shade, (1 - .43) / (1 - .33), 1e-9);
+  assert.ok(P.stops[10].shade < 1, 'the page still shows through where few read');
+  const all = scrollPicture(read(900, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1));
+  assert.ok(all.stops.every(s => s.shade === 0), 'a page everyone reads to the end has no shade');
+});
+
+test('scroll picture: labels the top, the steepest drop and the end', () => {
+  const P = scrollPicture(read(900, .93, .87, .81, .76, .43, .4, .37, .35, .34, .33));
+  assert.equal(P.top, '93%');
+  assert.equal(P.end, '33% reach the end');
+  assert.deepEqual(P.drop, { at: .45, label: '76% → 43%' });
+  assert.equal(P.aria, 'A picture of the page, darker where fewer read: 93% at the top, 76% → 43% between 40% and 50% of the way down, 33% reach the end.');
+  const first = scrollPicture(read(900, .8, .75, .7, .66, .62, .58, .55, .52, .5, .48));
+  assert.deepEqual(first.drop, { at: .05, label: '100% → 80%' });
+  const even = scrollPicture(read(900, .96, .92, .88, .84, .8, .76, .72, .68, .64, .6));
+  assert.equal(even.drop, null, 'no line when no drop stands out');
+  assert.equal(even.aria, 'A picture of the page, darker where fewer read: 96% at the top, 60% reach the end.');
+  assert.equal(P.bands.length, 10);
+  assert.equal(P.bands[4], '50% of the way down: 43% still reading');
+});
+
+test('scroll picture: none under the reads threshold, only the sentence', () => {
+  assert.equal(scrollPicture(read(12, .5, .4, .3, .2, .1, .1, .1, .1, .1, .1)), null);
+  assert.equal(scrollPicture(read(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)), null);
+  assert.equal(scrollPicture({ views: 400 }), null);
+});
+
+test('scroll picture: the caption says what the picture is and when it was taken', () => {
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'shot' }), 'Picture of /owls taken today. Readers counted over 30 days.');
+  assert.equal(pictureCaption({ path: '/', days: 7, kind: 'shot' }), 'Picture of the home page taken today. Readers counted over 7 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 1, kind: 'shot' }), 'Picture of /owls taken today. Readers counted today.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'budget' }), 'Picture of the page tomorrow. Readers counted over 30 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'failed' }), 'Picture of the page tomorrow. Readers counted over 30 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'budget' }), 'The picture /owls shows when shared, until a picture of the page tomorrow. Readers counted over 30 days.');
+  // Waiting won't help when the token can't take pictures, so it says what to do.
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'permission' }),
+    'To show a picture of the page here, give Lede’s Cloudflare token the Browser Rendering permission. Readers counted over 30 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'permission' }),
+    'The picture /owls shows when shared. For a picture of the page, give Lede’s Cloudflare token the Browser Rendering permission. Readers counted over 30 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'wait' }), 'Readers counted over 30 days.', 'while the picture is on its way');
+  assert.equal(pictureCaption({ path: '/a<b', days: 30, kind: 'shot' }), 'Picture of /a&lt;b taken today. Readers counted over 30 days.', 'escaped');
 });

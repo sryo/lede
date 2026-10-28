@@ -106,3 +106,15 @@ test('collect writes nothing for data centres, GPC or spam, and counts the rest'
   await send('https://duckduckgo.com/', {}, { asn: 3320, country: 'DE' });
   assert.equal(points.length, 1);
 });
+
+// Opening a page's view has Cloudflare's browser take a picture of the page, and that browser runs the
+// site's t.js. Its user agent is an ordinary Chrome on Windows and it comes from Cloudflare's own network
+// (AS13335), which is kept for iCloud Private Relay, so neither rule above catches it. It always sends
+// cf-brapi-request-id (or cf-brapi-devtools), which no person's browser does.
+test('Cloudflare’s Browser Rendering is not a visitor', () => {
+  const ua = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36';
+  assert.equal(unwanted(beacon({ 'User-Agent': ua }, { asn: 13335 }), {}, ua), false, 'by user agent and network alone it looks like a person');
+  assert.equal(unwanted(beacon({ 'User-Agent': ua, 'cf-brapi-request-id': 'abc' }, { asn: 13335 }), {}, ua), true);
+  assert.equal(unwanted(beacon({ 'User-Agent': ua, 'cf-brapi-devtools': 'abc' }, { asn: 13335 }), {}, ua), true);
+  assert.equal(unwanted(beacon({ 'User-Agent': ua, 'cf-brapi-request-id': 'abc' }), { KEEP_DATACENTER: 'true' }, ua), true, 'whatever the data-centre setting');
+});

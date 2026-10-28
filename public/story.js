@@ -586,7 +586,33 @@ export function scrollStory(r) {
   const drops = reach.map((x, i) => (reach[i - 1] ?? 1) - x), most = maxOf(drops);
   const drop = most >= .1 && most >= 1.5 * median(drops) ? drops.indexOf(most) : -1;
   const where = drop ? `between ${drop}0% and ${drop === 9 ? 'the end' : `${drop + 1}0% of the way down`}` : 'in the first 10% of the page';
-  return { few: false, drop, html, sub: drop < 0 ? null : `The steepest drop comes ${where}, where <b>${fmtPct(most)}</b> of readers stop.` };
+  return { few: false, drop, where, html, sub: drop < 0 ? null : `The steepest drop comes ${where}, where <b>${fmtPct(most)}</b> of readers stop.` };
+}
+
+// The same reads over a picture of the page: a shade that darkens, tenth by tenth, as the share still reading
+// falls (shade 0 where everyone reads, never fully dark), a line through the middle of the tenth the sentence
+// names, and hover text per tenth. Under the reads threshold there is no picture, only the sentence.
+export function scrollPicture(r) {
+  const S = scrollStory(r);
+  if (!S || S.few) return null;
+  const R = r.reach, d = S.drop, top = fmtPct(R[0]), end = `${fmtPct(R[9])} reach the end`;
+  const drop = d < 0 ? null : { at: (d + .5) / 10, label: `${fmtPct(R[d - 1] ?? 1)} → ${fmtPct(R[d])}` };
+  return {
+    stops: [1, ...R].map((x, i) => ({ at: i / 10, shade: (1 - x) * .85 })),
+    top, end, drop,
+    bands: R.map((x, i) => `${i + 1}0% of the way down: ${fmtPct(x)} still reading`),
+    aria: `A picture of the page, darker where fewer read: ${top} at the top, ${drop ? `${drop.label} ${S.where}, ` : ''}${end}.`,
+  };
+}
+
+// Under the picture: what it is and when it was taken, or why there is none yet. kind is shot (Cloudflare's
+// picture of the page), og (the picture the page shares on social sites), none, or wait (still on its way).
+export function pictureCaption({ path, days, kind, why }) {
+  const page = esc(pageName(path)), fix = 'give Lede’s Cloudflare token the Browser Rendering permission';
+  const what = kind === 'shot' ? `Picture of ${page} taken today. `
+    : kind === 'og' ? (why === 'permission' ? `The picture ${page} shows when shared. For a picture of the page, ${fix}. ` : `The picture ${page} shows when shared, until a picture of the page tomorrow. `)
+      : kind === 'none' ? (why === 'permission' ? `To show a picture of the page here, ${fix}. ` : 'Picture of the page tomorrow. ') : '';
+  return what + (days === 1 ? 'Readers counted today.' : `Readers counted over ${days} days.`);
 }
 
 // What readers do after a page (from /api/next): the two biggest steps, leaving the site or going on to a

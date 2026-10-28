@@ -65,8 +65,12 @@ export const DATACENTERS = new Set([
 
 // Beacons we don't count: bots, data centres (unless KEEP_DATACENTER="true") and, when
 // RESPECT_GPC="true", browsers whose owner asked sites not to track them (Global Privacy Control).
+// Cloudflare's Browser Rendering (which takes the pictures on a page's view) sends an ordinary Chrome user
+// agent from Cloudflare's own network, but always adds one of these headers, which no person's browser sends.
+const RENDERED = ['cf-brapi-request-id', 'cf-brapi-devtools'];
+
 export function unwanted(req, env, ua) {
-  return isBot(ua) || !!req.cf?.botManagement?.verifiedBot
+  return isBot(ua) || !!req.cf?.botManagement?.verifiedBot || RENDERED.some(h => req.headers.has(h))
     || (env.KEEP_DATACENTER !== 'true' && DATACENTERS.has(req.cf?.asn))
     || (env.RESPECT_GPC === 'true' && req.headers.get('Sec-GPC') === '1');
 }

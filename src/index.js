@@ -1,5 +1,6 @@
 import { collect } from './collect.js';
 import { handleApi } from './api.js';
+import { handleShot } from './shot.js';
 import { runAlerts } from './alerts.js';
 import { rememberOrigin } from './settings.js';
 
@@ -58,7 +59,8 @@ export default {
     if (crossSite(req, url)) return new Response('Changes can only be made from the dashboard.', { status: 403 });
     const res = pathname === '/api/signin' && req.method === 'POST' ? await signIn(req, env)
       : !await signedIn(req, env) ? json({ error: 'Enter your password.', signIn: true }, 401)
-        : await handleApi(req, env, ctx);
+        : pathname === '/api/shot' ? await handleShot(req, env)
+          : await handleApi(req, env, ctx);
     // Alerts link to the dashboard, but a schedule doesn't know the Worker's address. The dashboard asks for
     // the sites when it opens, and signs in from the same address.
     if (res.ok && (pathname === '/api/signin' || pathname === '/api/sites')) ctx.waitUntil(rememberOrigin(env, url.origin));
