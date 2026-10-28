@@ -408,6 +408,10 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
     .two{grid-template-columns:1fr}
   .lrow{grid-template-columns:minmax(0,1fr) 44px 56px 56px 10px;gap:8px}
   .lrow .pct,.lrow.lhead:not(.rate):not(.online)>span:nth-child(4){display:none}
+  /* keywords are short and are the point: no bar, and whole words */
+  .kw>.lrow{grid-template-columns:minmax(0,1fr) 56px 56px 10px}
+  .kw .bar,.kw>.lhead>span:nth-child(2){display:none}
+  .kw .name{white-space:normal;overflow-wrap:anywhere}
   /* phones: the crowd above already shows the figures, so the table keeps page, source and time */
   .lrow.online{grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) max-content 10px;column-gap:8px}
   .lrow.online .cty,.lrow.online>.ppl,.lrow.lhead.online>span:nth-child(2){display:none}
@@ -1221,7 +1225,7 @@ function drawKeywords(sec,K){
     const C=keywordsCard(K,k,open);
     say.innerHTML=C.say;say.hidden=!C.say;
     list.innerHTML=C.empty?`<p class="muted" style="margin:0">${esc(C.empty)}</p>`:'<div></div>';
-    if(!C.empty)rowsInto(list.firstChild,C.rows,{total:C.total,subj:k==='site'?'muted':'src'});
+    if(!C.empty){rowsInto(list.firstChild,C.rows,{total:C.total,subj:k==='site'?'muted':'src'});list.firstChild.classList.add('kw')}
     if(C.all){
       list.insertAdjacentHTML('beforeend',`<button type="button" class="more-link" aria-expanded="false"><span>All ${C.all} words</span>${CHEV}</button>`);
       list.lastChild.onclick=()=>{draw(k,1);const r=list.firstChild.children[6];r.tabIndex=-1;r.focus()};
