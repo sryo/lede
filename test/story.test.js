@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readStory, tellStory, bounceSplit, bounceCaption, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
   scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
-  unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict } from '../public/story.js';
+  unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -348,7 +348,7 @@ test('page sentence: visitors, change or new, and where most first visits came f
   const totals = { cur: { visitors: 2985 }, prev: { visitors: 0 } };
   assert.equal(strip(pageStory(totals, flows, '/blog/new', 30)), '2,985 visitors on /blog/new, none in the 30 days before. 6 in 10 of those who landed here came from Hacker News.');
   const spread = [{ source: 'a.com', page: '/p', visitors: 20 }, { source: 'b.com', page: '/p', visitors: 18 }, { source: 'c.com', page: '/p', visitors: 17 }, { source: 'd.com', page: '/p', visitors: 16 }];
-  assert.equal(strip(pageStory({ cur: { visitors: 900 }, prev: { visitors: 800 } }, spread, '/p', 30)), '900 visitors on /p, up 13%. Those who landed here came from many places, the most from a.com.');
+  assert.equal(strip(pageStory({ cur: { visitors: 900 }, prev: { visitors: 800 } }, spread, '/p', 30)), '900 visitors on /p, up 13%.', 'no one source to name: the crossing shows them all');
   assert.equal(strip(pageStory({ cur: { visitors: 5 }, prev: { visitors: 5 } }, [], '/p', 30)), '5 visitors on /p, about the same as before.');
 });
 
@@ -358,11 +358,19 @@ test('events sentence counts what stood out and leads with the big day', () => {
   const fresh = { kind: 'source', day: 12, name: 'New source', short: 'bsky.app' };
   const quiet = { kind: 'quiet', day: 3, name: 'Quiet day', short: '837 visitors, far fewer than usual.' };
   const note = { kind: 'note', day: 16, name: 'Your note', short: 'Shared /owls' };
+  const page = { kind: 'page', day: 9, name: 'New page', short: '/swift' };
+  const other = { kind: 'note', day: 2, name: 'Your note', short: 'New homepage' };
   assert.equal(eventsSentence([], 30, start), 'Nothing unusual in the last 30 days.');
   assert.equal(eventsSentence([note], 30, start), 'Nothing unusual in the last 30 days. You left one note.');
   assert.equal(eventsSentence([fresh], 30, start), 'One thing stood out: a new source on Tue, Oct 13, bsky.app.');
-  assert.equal(eventsSentence([fresh, note, spike, quiet], 30, start),
-    'Three things stood out. Sat, Oct 17 was the big day: 5,107 visitors, 1,718 from facebook.com. You left one note.');
+  // The big day leads, with the note left on it; the rest are named by kind, and only other notes are counted.
+  assert.equal(strip(eventsSentence([fresh, note, spike, page, quiet], 30, start)),
+    'Sat, Oct 17 was the big day: 5,107 visitors, 1,718 from facebook.com, the day you shared /owls. Three more things stood out: a new source, a new page and a quiet day.');
+  assert.equal(strip(eventsSentence([spike, fresh, other], 30, start)),
+    'Sat, Oct 17 was the big day: 5,107 visitors, 1,718 from facebook.com. One more thing stood out: a new source. You left one note.');
+  assert.equal(strip(eventsSentence([spike], 30, start)), 'Sat, Oct 17 was the big day: 5,107 visitors, 1,718 from facebook.com.');
+  // What happened's own screen lists the same items, so its sentence names their kinds instead of repeating the first.
+  assert.equal(strip(eventsSentence([fresh, note, spike, page, quiet], 30, start, true)), 'Four things stood out: a big day, a new source, a new page and a quiet day. You left one note.');
   assert.equal(eventsSentence([fresh, quiet], 30, start), 'Two things stood out, the latest a new source on Tue, Oct 13, bsky.app.');
 });
 
@@ -383,9 +391,14 @@ test('a share that rounds to nothing still reads as something', () => {
 
 test('links people clicked lead with the most clicked, as a share of all visitors', () => {
   const rows = [{ key: 'xeno-canto.org/explore', visitors: 1094 }, { key: 'ebird.org', visitors: 299 }];
-  assert.equal(strip(linksStory(rows, 79205)), 'xeno-canto.org/explore got the most clicks: 1,094 visitors, 1.4% of all.');
-  assert.equal(strip(linksStory([{ key: 'example.com/files/owl-calls.mp3', visitors: 480 }], 4813, 'example.com')), '/files/owl-calls.mp3 got the most clicks: 480 visitors, 10% of all.');
+  assert.equal(strip(linksStory(rows, 79205).html), 'xeno-canto.org/explore got the most clicks: 1,094 visitors, 1.4% of all visitors.');
+  assert.equal(strip(linksStory([{ key: 'example.com/files/owl-calls.mp3', visitors: 480 }], 4813, 'example.com').html), '/files/owl-calls.mp3 got the most clicks: 480 visitors, 10% of all visitors.');
   assert.equal(linksStory([], 100), null);
+  // The biggest riser beside it, when one rose by a quarter from 30 or more.
+  const risen = [{ key: 'xeno-canto.org/explore', visitors: 1094, prev: 1040 }, { key: 'ebird.org/submit', visitors: 299, prev: 188 }, { key: 'nestwatch.org', visitors: 40, prev: 10 }];
+  const L = linksStory(risen, 79205);
+  assert.equal(strip(L.html), 'xeno-canto.org/explore got the most clicks: 1,094 visitors, 1.4% of all visitors. Clicks to ebird.org/submit rose most, +59%.');
+  assert.deepEqual([...L.named], ['xeno-canto.org/explore', 'ebird.org/submit']);
 });
 
 test('a chart with nothing in it says "yet" only for a site that never had any', () => {
@@ -951,19 +964,19 @@ test('a page’s speed reads as a visit: the wait for its main content, then how
     prev: { views: 2800, median: 96000, lcp: 3100, inp: 300, cls: .12, lcpN: 2600, inpN: 700, clsN: 2600 } };
   const rows = [owls, { key: '/', views: 9000, median: 20000 }, { key: '/robin', views: 2000, median: 50000 }];
   const S = speedStory(owls, '/owls', rows);
-  assert.equal(strip(S.html), 'Readers wait 4.7 s (poor) for /owls, up from 3.1 s, then stay 1m 40s, the longest of any page.');
+  assert.equal(strip(S.html), 'Readers wait 4.7\u00a0s (poor) for /owls, up from 3.1\u00a0s, then stay 1m 40s, the longest of any page.');
   assert.equal(strip(S.note), 'Each tap then waits 560 ms (poor); the layout holds steady. Times are for 3 in 4 views; the rest took longer.');
   assert.deepEqual([S.wait, S.was, S.read, S.rating], [4.7, 3.1, 100, 'poor']);
   assert.equal(S.layout, 'Layout movement: 0.09 (good).', 'the score the words stand for, for the hover');
   // A small change isn't one, and the home page has its name.
   const home = speedStory({ ...owls, key: '/', lcp: 1800, prev: { ...owls.prev, lcp: 1750 } }, '/', [owls]);
-  assert.equal(strip(home.html), 'Readers wait 1.8 s (good) for the home page, then stay 1m 40s.');
+  assert.equal(strip(home.html), 'Readers wait 1.8\u00a0s (good) for the home page, then stay 1m 40s.');
   assert.equal(home.was, 1.75, 'the period before is still drawn');
   // Few taps measured, or no reading time: say only what is known.
   const fewTaps = speedStory({ ...owls, inpN: 12, cls: .3, prev: null }, '/owls');
-  assert.equal(strip(fewTaps.html), 'Readers wait 4.7 s (poor) for /owls, then stay 1m 40s.');
+  assert.equal(strip(fewTaps.html), 'Readers wait 4.7\u00a0s (poor) for /owls, then stay 1m 40s.');
   assert.match(strip(fewTaps.note), /^The layout jumps around\./);
-  assert.equal(strip(speedStory({ ...owls, median: 400, prev: null }, '/owls').html), 'Readers wait 4.7 s (poor) for /owls, then most leave.');
+  assert.equal(strip(speedStory({ ...owls, median: 400, prev: null }, '/owls').html), 'Readers wait 4.7\u00a0s (poor) for /owls, then most leave.');
   // Too few loads measured: no card, and the one-line summary takes over.
   assert.equal(speedStory({ ...owls, lcpN: 20 }, '/owls'), null);
   assert.equal(speedStory({ key: '/x', views: 50, lcp: null }, '/x'), null);
@@ -983,6 +996,9 @@ test('the hours card says when readers come, and the busiest hour', () => {
   assert.equal(strip(hoursStory(evenings)), 'Readers come most in the evenings, 19:00–22:00; the busiest hour is Mondays at 19:00.');
   assert.equal(strip(hoursStory(week(10))), 'Readers come at every hour about as much; no time of day stands out.');
   assert.equal(strip(hoursStory(week(1))), 'Too few visitors yet to say when readers come.');
+  // The same window and hour the chart marks.
+  assert.deepEqual(busyWindow(mornings), { start: 7, best: [1, 9] });
+  assert.equal(busyWindow(week(10)), null);
 });
 
 test('with bounce unchanged, the bounce screen names who bounces most, if anyone stands out', () => {
@@ -1003,9 +1019,9 @@ test('with bounce unchanged, the bounce screen names who bounces most, if anyone
 test('who is here now is weighed against a usual half hour at this time of day', () => {
   // 28 days from Monday Sep 28; every hour had 20 visitors, so a usual half hour has about 10.
   const hourly = { start: START, days: 28, visitors: Array(28 * 24).fill(20) }, now = START + 27 * DAY + 10 * 3600 + 600;
-  assert.equal(strip(onlinePace({ recent: 20 }, hourly, now).html), '20 in the last 30 minutes, twice the usual 10 at this hour.');
-  assert.equal(strip(onlinePace({ recent: 11 }, hourly, now).html), '11 in the last 30 minutes, about usual for this hour.');
-  assert.equal(strip(onlinePace({ recent: 4 }, hourly, now).html), '4 in the last 30 minutes, fewer than the usual 10 at this hour.');
+  assert.equal(strip(onlinePace({ recent: 20 }, hourly, now).html), '20 came in the last 30 minutes, twice the usual 10 at this hour.');
+  assert.equal(strip(onlinePace({ recent: 11 }, hourly, now).html), '11 came in the last 30 minutes, about usual for this hour.');
+  assert.equal(strip(onlinePace({ recent: 4 }, hourly, now).html), '4 came in the last 30 minutes, fewer than the usual 10 at this hour.');
   assert.equal(onlinePace({ recent: 4 }, { ...hourly, visitors: Array(28 * 24).fill(2) }, now), null, 'too quiet to call anything usual');
   assert.equal(onlinePace({ recent: 4 }, null, now), null);
 });
@@ -1028,13 +1044,14 @@ test('the Sources screen’s waterfall names the three biggest movers, AI assist
   assert.equal(ai.value, 1928);
   assert.ok(Math.abs(rest.value) < fb.value, 'everyone else is smaller than every step named');
   assert.equal(W.steps.slice(0, -1).reduce((a, s) => a + s.value, 0), S.diff);
-  assert.equal(strip(waterfallCaption(W, S).html), 'google.com sent 2,910 of the 7,141 extra visitors, AI assistants 1,928 and facebook.com 1,531; bsky.app is new, with 622');
+  assert.equal(strip(waterfallCaption(W, S).html), 'Three sources brought 9 in 10 of the 7,141 extra visitors: google.com, AI assistants and facebook.com; bsky.app is new, with 622');
+  assert.deepEqual(waterfallCaption(W, S).keys, ['google.com', 'ch:ai', 'facebook.com'], 'every name the sentence bolds, for the list');
 });
 
 test('a source’s view names a page its readers favour more than everyone does', () => {
   const src = [{ key: '/', visitors: 500 }, { key: '/by-song', visitors: 200 }, { key: '/robin', visitors: 300 }];
   const site = [{ key: '/', value: 6000 }, { key: '/by-song', value: 1300 }, { key: '/robin', value: 2700 }];
-  assert.equal(strip(readsMore(src, site)), '20% of them read /by\u2011song, against 13% of all visitors.');
+  assert.equal(strip(readsMore(src, site, 'google.com')), '20% of visitors from google.com read /by\u2011song, against 13% of all visitors.');
   assert.equal(readsMore(src.map(r => ({ ...r, visitors: r.visitors / 20 })), site), null, 'too few to say');
   assert.equal(readsMore([{ key: '/', visitors: 600 }, { key: '/robin', visitors: 400 }], site), null, 'nothing favoured half again as much');
 });
@@ -1059,8 +1076,8 @@ test('a page’s lead weighs it against the site and names what to fix', () => {
   assert.equal(strip(pageStory(t(4813, 4025), [], '/owls', 30, t(79205, 72000))), '4,813 visitors on /owls, up 20%, against 10% for the whole site.');
   assert.equal(strip(pageStory(t(3000, 4000), [], '/owls', 30, t(79205, 72000))), '3,000 visitors on /owls, down 25%, while the whole site rose 10%.');
   assert.equal(strip(pageStory(t(4813, 4400), [], '/owls', 30, t(79205, 72000))), '4,813 visitors on /owls, up 9%.', 'within a few points of the site: nothing to add');
-  assert.equal(strip(pageVerdict({ rating: 'poor', wait: 4.7, was: 3.1, moved: true })), 'It is slow to load: readers wait 4.7 s, up from 3.1 s.');
-  assert.equal(strip(pageVerdict({ rating: 'poor', wait: 4.7, was: null, moved: false })), 'It is slow to load: readers wait 4.7 s.');
+  assert.equal(strip(pageVerdict({ rating: 'poor', wait: 4.7, was: 3.1, moved: true })), 'It is slow to load: readers wait 4.7\u00a0s, up from 3.1\u00a0s.');
+  assert.equal(strip(pageVerdict({ rating: 'poor', wait: 4.7, was: null, moved: false })), 'It is slow to load: readers wait 4.7\u00a0s.');
   assert.equal(pageVerdict({ rating: 'needs work', wait: 3 }), null);
 });
 
@@ -1068,5 +1085,5 @@ test('a live list cut at its 200 rows can still say a crowd is big, but never th
   const hourly = { start: START, days: 28, visitors: Array(28 * 24).fill(600) }, now = START + 27 * DAY + 10 * 3600 + 600;
   assert.equal(onlinePace({ recent: 200, visitors: Array(200) }, hourly, now), null, 'the usual 300 can’t be weighed against a list cut at 200');
   const quiet = { ...hourly, visitors: Array(28 * 24).fill(100) };
-  assert.equal(strip(onlinePace({ recent: 200, visitors: Array(200) }, quiet, now).html), 'At least 200 in the last 30 minutes, at least 4 times the usual 50 at this hour.');
+  assert.equal(strip(onlinePace({ recent: 200, visitors: Array(200) }, quiet, now).html), 'At least 200 came in the last 30 minutes, at least 4 times the usual 50 at this hour.');
 });

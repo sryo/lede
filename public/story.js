@@ -391,12 +391,14 @@ export function waterfallCaption(W, S) {
   const parts = W.steps.filter(s => s.kind === 'named' || s.kind === 'mover');
   // The Sources screen lists every mover that went the total's way, biggest first, and a new source after them.
   const went = parts.filter(s => Math.sign(s.value) === Math.sign(W.total));
+  // It says what the chart can't: how much of the change the named movers made, as N in 10. keys: every name it bolds.
   if (W.list && went.length >= 2) {
-    const [a, ...more] = went, n = s => fmtInt(Math.abs(s.value)), others = more.map(s => `<b>${esc(s.label)}</b> ${n(s)}`);
-    const tail = others.length > 1 ? `${others.slice(0, -1).join(', ')} and ${others.at(-1)}` : others[0];
+    const names = listed(went.map(s => `<b>${esc(s.label)}</b>`)), part = sum(went.map(s => s.value)) / W.total, tenths = Math.round(part * 10);
     const fresh = W.fresh ? `; <b>${esc(W.fresh.label)}</b> is new, with ${fmtInt(W.fresh.value)}` : '';
-    return say(W.total > 0 ? `<b>${esc(a.label)}</b> sent ${n(a)} of the ${fmtInt(W.total)} extra ${u}, ${tail}${fresh}`
-      : `<b>${esc(a.label)}</b> sent ${n(a)} fewer ${u}, ${tail}, out of ${fmtInt(-W.total)} fewer in all${fresh}`, a);
+    const count = `${COUNT_WORDS[went.length] ?? went.length} sources`, all = part >= .95;
+    const html = W.total > 0 ? `${count} brought ${all ? 'nearly all' : `${tenths} in 10`} of the ${fmtInt(W.total)} extra ${u}: ${names}${fresh}`
+      : `${count} made ${all ? 'nearly all' : `${tenths} in 10`} of the ${fmtInt(-W.total)} fewer ${u}: ${names}${fresh}`;
+    return { ...say(html, went[0]), keys: went.map(s => s.channel ? `ch:${s.channel}` : s.key) };
   }
   const word = ['one source', 'two sources', 'three sources'][parts.length - 1];
   const along = parts.filter(s => Math.sign(s.value) === Math.sign(W.total));
@@ -566,7 +568,7 @@ export function onlinePace(live, hourly, nowSec) {
   const r = live.recent / usual, x = Math.round(r), u = fmtInt(usual), cut = (live.visitors?.length ?? 0) >= LIVE_MAX;
   if (cut && r < 1.75) return null;
   const how = r >= 1.75 ? `${cut ? 'at least ' : ''}${x === 2 ? 'twice' : `${x} times`} the usual ${u} at this hour` : r <= .6 ? `fewer than the usual ${u} at this hour` : 'about usual for this hour';
-  return { usual, ratio: r, html: `${cut ? 'At least ' : ''}<b>${fmtInt(live.recent)}</b> in the last 30 minutes, ${how}.` };
+  return { usual, ratio: r, html: `${cut ? 'At least ' : ''}<b>${fmtInt(live.recent)}</b> came in the last 30 minutes, ${how}.` };
 }
 
 /* ---------- by weekday and hour ---------- */
@@ -574,24 +576,30 @@ export function onlinePace(live, hourly, nowSec) {
 const WEEKDAYS = ['Mondays', 'Tuesdays', 'Wednesdays', 'Thursdays', 'Fridays', 'Saturdays', 'Sundays'];
 const PARTS = [[5, 'morning'], [12, 'afternoon'], [17, 'evening'], [22, 'night']];
 // "Readers come most on weekday mornings, 7:00–10:00; the busiest hour is Tuesdays at 9:00." cells: visitors by
-// weekday (Monday first) and hour. The three hours in a row with the most visitors are named when they hold a
-// quarter of them (twice an even share); weekdays or weekends when their days differ by a third or more there.
-export function hoursStory(cells) {
+// weekday (Monday first) and hour. busyWindow finds the three hours in a row with the most visitors, when they hold a
+// quarter of them (twice an even share), and the busiest hour, for the chart to mark; the sentence names weekdays or
+// weekends when their days differ by a third or more there.
+export function busyWindow(cells) {
   const all = sum(cells.flat());
-  if (all < 300) return 'Too few visitors yet to say when readers come.';
-  const at = (r, h) => cells[r][(h + 24) % 24], win = (r, s) => at(r, s) + at(r, s + 1) + at(r, s + 2);
-  const days = [0, 1, 2, 3, 4, 5, 6], total = s => sum(days.map(r => win(r, s)));
-  const s = Array.from({ length: 24 }, (_, i) => i).sort((a, b) => total(b) - total(a))[0];
-  if (total(s) < all * .25) return 'Readers come at every hour about as much; no time of day stands out.';
-  const wk = sum([0, 1, 2, 3, 4].map(r => win(r, s))) / 5, we = sum([5, 6].map(r => win(r, s))) / 2;
+  if (all < 300) return null;
+  const at = (r, h) => cells[r][(h + 24) % 24], win = s => sum(cells.map((_, r) => at(r, s) + at(r, s + 1) + at(r, s + 2)));
+  const start = Array.from({ length: 24 }, (_, i) => i).sort((a, b) => win(b) - win(a))[0];
+  if (win(start) < all * .25) return null;
+  let best = [0, 0];
+  cells.forEach((row, r) => row.forEach((v, h) => { if (v > cells[best[0]][best[1]]) best = [r, h]; }));
+  return { start, best };
+}
+export function hoursStory(cells) {
+  if (sum(cells.flat()) < 300) return 'Too few visitors yet to say when readers come.';
+  const W = busyWindow(cells);
+  if (!W) return 'Readers come at every hour about as much; no time of day stands out.';
+  const s = W.start, win = r => cells[r][s] + cells[r][(s + 1) % 24] + cells[r][(s + 2) % 24];
+  const wk = sum([0, 1, 2, 3, 4].map(win)) / 5, we = sum([5, 6].map(win)) / 2;
   const scope = we < wk * .75 ? 'weekday' : we > wk * 1.33 ? 'weekend' : '';
   const mid = (s + 1) % 24, part = PARTS.findLast(([from]) => mid >= from)?.[1] ?? 'night';
   const when = part === 'night' ? (scope ? `on ${scope} nights` : 'at night') : scope ? `on ${scope} ${part}s` : `in the ${part}s`;
-  let best = [0, 0];
-  for (const r of days) for (let h = 0; h < 24; h++) if (cells[r][h] > cells[best[0]][best[1]]) best = [r, h];
-  return `Readers come most ${when}, ${s}:00–${(s + 3) % 24}:00; the busiest hour is <b>${WEEKDAYS[best[0]]} at ${best[1]}:00</b>.`;
+  return `Readers come most ${when}, ${s}:00–${(s + 3) % 24}:00; the busiest hour is <b>${WEEKDAYS[W.best[0]]} at ${W.best[1]}:00</b>.`;
 }
-
 /* ---------- pages ---------- */
 
 // Like pagesFinding, `key` is the page the caption names, if it names one.
@@ -646,16 +654,16 @@ export function sourceStory(totals, ser, label, days) {
   return { html: parts.join(' '), without };
 }
 
-// "20% of them read /by-song, against 13% of all visitors." rows: a source's pages ({ key, visitors }); site: every
+// "20% of visitors from google.com read /by-song, against 13% of all visitors." rows: a source's pages ({ key, visitors }); site: every
 // page ({ key, value }). Shares are of each list's total, so both count the same way. The page must hold a tenth of
 // the source's readers, half again its share of everyone's, and 30 of them; the source needs 100.
-export function readsMore(rows, site) {
+export function readsMore(rows, site, label) {
   const n = sum(rows.map(r => r.visitors)), all = sum(site.map(r => r.value));
   if (n < 100 || !all) return null;
   const share = new Map(site.map(r => [r.key, r.value / all]));
   const best = rows.map(r => ({ key: r.key, a: r.visitors / n, b: share.get(r.key) || 0 }))
     .filter(x => x.b && x.a >= .1 && x.a >= x.b * 1.5 && x.a * n >= 30).sort((x, y) => y.a / y.b - x.a / x.b)[0];
-  return best ? `${fmtPct(best.a)} of them read <b>${best.key === '/' ? 'the home page' : pathHTML(best.key)}</b>, against ${fmtPct(best.b)} of all visitors.` : null;
+  return best ? `${fmtPct(best.a)} of visitors from ${esc(label)} read <b>${best.key === '/' ? 'the home page' : pathHTML(best.key)}</b>, against ${fmtPct(best.b)} of all visitors.` : null;
 }
 
 // Under the sentence on Direct's view, since the word alone says little.
@@ -708,7 +716,7 @@ export function pageStory(totals, flows, path, days, site = null) {
     const by = new Map();
     for (const f of flows) by.set(f.source, (by.get(f.source) || 0) + f.visitors);
     const [key, v] = [...by].sort((a, b) => b[1] - a[1])[0], share = v / into, who = `<b>${esc(labelOf('referrer', key))}</b>`;
-    s += share >= .35 ? ` <b>${Math.round(share * 10)} in 10</b> of those who landed here came from ${who}.` : ` Those who landed here came from many places, the most from ${who}.`;
+    if (share >= .35) s += ` <b>${Math.round(share * 10)} in 10</b> of those who landed here came from ${who}.`;
   }
   return s;
 }
@@ -808,26 +816,47 @@ export function nextItems(cur, told) {
 }
 
 const COUNT_WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine'];
-// "Three things stood out. Sat, Oct 17 was the big day: 5,107 visitors, 1,718 from facebook.com. You left one note."
-// events: What happened's items, newest first; the owner's notes are listed with them but didn't stand out, so
-// they are counted apart. The big day leads when there is one, otherwise the newest item.
-export function eventsSentence(events, days, start) {
-  const found = events.filter(e => e.kind !== 'note'), notes = events.length - found.length, n = found.length;
+// "Sat, Oct 17 was the big day: 5,107 visitors, 1,718 from facebook.com, the day you shared /owls. Three more things
+// stood out: a new source, a new page and a quiet day." events: What happened's items, newest first. The big day leads,
+// with the owner's note on it; the rest are named by kind. Notes didn't stand out, so other notes are only counted.
+// Without a big day, the newest item leads.
+const KINDS = { quiet: ['a quiet day', 'quiet days'], page: ['a new page', 'new pages'], source: ['a new source', 'new sources'], week: ['a change in the last 7 days', 'changes in the last 7 days'] };
+// kinds: name every kind (What happened's own screen, where the list right under it gives each item).
+export function eventsSentence(events, days, start, kinds = false) {
+  const spike = events.find(e => e.kind === 'spike'), told = spike && events.find(e => e.kind === 'note' && e.day === spike.day);
+  const found = events.filter(e => e.kind !== 'note'), notes = events.filter(e => e.kind === 'note' && e !== told).length, n = found.length;
   const tail = notes ? ` You left ${notes === 1 ? 'one note' : `${COUNT_WORDS[notes]?.toLowerCase() ?? notes} notes`}.` : '';
   if (!n) return `Nothing unusual in the last ${days} days.${tail}`;
-  const spike = found.find(e => e.kind === 'spike'), e = spike || found[0], when = fmtDate(dayDate(start, e.day));
-  const count = `${COUNT_WORDS[n] ?? n} ${n === 1 ? 'thing' : 'things'} stood out`;
-  const it = `a ${e.name.toLowerCase()} on ${when}, ${e.short.replace(/\.$/, '')}`;
-  return (spike ? `${count}. ${when} was the big day: ${e.short}.` : n === 1 ? `${count}: ${it}.` : `${count}, the latest ${it}.`) + tail;
+  const things = k => `${COUNT_WORDS[k] ?? k} ${k === 1 ? 'thing' : 'things'}`;
+  if (kinds) {
+    const by = new Map(spike ? [['spike', 0]] : []);
+    for (const e of found) by.set(e.kind, (by.get(e.kind) || 0) + 1);
+    const all = events.length - n, words = [...by].map(([k, c]) => k === 'spike' ? (c === 1 ? 'a big day' : `${COUNT_WORDS[c]?.toLowerCase() ?? c} big days`) : c === 1 ? KINDS[k]?.[0] : `${COUNT_WORDS[c]?.toLowerCase() ?? c} ${KINDS[k]?.[1]}`).filter(Boolean);
+    return `${things(n)} stood out: ${listed(words)}.${all ? ` You left ${all === 1 ? 'one note' : `${COUNT_WORDS[all]?.toLowerCase() ?? all} notes`}.` : ''}`;
+  }
+  if (!spike) {
+    const e = found[0], it = `a ${e.name.toLowerCase()} on ${fmtDate(dayDate(start, e.day))}, ${e.short.replace(/\.$/, '')}`;
+    return (n === 1 ? `${things(1)} stood out: ${it}.` : `${things(n)} stood out, the latest ${it}.`) + tail;
+  }
+  const did = told && didWhat(told.short), on = told ? (did ? `, the day ${esc(did)}` : `, the day of your note “${esc(told.short)}”`) : '';
+  const rest = found.filter(e => e !== spike), by = new Map();
+  for (const e of rest) by.set(e.kind, (by.get(e.kind) || 0) + 1);
+  const named = [...by].map(([k, c]) => c === 1 ? KINDS[k]?.[0] : `${COUNT_WORDS[c]?.toLowerCase() ?? c} ${KINDS[k]?.[1]}`).filter(Boolean);
+  const more = named.length ? ` ${things(rest.length)} more ${rest.length === 1 ? 'thing' : 'things'}`.replace(/ (thing|things) more (thing|things)$/, ' more $2') + ` stood out: ${listed(named)}.` : '';
+  return `<b>${fmtDate(dayDate(start, spike.day))}</b> was the big day: ${spike.short}${on}.${more}${tail}`;
 }
 
-// "xeno-canto.org/explore got the most clicks: 1,094 visitors, 1.4% of all." rows: links or downloads, most first;
-// a file on the site itself goes by its path.
+// "xeno-canto.org/explore got the most clicks: 1,094 visitors, 1.4% of all visitors. Clicks to ebird.org/submit rose most,
+// +59%." rows: links or downloads, most first; a file on the site itself goes by its path. The riser must have had 30
+// visitors before and a quarter more since. named: the keys the sentence names, for the list to bold.
 export function linksStory(rows, visitors, site = null) {
   const r = rows[0];
   if (!r || !visitors) return null;
-  const x = r.visitors / visitors, name = site && r.key.startsWith(site + '/') ? r.key.slice(site.length) : r.key;
-  return `<b>${esc(name)}</b> got the most clicks: ${many(r.visitors)}, ${x < .095 ? (x * 100).toFixed(1) + '%' : fmtPct(x)} of all.`;
+  const nameOf = k => site && k.startsWith(site + '/') ? k.slice(site.length) : k, x = r.visitors / visitors;
+  let html = `<b>${esc(nameOf(r.key))}</b> got the most clicks: ${many(r.visitors)}, ${x < .095 ? (x * 100).toFixed(1) + '%' : fmtPct(x)} of all visitors.`;
+  const up = rows.filter(o => o !== r && o.prev >= 30 && o.visitors >= o.prev * 1.25).sort((a, b) => b.visitors / b.prev - a.visitors / a.prev)[0];
+  if (up) html += ` Clicks to <b>${esc(nameOf(up.key))}</b> rose most, ${signedPct(up.visitors, up.prev)}.`;
+  return { html, named: new Set([r.key, ...(up ? [up.key] : [])]) };
 }
 
 // A channel's share of all visitors, when it moved by at least a point: the reason a channel gets named on home.
@@ -852,7 +881,7 @@ export function goalFromPage(cur, conv, goals, path) {
 
 // What a page's lead adds once its speed is known (S: speedStory): that it is slow to load, when it is.
 export function pageVerdict(S) {
-  return S?.rating === 'poor' ? `It is slow to load: readers wait <b>${S.wait.toFixed(1)} s</b>${S.moved && S.was != null ? `, ${S.wait > S.was ? 'up' : 'down'} from ${S.was.toFixed(1)} s` : ''}.` : null;
+  return S?.rating === 'poor' ? `It is slow to load: readers wait <b>${S.wait.toFixed(1)}\u00a0s</b>${S.moved && S.was != null ? `, ${S.wait > S.was ? 'up' : 'down'} from ${S.was.toFixed(1)}\u00a0s` : ''}.` : null;
 }
 // "1.3% of visits reached /signup; from Hacker News only 0.1%." The source the summary names gets a mention when it
 // converts at half or twice the overall rate; otherwise the source that did best, when it did twice as well.
@@ -1004,7 +1033,9 @@ export function speedStory(r, path, rows = []) {
   const moved = was != null && Math.abs(r.lcp - was) >= Math.max(200, was * .1);
   const others = rows.filter(x => x.key !== r.key && x.views >= 20 && x.median != null);
   const longest = r.median != null && others.length > 0 && others.every(x => x.median < r.median);
-  const html = `Readers wait <b>${fmtVital('lcp', r.lcp)}</b> (${vitalRating('lcp', r.lcp)}) for ${esc(pageName(path))}${moved ? `, ${r.lcp > was ? 'up' : 'down'} from ${fmtVital('lcp', was)}` : ''}`
+  // A no-break space keeps "4.7 s" on one line.
+  const s = v => fmtVital('lcp', v).replace(' ', '\u00a0');
+  const html = `Readers wait <b>${s(r.lcp)}</b> (${vitalRating('lcp', r.lcp)}) for ${esc(pageName(path))}${moved ? `, ${r.lcp > was ? 'up' : 'down'} from ${s(was)}` : ''}`
     + (read >= 1 ? `, then stay <b>${fmtDur(read)}</b>${longest ? ', the longest of any page' : ''}.` : ', then most leave.');
   const after = [];
   if (r.inp != null && measured(r, 'inp') >= VITALS_MIN) after.push(`each tap then waits <b>${fmtVital('inp', r.inp)}</b> (${vitalRating('inp', r.inp)})`);

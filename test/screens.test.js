@@ -23,7 +23,8 @@ test('a page seen from one source draws only that source’s visits arriving', (
 });
 
 test('list shares that round to nothing say <1%', () => {
-  assert.match(fn('rowsInto'), /fmtShare\(r\.value,total\)/);
+  assert.match(fn('rowsInto'), /share=fmtShare/);
+  assert.match(fn('rowsInto'), /share\(r\.value,total\)/);
 });
 
 test('links people clicked lead with a sentence', () => {
@@ -31,7 +32,7 @@ test('links people clicked lead with a sentence', () => {
 });
 
 test('What happened leads with its biggest item', () => {
-  assert.match(fn('renderEvents'), /eventsSentence\(events,DAYS,ser\.start\)/);
+  assert.match(fn('renderEvents'), /eventsSentence\(events,DAYS,ser\.start,true\)/);
 });
 
 test('home’s treemap highlights the page its caption names, as well as the sentence’s', () => {
@@ -49,12 +50,9 @@ test('the hours card leads with when readers come', () => {
 });
 
 test('with bounce unchanged, the Bounce screen names who bounces most', () => {
-  assert.match(fn('renderBounce'), /bounceHeld\(c,bounceStandout\(/);
+  assert.match(fn('renderBounce'), /standout=bounceStandout\(rows,c\);say=bounceHeld\(c,standout\)/);
 });
 
-test('bounce rows show how many visits, with the bounced part in red', () => {
-  assert.match(fn('rateRows'), /r\.visits\/most/);
-});
 
 test('a bounce chart never blows a one-point wobble up to its full height', () => {
   assert.match(fn('renderBounce'), /span:\.1/);
@@ -86,6 +84,9 @@ test('home’s third tile asks whether visitors stayed: bounce, who bounces most
 
 test('a note can be written from home’s chart, which no longer sends a click on a day to the overview', () => {
   assert.match(fn('drawHome'), /noteDays\(days\.querySelector\('\.viz'\),ser,0\)/);
+  assert.doesNotMatch(html, /Pick a day to note what you did/, 'no line always on: the day itself says it');
+  assert.match(fn('dayBars'), /Click to add a note/);
+  assert.match(fn('noteDays'), /Press Enter to/);
   assert.match(fn('noteDays'), /e\.stopPropagation\(\)/);
   assert.match(fn('editNote'), /querySelector\('\.notable'\)/, 'after saving, focus returns to whichever chart took the note');
   assert.doesNotMatch(html, /\.chart\.notable/, 'the style follows the chart, on home too');
@@ -109,8 +110,9 @@ test('the overview’s cards go from the story to the details: in and out, words
   assert.match(fn('renderFilter'), /What happened[\s\S]*inout[\s\S]*card kw[\s\S]*card aud[\s\S]*By weekday and hour[\s\S]*funnels-card/);
 });
 
-test('home has a labelled way into the overview', () => {
-  assert.match(fn('drawHome'), /class="more-link home-more"/);
+test('home has a labelled way into the overview, a quiet link aligned with the tiles', () => {
+  assert.match(fn('drawHome'), /class="home-more"><span><b>More about these/);
+  assert.match(html, /\.home-more\{all:unset/);
 });
 
 test('a funnel’s lost visits say they left', () => {
@@ -138,9 +140,9 @@ test('the Sources screen shows the biggest movers, and tags each site with its c
 test('a source’s view tells its own story: the page that moved most, a page its readers favour, and how long they stay', () => {
   const r = fn('renderSource');
   assert.match(r, /pagesFinding\(own\)/);
-  assert.match(r, /readsMore\(pages\.rows,H\.pageRows\)/);
+  assert.match(r, /readsMore\(pages\.rows,H\.pageRows,label\)/);
   assert.match(r, /Did they stay/);
-  assert.match(r, /A visit lasts/);
+  assert.match(r, /per visit/);
   assert.match(r, /Pages they read/, 'the list is told apart from where they landed');
   assert.match(r, /DIRECT_MEANS/);
   assert.match(r, /Sources in this channel/);
@@ -166,4 +168,95 @@ test('the full Pages list says how long each page is read, from the speed answer
 
 test('the speed card’s note keeps the layout score, on hover', () => {
   assert.match(fn('drawSpeed'), /S\.layout/);
+});
+
+test('the overview shows sources and pages as two strips, the named one solid, its rows a tap away', () => {
+  const d = fn('drawInOut');
+  assert.match(d, /class="strip"/);
+  assert.doesNotMatch(d, /rowsInto\(/);
+});
+
+test('a funnel is drawn as rows against its first step, the visits lost in pale violet', () => {
+  const d = fn('drawFunnel');
+  assert.match(d, /class="fsteps"/);
+  assert.match(html, /\.fsteps \.gone\{background:var\(--page-p\)/);
+  assert.doesNotMatch(d, /<svg/);
+});
+
+test('the hours chart marks the window and the hour its sentence names', () => {
+  assert.match(fn('drawHeat'), /busyWindow\(cells\)/);
+  assert.match(html, /\.heat \.cells i\.best\{/);
+});
+
+test('links show shares to a tenth of a point, and bold what the sentence names', () => {
+  const d = fn('drawLinks');
+  assert.match(d, /share:\(v,t\)=>fmtRate\(v\/t\)/);
+  assert.match(d, /named:L\?\.named/);
+});
+
+test('home’s crowd wraps to its block and shows everyone, up to three rows, then says how many more', () => {
+  const d = fn('drawNow');
+  assert.match(d, /lineHTML\(C,'wide',C\.more\)/);
+  assert.match(d, /per\*3/, 'the cap comes from how many fit on three rows, measured');
+  assert.doesNotMatch(d, /more earlier/, 'no second count beside the caption’s');
+  assert.match(html, /\.now \.crowd\{width:0;min-width:100%\}/, 'the figures take the block’s width, never set it');
+});
+
+test('a treemap block a sentence names wraps its whole name', () => {
+  assert.match(fn('treemap'), /if\(it\.told\)b\.classList\.add\('told'\)/);
+  assert.doesNotMatch(fn('treemap'), /else if\(small\);/);
+});
+
+test('list tags line up in a column, and go under the name on phones', () => {
+  assert.match(fn('rowsInto'), /<span class="lbl">/);
+});
+
+test('bounce rows use the rows of ten squares, with their visits, and bold who the sentence names', () => {
+  const r = fn('rateRows');
+  assert.match(r, /squaresSVG\(r\.value/);
+  assert.match(r, /visits<\/small>/);
+  assert.match(fn('renderBounce'), /standout\?\.dim===dim&&standout\.key===r\.key/);
+});
+
+test('the Sources waterfall fades everyone else, and the list bolds every mover named', () => {
+  assert.match(fn('drawGrowth'), /s\.kind==='else'\?'var\(--src-t\)'/);
+  assert.match(fn('renderDim'), /cap\?\.keys/);
+});
+
+test('Setup splits its parts, with each command in a copyable well and messages as a state chip', () => {
+  const d = fn('drawSetup');
+  assert.match(d, /class="code"/);
+  assert.match(d, /class="onoff/);
+  assert.match(d, /data-copy=/);
+});
+
+test('Online fits its crowd on a row or two and folds who left into one line per page', () => {
+  const r = fn('renderOnline');
+  assert.match(r, /crowd-key/);
+  assert.match(r, /class="earlier/);
+});
+
+test('a source’s Did they stay card gives the visit length as a number and keeps its link at the bottom', () => {
+  assert.match(fn('renderSource'), /class="card stay-card"/);
+  assert.match(fn('renderSource'), /readsMore\(pages\.rows,H\.pageRows,label\)/);
+});
+
+test('a page’s goal reach is a number beside the others', () => {
+  assert.match(fn('renderFilter'), /Reached \$\{esc\(goalWhat\(\)\)\}/);
+});
+
+test('What happened’s own screen names the kinds, not the first item again', () => {
+  assert.match(fn('renderEvents'), /eventsSentence\(events,DAYS,ser\.start,true\)/);
+});
+
+
+test('no word is left alone on a last line: centred and short text is balanced, paragraphs are pretty', () => {
+  assert.match(html, /\.state\.error,\.onboard,\.empty,\.tip,h1,h2,\.card-title,\.tile-title\{text-wrap:balance\}/);
+  assert.match(html, /p,li,figcaption,\.say-sub,\.cap\{text-wrap:pretty\}/);
+});
+
+test('a state is a dot and a word, not a pill that looks like a button', () => {
+  const rule = sel => (html.match(new RegExp(`\\n${sel.replace(/[.]/g, '\\.')}\\{([^}]*)\\}`)) || [])[1] || '';
+  assert.doesNotMatch(rule('.chip'), /border-radius:999px|box-shadow/);
+  assert.doesNotMatch(rule('.setup-panel .onoff'), /border-radius:999px|box-shadow/);
 });
