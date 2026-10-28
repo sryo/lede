@@ -27,7 +27,7 @@ test('the right password sets a cookie that opens the stats; a wrong one says so
   const e = env();
   const wrong = await signIn(e, 'nope');
   assert.equal(wrong.status, 401);
-  assert.equal((await wrong.json()).error, 'That’s not the password.');
+  assert.equal((await wrong.json()).error, 'That’s not the password. Try again.');
   assert.equal(wrong.headers.get('Set-Cookie'), null);
 
   const right = await signIn(e, 'pw');

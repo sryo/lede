@@ -31,7 +31,7 @@ async function signedIn(req, env) {
 async function signIn(req, env) {
   const { password = '' } = await req.json().catch(() => ({}));
   if (env.DASHBOARD_PASSWORD && !await sameSecret(String(password), env.DASHBOARD_PASSWORD)) {
-    return json({ error: 'That’s not the password.' }, 401);
+    return json({ error: 'That’s not the password. Try again.' }, 401);
   }
   const headers = env.DASHBOARD_PASSWORD
     ? { 'Set-Cookie': `${COOKIE}=${await pass(env.DASHBOARD_PASSWORD)}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${YEAR}` }
@@ -56,7 +56,7 @@ export default {
     if (pathname === '/lede' || pathname === '/api/event') return collect(req, env);
     // Everything else but /api/* is served straight from the assets (see wrangler.jsonc); this is for local dev.
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
-    if (crossSite(req, url)) return new Response('Changes can only be made from the dashboard.', { status: 403 });
+    if (crossSite(req, url)) return json({ error: 'Changes can only be made from the dashboard.' }, 403);
     const res = pathname === '/api/signin' && req.method === 'POST' ? await signIn(req, env)
       : !await signedIn(req, env) ? json({ error: 'Enter your password.', signIn: true }, 401)
         : pathname === '/api/shot' ? await handleShot(req, env)

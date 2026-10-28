@@ -37,7 +37,7 @@ test('filter values are hex-encoded so they cannot escape the SQL literal', () =
 });
 
 test('rejects unknown sites and clamps days', () => {
-  assert.throws(() => parseQuery(url('summary?site=other.com'), SITES), /Unknown site/);
+  assert.throws(() => parseQuery(url('summary?site=other.com'), SITES), /^Error: Lede isn’t counting other\.com\. Open the dashboard without \?site=\.$/);
   assert.equal(parseQuery(url('summary?days=999'), SITES).days, 45);
   assert.deepEqual(parseQuery(url('summary?path=/a&referrer='), SITES).filters, { path: '/a', referrer: '' });
 });
@@ -216,6 +216,17 @@ test('a failed stats query says so in plain words, without the raw upstream repl
   } finally { console.error = realError; }
 });
 
+test('a token that may not read the stats is named as the cause, with how to make a new one', async () => {
+  const realError = console.error; console.error = () => {};
+  try {
+    for (const status of [401, 403]) {
+      const store = sqlStore(ENV, async () => new Response('Authentication error', { status }));
+      await assert.rejects(store.summary(parseQuery(url('summary?days=3'), SITES)),
+        e => e.status === 502 && /^Your Cloudflare token can’t read the stats\. Make a new one/.test(e.message) && e.message.includes('docs/how-it-works.md'));
+    }
+  } finally { console.error = realError; }
+});
+
 async function busyAndQuiet(store, label) {
   const q = parseQuery(url('series?days=30'), SITES);
   const ser = await store.series(q);
@@ -251,7 +262,9 @@ test('changes are refused when another site sends them with the saved password',
   const post = headers => worker.fetch(new Request('https://lede.test/api/sites', {
     method: 'POST', headers: { Cookie: cookie, ...headers }, body: JSON.stringify({ site: 'evil.test' }),
   }), env, { waitUntil() {} });
-  assert.equal((await post({ Origin: 'https://evil.test' })).status, 403);
+  const refused = await post({ Origin: 'https://evil.test' });
+  assert.equal(refused.status, 403);
+  assert.deepEqual(await refused.json(), { error: 'Changes can only be made from the dashboard.' }, 'JSON, so the dashboard can show it');
   assert.equal((await post({ 'Sec-Fetch-Site': 'cross-site' })).status, 403);
   assert.deepEqual(JSON.parse(kv.get('sites')), ['example.com']);
   assert.equal((await post({ Origin: 'https://lede.test', 'Sec-Fetch-Site': 'same-origin' })).status, 200);

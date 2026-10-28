@@ -55,14 +55,14 @@ async function take(env, site, path, origin, fetchImpl, clock) {
     const used = Number(res.headers.get('X-Browser-Ms-Used')) || 0;
     if (res.status === 401 || res.status === 403) return { why: 'permission', ms: used };
     if (!res.ok || !(res.headers.get('Content-Type') || '').startsWith('image/')) {
-      console.error(`Couldn't take a picture of ${site}${path} (${res.status}): ${(await res.text()).slice(0, 300)}`);
+      console.error(`Couldn’t take a picture of ${site}${path} (${res.status}): ${(await res.text()).slice(0, 300)}`);
       return { why: 'failed', ms: used };
     }
     const jpeg = await res.arrayBuffer();
     const ms = Math.round(used || clock() - t0);
     return jpeg.byteLength > MAX_BYTES ? { why: 'failed', ms } : { jpeg, ms };
   } catch (e) {
-    console.error(`Couldn't take a picture of ${site}${path}: ${e.message}`);
+    console.error(`Couldn’t take a picture of ${site}${path}: ${e.message}`);
     return { why: 'failed', ms: 0 };
   }
 }
@@ -127,8 +127,8 @@ export async function handleShot(req, env, fetchImpl = fetch, now = Date.now()) 
   try {
     const sites = await getSites(env);
     const site = (url.searchParams.get('site') || sites[0] || '').toLowerCase(), path = url.searchParams.get('path') || '';
-    if (!sites.includes(site)) throw new HttpError(400, `Unknown site "${site}".`);
-    if (!path.startsWith('/') || path.length > 512) throw new HttpError(400, 'Say which page, with a path that starts with "/".');
+    if (!sites.includes(site)) throw new HttpError(400, `Lede isn’t counting ${site}. Open the dashboard without ?site=.`);
+    if (!path.startsWith('/') || path.length > 512) throw new HttpError(400, 'Say which page, with a path that starts with “/”.');
     const out = env.DEMO === 'true' ? demoPicture(path, now) : await pagePicture(env, { site, path, origin: url.origin }, fetchImpl, now);
     if (!out.jpeg) return json({ og: out.og, why: out.why });
     // Kept by the browser until the next picture can be taken, at midnight UTC.
@@ -136,6 +136,6 @@ export async function handleShot(req, env, fetchImpl = fetch, now = Date.now()) 
     return new Response(out.jpeg, { headers: { 'Content-Type': 'image/jpeg', 'Cache-Control': `private, max-age=${left}`, 'Last-Modified': new Date(out.at).toUTCString() } });
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);
-    return json({ error: e instanceof HttpError ? e.message : 'Something went wrong taking a picture of the page.' }, e.status || 500);
+    return json({ error: e instanceof HttpError ? e.message : 'Couldn’t take a picture of the page. Try again in a minute.' }, e.status || 500);
   }
 }

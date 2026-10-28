@@ -16,9 +16,9 @@ function int(v, fallback, min, max) {
 }
 
 export function parseQuery(url, sites, nowMs = Date.now()) {
-  if (!sites.length) throw new HttpError(400, 'Add your site\'s address first.');
+  if (!sites.length) throw new HttpError(400, 'Add your site’s address first.');
   const site = (url.searchParams.get('site') || sites[0]).toLowerCase();
-  if (!sites.includes(site)) throw new HttpError(400, `Unknown site "${site}".`);
+  if (!sites.includes(site)) throw new HttpError(400, `Lede isn’t counting ${site}. Open the dashboard without ?site=.`);
   const days = int(url.searchParams.get('days'), 30, 1, MAX_DAYS);
   const tz = int(url.searchParams.get('tz'), 0, -840, 840);
   // The viewer's IANA zone, such as America/New_York. ranges() falls back to tz when it isn't one.
@@ -40,7 +40,7 @@ const MAX_WAIT_MS = 2000;
 
 export async function runSql(env, sql, fetchImpl = fetch, wait = ms => new Promise(r => setTimeout(r, ms))) {
   if (!env.ANALYTICS_TOKEN) {
-    throw new HttpError(503, 'Lede needs a Cloudflare token to read the stats. Make one with the link in Lede’s docs, under “Deploy from the command line”, then run npx wrangler secret put ANALYTICS_TOKEN and paste it.');
+    throw new HttpError(503, 'Lede needs a Cloudflare token to read the stats. Make one with the link in docs/how-it-works.md, under “Deploy from the command line”, then run npx wrangler secret put ANALYTICS_TOKEN and paste it.');
   }
   const account = await getAccountId(env, fetchImpl);
   const ask = () => fetchImpl(`https://api.cloudflare.com/client/v4/accounts/${account}/analytics_engine/sql`, {
@@ -57,14 +57,15 @@ export async function runSql(env, sql, fetchImpl = fetch, wait = ms => new Promi
   const text = await res.text();
   if (!res.ok) {
     console.error(`Analytics Engine query failed (${res.status}): ${text.slice(0, 300)}`);
-    throw new HttpError(502, 'Cloudflare didn’t answer the stats query. Try again in a minute.');
+    if (res.status === 401 || res.status === 403) throw new HttpError(502, 'Your Cloudflare token can’t read the stats. Make a new one with the link in docs/how-it-works.md, under “Deploy from the command line”, then run npx wrangler secret put ANALYTICS_TOKEN and paste it.');
+    throw new HttpError(502, 'Cloudflare didn’t send the stats back. Try again in a minute.');
   }
   return JSON.parse(text).data;
 }
 
 export function sqlStore(env, fetchImpl = fetch) {
   const ds = env.DATASET || 'lede';
-  if (!/^\w+$/.test(ds)) throw new HttpError(500, 'DATASET may only contain letters, digits and underscores.');
+  if (!/^\w+$/.test(ds)) throw new HttpError(500, 'DATASET in wrangler.jsonc may only contain letters, digits and underscores. Change it, then deploy again.');
   const run = sql => runSql(env, sql, fetchImpl);
   // Each period's top keep rows from one query over both; see Q.LISTS for when a period needs a query of its own.
   const lists = async (build, { keep, both }) => {
@@ -150,7 +151,7 @@ const json = (body, status = 200, maxAge = 0) => new Response(JSON.stringify(bod
 // Goal pages: up to ten paths, each starting with a slash.
 export function parseGoals(list) {
   if (!Array.isArray(list) || list.length > 10 || !list.every(g => typeof g === 'string' && g.startsWith('/') && g.length <= 512)) {
-    throw new HttpError(400, 'Goals must be a list of up to ten paths that start with "/".');
+    throw new HttpError(400, 'Goals are up to ten pages, each starting with “/”, like /signup.');
   }
   return [...new Set(list)];
 }
@@ -199,7 +200,7 @@ async function notes(req, url, q, env, demo) {
     next = [...list.filter(n => n.day !== note.day), note].sort((a, b) => a.day < b.day ? -1 : 1).slice(-MAX_NOTES);
   } else if (req.method === 'DELETE') {
     const day = url.searchParams.get('day');
-    if (!isDay(day)) throw new HttpError(400, 'Say which day\'s note to remove, like ?day=2026-10-16.');
+    if (!isDay(day)) throw new HttpError(400, 'Say which day’s note to remove, like ?day=2026-10-16.');
     next = list.filter(n => n.day !== day);
   } else throw new HttpError(405, 'Notes are read with GET, saved with PUT and removed with DELETE.');
   if (JSON.stringify(next) !== JSON.stringify(list)) await env.STORE.put(`notes:${q.site}`, JSON.stringify(next));
@@ -214,12 +215,12 @@ export const withChannels = out => ({ ...out, rows: out.rows.map(r => ({ ...r, c
 export function parseFunnel(steps) {
   const ok = Array.isArray(steps) && steps.length >= 2 && steps.length <= 5 && new Set(steps).size === steps.length
     && steps.every(s => typeof s === 'string' && s.startsWith('/') && s.length <= 200);
-  if (!ok) throw new HttpError(400, 'A funnel is two to five different pages, each starting with "/".');
+  if (!ok) throw new HttpError(400, 'A funnel is two to five different pages, each starting with “/”.');
   return steps;
 }
 
 export function parseFunnels(list) {
-  if (!Array.isArray(list) || list.length > 5) throw new HttpError(400, 'Funnels must be a list of up to five.');
+  if (!Array.isArray(list) || list.length > 5) throw new HttpError(400, 'You can keep up to five funnels.');
   const byKey = new Map(list.map(parseFunnel).map(f => [f.join('\n'), f]));
   return [...byKey.values()];
 }
@@ -267,7 +268,7 @@ async function route(name, url, env, store, req) {
     }
     case 'breakdown': {
       const dim = url.searchParams.get('dim');
-      if (!Q.BREAKDOWNS.includes(dim)) throw new HttpError(400, `dim must be one of: ${Q.BREAKDOWNS.join(', ')}.`);
+      if (!Q.BREAKDOWNS.includes(dim)) throw new HttpError(400, `The dim parameter must be one of: ${Q.BREAKDOWNS.join(', ')}.`);
       const out = await store.breakdown(q, dim);
       return dim === 'referrer' ? withChannels(out) : out;
     }
@@ -309,6 +310,6 @@ export async function handleApi(req, env, ctx) {
     return res;
   } catch (e) {
     if (!(e instanceof HttpError)) console.error(e);
-    return json({ error: e instanceof HttpError ? e.message : 'Something went wrong reading stats.' }, e.status || 500);
+    return json({ error: e instanceof HttpError ? e.message : 'Something went wrong reading the stats. Try again in a minute.' }, e.status || 500);
   }
 }

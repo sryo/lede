@@ -244,6 +244,7 @@ button.tile-title:hover{color:var(--ink)}
 .add input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .add .retry{margin:0;height:32px;padding:0 16px}
 .err{color:var(--bnc);font-size:var(--fs-s)} .err:empty{display:none}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(440px,calc(100% - 32px));z-index:20;background:var(--ink);color:var(--tile);border-radius:12px;padding:10px 14px;font-size:var(--fs-s)}
 .retry{border:0;border-radius:999px;padding:8px 16px;background:var(--ink);color:var(--win);cursor:pointer;font-size:var(--fs-s);font-weight:600;margin-top:4px}
 .retry:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .sk{display:block;background:var(--line);border-radius:6px}
@@ -446,12 +447,12 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
   <div class="home" id="home">
     <div class="topbar">
       <div class="site"><h1 id="site"></h1><span class="hint" id="hint"></span></div>
-      <div class="period" role="group" aria-label="Period" id="period">
+      <div class="period" role="group" aria-label="Show the last" id="period">
         <button type="button" data-days="7">7 days</button><button type="button" data-days="30">30 days</button>
       </div>
     </div>
     <div class="story" id="story"></div>
-    <div class="grid" id="grid"><div class="state">Loading stats…</div></div>
+    <div class="grid" id="grid"><div class="state">Loading the stats…</div></div>
   </div>
 </main>
 <div class="sr" id="status" role="status"></div>
@@ -483,7 +484,7 @@ function api(route,params={},fresh=false){
   if(fresh||!hit||Date.now()-hit.at>MEMO_MS){
     for(const [k,v] of memo)if(Date.now()-v.at>MEMO_MS)memo.delete(k);
     // fresh skips the browser's copy too, which the server lets it keep for 15 to 60 seconds.
-    memo.set(url,{at:Date.now(),p:fetch(url,fresh?{cache:'no-store'}:undefined).catch(()=>{throw new Error('Couldn’t reach the stats. Check your connection, then try again.')}).then(async r=>{
+    memo.set(url,{at:Date.now(),p:fetch(url,fresh?{cache:'no-store'}:undefined).catch(()=>{throw new Error('Lede didn’t answer. Check your internet connection, then try again.')}).then(async r=>{
       const body=await r.json().catch(()=>({}));
       if(r.status===401&&body.signIn){showSignIn();throw Object.assign(new Error(body.error),{signIn:true})}
       if(!r.ok)throw new Error(body.error||'Something went wrong reading the stats. Try again in a minute.');
@@ -509,7 +510,7 @@ async function saveGoals(list){
   const before=GOALS;GOALS=list;
   let ok=false;
   try{const r=await fetch(`/api/goals?site=${encodeURIComponent(SITE)}`,{method:'PUT',body:JSON.stringify({goals:list})});if(!r.ok)throw new Error(r.status);ok=true}
-  catch{GOALS=before;announce("Couldn't save the goal. Try again.")}
+  catch{GOALS=before;toast('Couldn’t save the goal. Check your connection, then try again.')}
   drawGoalLine();
   return ok;
 }
@@ -587,10 +588,16 @@ const changeWord=(c,p)=>!c&&!p?'':change(c,p).replace(/^[+−]0%$/,'same');
 const CHEV='<svg class="chev" viewBox="0 0 7 12" aria-hidden="true"><path d="M1 1l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const BACK='<svg width="10" height="16" viewBox="0 0 10 16" aria-hidden="true"><path d="M8 2L2 8l6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 const announce=msg=>{const el=$('#status');el.textContent='';setTimeout(()=>{el.textContent=msg},50)};
+// A failure with nowhere of its own to show: a line at the foot of the window for a few seconds, read out too.
+let toastAt=0;
+const toast=msg=>{
+  let el=$('.toast');if(!el){el=document.createElement('div');el.className='toast';el.setAttribute('role','alert');document.body.append(el)}
+  el.textContent=msg;el.hidden=false;clearTimeout(toastAt);toastAt=setTimeout(()=>{el.hidden=true},6000);
+};
 // An error says what went wrong and offers to try again.
 function showError(el,e,retry){
   if(e.signIn)return;
-  el.innerHTML=`<div class="state error"><b>Couldn't load the stats</b><span>${esc(e.message)}</span>${retry?'<button type="button" class="retry">Try again</button>':''}</div>`;
+  el.innerHTML=`<div class="state error"><b>Couldn’t load the stats</b><span>${esc(e.message)}</span>${retry?'<button type="button" class="retry">Try again</button>':''}</div>`;
   if(retry)el.querySelector('.retry').onclick=retry;
 }
 // Long paths keep their start and end: /blog/…-analytics.
@@ -663,7 +670,7 @@ function treemap(el,items,{gap=4}={}){
       else if(w>20&&h>72){b.classList.add('tall');b.innerHTML=`<b>${esc(shorten(it.label,Math.floor((h-14)/6.6)))}</b>`}
       else if(w>28&&h>18&&it.short)b.innerHTML=`<b>${esc(it.short)}</b>`;
       b.title=`${it.label}: ${fmtInt(it.value)} visitors`;
-      if(it.onClick){b.setAttribute('aria-label',`${it.label}, ${fmtInt(it.value)} visitors. Zoom in`);b.onclick=e=>{e.stopPropagation();it.onClick(b)}}
+      if(it.onClick){b.setAttribute('aria-label',`${it.label}, ${fmtInt(it.value)} visitors. Open`);b.onclick=e=>{e.stopPropagation();it.onClick(b)}}
       return b;
     }));
   });
@@ -786,7 +793,7 @@ function drawSteps(el,steps,{fmt,aria,colorOf,openOf=()=>null}){
       const top=Math.max(0,Math.min(Y(g.a),Y(g.b))-26),b=document.createElement('button');
       b.type='button';b.className='step';b.title=`${st.label}: ${fmt(st.value,st.kind==='total')}`;
       Object.assign(b.style,{left:x(i)-4+'px',top:top+'px',width:bw+8+'px',height:H-top+'px'});
-      b.setAttribute('aria-label',`${b.title}. Zoom in`);
+      b.setAttribute('aria-label',`${b.title}. Open`);
       b.onclick=e=>{e.stopPropagation();open(b)};
       el.appendChild(b);
     });
@@ -854,7 +861,7 @@ function redrawAll(message){
     return true;
   });
 }
-const PERIOD='<div class="period" role="group" aria-label="Period"><button type="button" data-days="7">7 days</button><button type="button" data-days="30">30 days</button></div>';
+const PERIOD='<div class="period" role="group" aria-label="Show the last"><button type="button" data-days="7">7 days</button><button type="button" data-days="30">30 days</button></div>';
 
 function zoom(src,{title,render,chip,vw=null,instant=false,fromHistory=false}){
   if(animating)return;
@@ -865,7 +872,7 @@ function zoom(src,{title,render,chip,vw=null,instant=false,fromHistory=false}){
   const layer=document.createElement('section');
   layer.className='layer';
   layer.setAttribute('role','dialog');layer.setAttribute('aria-label',title);
-  layer.innerHTML=`<div class="inner"><header class="layer-head"><button class="circle back" aria-label="Zoom out">${BACK}</button>
+  layer.innerHTML=`<div class="inner"><header class="layer-head"><button class="circle back" aria-label="Back">${BACK}</button>
     <div class="crumbs"><span>${esc(crumb)} ›</span><h2>${esc(title)}</h2></div>${chip?`<span class="chip">${esc(chip)}</span>`:PERIOD}</header>
     <div class="layer-body"></div></div>`;
   layer.style.visibility='hidden';
@@ -1017,7 +1024,7 @@ function rowsInto(group,rows,{fmt=fmtInt,total,inverse=false,onClick,subj='time'
       <span class="bar"><i style="width:${(r.value/max*100).toFixed(1)}%;background:var(--${subj})"></i></span>
       <span class="num">${fmt(r.value)}</span><span class="pct">${total?Math.round(r.value/total*100):0}%</span>
       ${delta(r.value,r.prev,inverse)}${onClick?CHEV:'<span></span>'}`;
-    if(onClick){el.setAttribute('aria-label',`${r.label}, ${fmt(r.value)}. Zoom in`);el.onclick=()=>onClick(r,el)}
+    if(onClick){el.setAttribute('aria-label',`${r.label}, ${fmt(r.value)}. Open`);el.onclick=()=>onClick(r,el)}
     return flagged(el);
   }));
 }
@@ -1033,7 +1040,7 @@ function rateRows(group,rows){
     b.innerHTML=`<span class="name">${r.story?`<b>${esc(r.label)}</b>`:esc(r.label)}</span>
       <span class="bar"><i style="width:${(r.value*100).toFixed(1)}%;background:var(--bnc)"></i></span>
       <span class="num">${fmtPct(r.value)}</span><span class="was">${r.prev!=null?pts(r.value,r.prev):'new'}</span>${CHEV}`;
-    b.setAttribute('aria-label',`${r.label}: ${fmtPct(r.value)}${r.prev!=null?`, was ${fmtPct(r.prev)}`:', new'}. Zoom in`);
+    b.setAttribute('aria-label',`${r.label}: ${fmtPct(r.value)}${r.prev!=null?`, was ${fmtPct(r.prev)}`:', new'}. Open`);
     b.onclick=()=>r.open(b);
     return b;
   }));
@@ -1320,15 +1327,16 @@ async function drawFunnels(body,gen){
     ${data.map((f,i)=>`<div class="card-head fun-head"><span class="goal-text">${esc(funnelName(f.steps))}</span><button type="button" class="link goal-text">Remove</button></div>${i?`<p class="goal-text">${stories[i].html}</p>`:''}<div class="steps"></div>`).join('')}
     ${funnels.length<5?`<form novalidate><div class="add"><input name="steps" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="/pricing, /signup, /thanks" aria-label="Pages, in order"><button class="retry">Save</button></div><span class="err" role="alert"></span></form>`:''}`;
   sec.hidden=false;
+  // Resolves to null once saved, else what went wrong: the server's reason, or a connection that failed.
   const save=async(list,done)=>{
     const r=await fetch(`/api/funnels?site=${encodeURIComponent(SITE)}`,{method:'PUT',body:JSON.stringify({funnels:list})}).catch(()=>null);
-    if(!r?.ok)return false;
-    FUNNELS=list;announce(done);drawFunnels(body,gen);return true;
+    if(!r?.ok)return (r&&(await r.json().catch(()=>({}))).error)||'Couldn’t save the funnel. Check your connection, then try again.';
+    FUNNELS=list;announce(done);drawFunnels(body,gen);return null;
   };
   sec.querySelectorAll('.steps').forEach((el,i)=>drawFunnel(el,data[i],stories[i].drop));
   sec.querySelectorAll('.fun-head button').forEach((b,i)=>{
     b.setAttribute('aria-label',`Remove the funnel from ${funnelName([funnels[i][0]])} to ${funnelName([funnels[i].at(-1)])}`);
-    b.onclick=async()=>{if(!await save(funnels.filter((_,j)=>j!==i),'Funnel removed'))announce("Couldn't remove the funnel. Try again.")};
+    b.onclick=async()=>{const e=await save(funnels.filter((_,j)=>j!==i),'Funnel removed');if(e)toast(e)};
   });
   const form=sec.querySelector('form');if(!form)return;
   const input=form.steps,err=form.querySelector('.err');
@@ -1338,7 +1346,7 @@ async function drawFunnels(body,gen){
     e.preventDefault();
     const p=parseSteps(input.value);
     if(p.error){err.textContent=p.error;return}
-    if(!await save([...funnels,p.steps],'Funnel saved'))err.textContent="Couldn't save it. Try again.";
+    const e2=await save([...funnels,p.steps],'Funnel saved');if(e2)err.textContent=e2;
   };
 }
 
@@ -1367,7 +1375,7 @@ function drawFunnel(el,f,drop){
     steps.forEach((k,i)=>{
       const b=document.createElement('button'),t=Math.max(0,top(i&&i-1)-26);b.type='button';b.className='step';b.title=stepHint(f,i);
       Object.assign(b.style,{left:x(i)-4+'px',top:t+'px',width:bw+8+'px',height:H-t+'px'});
-      b.setAttribute('aria-label',`${b.title}. Zoom in`);
+      b.setAttribute('aria-label',`${b.title}. Open`);
       b.onclick=e=>{e.stopPropagation();openFilter({path:k},k,b)};
       el.appendChild(b);
     });
@@ -1595,7 +1603,7 @@ async function renderOnline(body){
         return `<span class="src${m}">${p.named?`<b>${esc(src)}</b>`:esc(src)}</span><span class="cty${m}">${p.v.country?esc(labelOf('country',p.v.country)):''}</span><span class="num${p.here?'':' muted'}">${fmtDur(p.v.seconds)}</span>`
           +(k===0?`<span style="grid-row:span ${n};align-self:center">${CHEV}</span>`:'');
       }).join('');
-    b.setAttribute('aria-label',`${path}: ${here(g)} here now, ${n} in the last 30 minutes. `+g.map(p=>`${p.here?'Here now':'Earlier'} from ${labelOf('referrer',p.v.referrer)}${p.v.country?`, ${labelOf('country',p.v.country)}`:''}, ${fmtDur(p.v.seconds)}`).join('; ')+'. Zoom in');
+    b.setAttribute('aria-label',`${path}: ${here(g)} here now, ${n} in the last 30 minutes. `+g.map(p=>`${p.here?'Here now':'Earlier'} from ${labelOf('referrer',p.v.referrer)}${p.v.country?`, ${labelOf('country',p.v.country)}`:''}, ${fmtDur(p.v.seconds)}`).join('; ')+'. Open');
     b.onclick=()=>openFilter({path},path,b);
     list.append(b);
   }
@@ -1620,7 +1628,7 @@ function renderStory(S,T,live){
     <div class="say-col"><p class="sentence">${T.html}</p><p class="goal-line" id="goal-line" hidden></p></div>
     <button type="button" class="now" id="now"></button>`;
   const head=el.querySelector('.headline');
-  head.setAttribute('aria-label',`${fmtInt(c.visitors)} ${head.querySelector('span').textContent}. Zoom in`);
+  head.setAttribute('aria-label',`${fmtInt(c.visitors)} ${head.querySelector('span').textContent}. Open`);
   head.onclick=()=>openOverview(head);
   bindLinks(el.querySelector('.sentence'));
   const now=$('#now');
@@ -1635,7 +1643,7 @@ function drawNow(live,told,pace){
   const C=live&&crowdLine(live,new Set());
   now.innerHTML=(pace?`<span class="pace">${pace.html}</span>`:'')
     +(live?`${lineHTML(C)}<span>${crowdCaption(live)}${C.more?` <span class="muted">· ${C.more} more earlier</span>`:''}</span>`:'');
-  now.setAttribute('aria-label',`${pace?pace.html.replace(/<[^>]+>/g,'')+'. ':''}${live?crowdAria(live,told):''}. Zoom in`);
+  now.setAttribute('aria-label',`${pace?pace.html.replace(/<[^>]+>/g,'')+'. ':''}${live?crowdAria(live,told):''}. Open`);
 }
 
 // key: a short note beside the title, saying what a highlight means.
@@ -1719,8 +1727,8 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
     else b.innerHTML=told?`<span><b>${pathHTML(name)}</b></span>${n.isNew?'<span class="chg">new</span>':''}`:`<span>${esc(name)}</span>`;
     b.title=side==='left'?sourceHint(n.label,n.value,n.prev):pageHint(n.label,n.value);
     b.setAttribute('aria-label',side==='left'
-      ?`${n.label}, ${n.change>=0?'up':'down'} ${fmtInt(Math.abs(n.change))}, ${fmtInt(n.value)} visitors. Zoom in`
-      :`${n.label}, ${fmtInt(n.value)} first visits landed here. Zoom in`);
+      ?`${n.label}, ${n.change>=0?'up':'down'} ${fmtInt(Math.abs(n.change))}, ${fmtInt(n.value)} visitors. Open`
+      :`${n.label}, ${fmtInt(n.value)} first visits landed here. Open`);
     b.onclick=e=>{e.stopPropagation();n.key==null?openView({v:side==='left'?'sources':'pages'},b)
       :openFilter({[side==='left'?'referrer':'path']:n.key},n.label,b)};
     return b;
@@ -1750,12 +1758,12 @@ function drawStay(el,S,B){
   const {c,p}=S;
   if(!c.visits){el.innerHTML='<div class="empty">No visits yet</div>';return}
   const rows=[{pct:c.bounce,label:`all visits${p.visits?` · ${pts(c.bounce,p.bounce)}`:''}`,story:false,
-    aria:`All visits: ${fmtPct(c.bounce)} bounce${p.visits?`, was ${fmtPct(p.bounce)}`:''}. Zoom in`,open:openBounce}];
+    aria:`All visits: ${fmtPct(c.bounce)} bounce${p.visits?`, was ${fmtPct(p.bounce)}`:''}. Open`,open:openBounce}];
   const s=B?.cause==='source'&&S.sources.find(x=>x.key===B.top.key);
   if(s&&s.bounce!=null)rows.push({pct:s.bounce,label:s.label,story:true,
-    aria:`${s.label}: ${fmtPct(s.bounce)} bounce. Zoom in`,open:b=>openFilter({referrer:s.key},s.label,b)});
+    aria:`${s.label}: ${fmtPct(s.bounce)} bounce. Open`,open:b=>openFilter({referrer:s.key},s.label,b)});
   else if(p.visits)rows.push({pct:p.bounce,label:`the ${DAYS} days before`,fill:'var(--bnc)',
-    aria:`The ${DAYS} days before: ${fmtPct(p.bounce)} bounce. Zoom in`,open:openBounce});
+    aria:`The ${DAYS} days before: ${fmtPct(p.bounce)} bounce. Open`,open:openBounce});
   drawSquares(el,rows);
 }
 
@@ -1836,7 +1844,7 @@ function eventButton(e,ser,full){
   const d=dayDate(ser.start,e.day),when=`${fmtWeekday(d)} ${fmtDay(d)}`;
   b.innerHTML=full?`${glyph(e.kind,e.told)}<span><b>${esc(e.title)}</b><span>${fmtDate(d)} · ${esc(e.detail)}</span></span>${CHEV}`
     :`${glyph(e.kind,e.told)}<span><b>${esc(e.name)} · ${when}</b><span>${esc(e.short)}</span></span>`;
-  b.setAttribute('aria-label',e.kind==='note'?`${fmtDate(d)}, your note: ${e.title}. Edit it.`:`${fmtDate(d)}: ${e.title}. ${e.detail}${/[?.]$/.test(e.detail)?'':'.'} Zoom in.`);
+  b.setAttribute('aria-label',e.kind==='note'?`${fmtDate(d)}, your note: ${e.title}. Edit it.`:`${fmtDate(d)}: ${e.title}. ${e.detail}${/[?.]$/.test(e.detail)?'':'.'} Open.`);
   b.onclick=ev=>{ev.stopPropagation();e.open(b)};
   return b;
 }
@@ -1912,7 +1920,7 @@ function editNote(i,anchor,at){
   const d=dayDate(HOME.ser.start,i),day=dayKey(d),note=NOTES.find(x=>x.day===day),when=fmtDate(d,'long');
   const f=document.createElement('form');f.className='note-edit';f.noValidate=true;
   f.setAttribute('role','dialog');f.setAttribute('aria-label',`Note for ${when}`);
-  f.innerHTML=`<b>${esc(when)}</b><div class="add"><input name="text" maxlength="80" autocomplete="off" placeholder="What did you do that day?" aria-label="What you did on ${esc(when)}"><button class="retry">Save</button></div>
+  f.innerHTML=`<b>${esc(when)}</b><div class="add"><input name="text" maxlength="80" autocomplete="off" placeholder="What did you do that day? Leave empty to remove." aria-label="What you did on ${esc(when)}"><button class="retry">Save</button></div>
     <span class="err" role="alert"></span>${note?'<button type="button" class="del">Remove note</button>':''}`;
   const input=f.querySelector('input');input.value=note?.text||'';
   document.body.append(f);
@@ -1931,12 +1939,14 @@ function editNote(i,anchor,at){
     if(text===(note?.text||'')){closeNote();return}
     f.inert=true;
     const url=`/api/notes?site=${encodeURIComponent(SITE)}`;
+    // The server's reason when it gives one; a failed fetch says "Failed to fetch", which is no help to anyone.
+    let why='';
     try{
       const r=await fetch(text?url:`${url}&day=${day}`,text?{method:'PUT',body:JSON.stringify({day,text})}:{method:'DELETE'});
       const b=await r.json().catch(()=>({}));
-      if(!r.ok)throw new Error(b.error);
+      if(!r.ok){why=b.error;throw 0}
       NOTES=b.notes;
-    }catch(e){f.inert=false;f.querySelector('.err').textContent=e.message||"Couldn't save the note. Try again.";input.focus();return}
+    }catch{f.inert=false;f.querySelector('.err').textContent=why||'Couldn’t save the note. Check your connection, then try again.';input.focus();return}
     closeNote(false);
     // The sentence and the markers may change with the note, so everything open redraws.
     if(await redrawAll(text?(note?'Note changed':'Note saved'):'Note removed')){
@@ -1990,7 +2000,7 @@ function renderTopbar(){
     site.innerHTML=`<label class="pick"><select aria-label="Site">${SITES.map(s=>`<option value="${esc(s)}"${s===SITE?' selected':''}>${esc(displayHost(s))}</option>`).join('')}</select><svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true"><path d="M1 1l3.5 3.5L8 1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></label>`;
     site.querySelector('select').onchange=e=>{SITE=e.target.value;store.set('lede_site',SITE);document.title=`${displayHost(SITE)} · Lede`;history.replaceState({depth:0},'',urlFor(null));loadGoals();renderHome(`Showing ${displayHost(SITE)}`)};
   }else site.innerHTML=`<b>${esc(displayHost(SITE))}</b>`;
-  $('#hint').textContent=DEMO?'Sample data':'';
+  $('#hint').textContent=DEMO?'Sample site':'';
   bindPeriod($('#period'));
 }
 
@@ -2000,11 +2010,12 @@ function showOnboarding(){
   $('#period').hidden=true;
   $('#story').innerHTML='';
   $('#grid').innerHTML=`<section class="card onboard"><b>No visits yet</b>
-    <span>Add this line to every page of ${esc(displayHost(SITE))}. The first visit shows up here within a minute.</span>
-    <code>${esc(tag)}</code><button type="button" class="retry">Copy</button></section>`;
+    <span>Add this line to every page of ${esc(displayHost(SITE))}. The first visit shows up here within a couple of minutes.</span>
+    <code>${esc(tag)}</code><button type="button" class="retry">Copy</button><span class="err" role="alert"></span></section>`;
   const btn=$('#grid .retry');
-  btn.onclick=()=>navigator.clipboard.writeText(tag).then(()=>{btn.textContent='Copied';announce('Copied the snippet')},()=>{
+  btn.onclick=()=>navigator.clipboard.writeText(tag).then(()=>{btn.textContent='Copied';announce('Copied the line')},()=>{
     const range=document.createRange();range.selectNodeContents($('#grid code'));getSelection().removeAllRanges();getSelection().addRange(range);
+    $('#grid .err').textContent='Couldn’t copy it, so it’s selected. Press Ctrl+C or ⌘C.';
   });
 }
 
@@ -2017,8 +2028,8 @@ function showSignIn(){
   $('#period').hidden=true;
   $('#story').innerHTML='';
   $('#grid').innerHTML=`<form class="card onboard signin" novalidate><b>Enter your password</b>
-    <div class="add"><input name="password" type="password" autocomplete="current-password" aria-label="Password"><button class="retry">Open</button></div>
-    <span class="err" role="alert"></span></form>`;
+    <div class="add"><input name="password" type="password" autocomplete="current-password" aria-label="Password"><button class="retry">Sign in</button></div>
+    <span class="err" role="alert"></span><span class="muted">Forgot it? Run npx wrangler secret put DASHBOARD_PASSWORD.</span></form>`;
   const form=$('#grid form'),input=form.password,err=form.querySelector('.err');
   input.focus();
   input.oninput=()=>{err.textContent=''};
@@ -2027,10 +2038,10 @@ function showSignIn(){
     if(!input.value){err.textContent='Type your password.';return}
     try{
       const r=await fetch('/api/signin',{method:'POST',body:JSON.stringify({password:input.value})});
-      if(!r.ok){err.textContent=(await r.json().catch(()=>({}))).error||"Couldn't check it. Try again.";input.select();return}
+      if(!r.ok){err.textContent=(await r.json().catch(()=>({}))).error||'Couldn’t check the password. Check your connection, then try again.';input.select();return}
       memo.clear();
       boot();
-    }catch{err.textContent="Couldn't check it. Try again."}
+    }catch{err.textContent='Couldn’t check the password. Check your connection, then try again.'}
   };
 }
 
@@ -2038,23 +2049,23 @@ function showSignIn(){
 function askForSite(){
   $('#period').hidden=true;
   $('#story').innerHTML='';
-  $('#grid').innerHTML=`<form class="card onboard" novalidate><b>What's your site's address?</b>
+  $('#grid').innerHTML=`<form class="card onboard" novalidate><b>What’s your site’s address?</b>
     <span>Lede counts visits to this site and ignores the rest.</span>
-    <div class="add"><input name="site" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="example.com" aria-label="Your site's address"><button class="retry">Add</button></div>
+    <div class="add"><input name="site" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="example.com" aria-label="Your site’s address"><button class="retry">Add</button></div>
     <span class="err" role="alert"></span></form>`;
   const form=$('#grid form'),input=form.site,err=form.querySelector('.err');
   input.focus();
   input.oninput=()=>{err.textContent=''};
   form.onsubmit=async e=>{
     e.preventDefault();
-    if(!input.value.trim()){err.textContent='Type an address, like example.com.';return}
+    if(!input.value.trim()){err.textContent='Type your site’s address, like example.com.';return}
     try{
       const r=await fetch('/api/sites',{method:'POST',body:JSON.stringify({site:input.value})});
       const body=await r.json();
       if(!r.ok){err.textContent=body.error;return}
       store.set('lede_site',body.sites.at(-1));
       boot();
-    }catch{err.textContent="Couldn't save it. Try again."}
+    }catch{err.textContent='Couldn’t save the address. Check your connection, then try again.'}
   };
 }
 
@@ -2077,7 +2088,7 @@ async function renderHome(message){
   try{
     [sumR,ser,pages,refs,flows,firsts,live,hourly]=await Promise.all([api('summary'),api('series'),api('breakdown',{dim:'path'}),
       api('breakdown',{dim:'referrer'}),api('flows'),api('firsts'),api('live',{},true).catch(()=>null),api('hourly').catch(()=>null)]);
-  }catch(e){if(gen===homeRender){done();release(grid);$('#story').innerHTML='';HOME=null;showError(grid,e,()=>renderHome(message));announce("Couldn't load the stats")}return false}
+  }catch(e){if(gen===homeRender){done();release(grid);$('#story').innerHTML='';HOME=null;showError(grid,e,()=>renderHome(message));announce('Couldn’t load the stats')}return false}
   // The sentence ties a change to the owner's notes; they come with the goals, which load alongside.
   await goalsReady;
   // A newer render (another period or site) started while this one was loading.

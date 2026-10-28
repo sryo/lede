@@ -36,9 +36,9 @@ async function send(env, text, fetchImpl) {
   try {
     const res = await fetchImpl(env.ALERT_WEBHOOK, webhookRequest(env.ALERT_WEBHOOK, text));
     if (res.ok) return true;
-    console.error(`The alert webhook answered ${res.status}. Check ALERT_WEBHOOK.`);
+    console.error(`The alert webhook answered ${res.status}, so the message wasn’t sent. Check ALERT_WEBHOOK.`);
   } catch (e) {
-    console.error(`Couldn't reach the alert webhook (${e.message}). Check ALERT_WEBHOOK.`);
+    console.error(`Couldn’t reach the alert webhook (${e.message}), so the message wasn’t sent. Check ALERT_WEBHOOK.`);
   }
   return false;
 }
@@ -89,7 +89,7 @@ async function weekly(env, store, nowMs, fetchImpl) {
   const sites = await getSites(env), origin = await dashboard(env);
   const link = site => origin && origin + viewToUrl(null, { days: 7, site: sites.length > 1 ? site : null });
   const told = await Promise.allSettled(sites.map(site => weekText(store, site, nowMs, link(site))));
-  for (const r of told) if (r.status === 'rejected') console.error(`Weekly story: ${r.reason?.message || r.reason}`);
+  told.forEach((r, i) => { if (r.status === 'rejected') console.error(`Couldn’t write the week’s story for ${sites[i]} (${r.reason?.message || r.reason}). It tries again next Monday.`); });
   const blocks = told.filter(r => r.status === 'fulfilled').map(r => r.value);
   if (blocks.length) await send(env, blocks.join('\n\n'), fetchImpl);
 }
@@ -146,7 +146,7 @@ async function spike(env, store, site, nowSec, many, fetchImpl) {
 async function spikes(env, store, nowMs, fetchImpl) {
   const sites = await getSites(env), nowSec = Math.floor(nowMs / 1000);
   await Promise.all(sites.map(site => spike(env, store, site, nowSec, sites.length > 1, fetchImpl)
-    .catch(e => console.error(`Spike check for ${site}: ${e.message}`))));
+    .catch(e => console.error(`Couldn’t check ${site} for a crowd (${e.message}). It tries again in 15 minutes.`))));
 }
 
 /* ---------- the schedule ---------- */
@@ -161,6 +161,6 @@ export async function runAlerts(cron, env, nowMs = Date.now(), fetchImpl = fetch
     const store = demo ? demoAlertStore : sqlStore(env, fetchImpl);
     await (kind === 'spikes' ? spikes : weekly)(env, store, nowMs, fetchImpl);
   } catch (e) {
-    console.error(`Alerts: ${e.message}`);
+    console.error(`Couldn’t send Lede’s messages (${e.message}). They try again on the next schedule.`);
   }
 }

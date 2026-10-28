@@ -26,7 +26,7 @@ async function remembered(store, key, read) {
 const forget = (store, key) => memo.get(store)?.delete(key);
 
 function storeOf(env) {
-  if (!env.STORE) throw new HttpError(500, 'The STORE KV namespace is missing from wrangler.jsonc.');
+  if (!env.STORE) throw new HttpError(500, 'The STORE KV namespace is missing from wrangler.jsonc. Add it back to kv_namespaces, as Lede’s wrangler.jsonc has it, then deploy again.');
   return env.STORE;
 }
 
@@ -50,7 +50,7 @@ export async function getSites(env, { fresh = false } = {}) {
 
 export async function addSite(env, input) {
   const site = normalizeSite(input);
-  if (!site) throw new HttpError(400, 'Type your site\'s address, like example.com.');
+  if (!site) throw new HttpError(400, 'That doesn’t look like a site’s address. Type it like example.com.');
   const store = storeOf(env);
   await getSalt(env);
   const sites = await getSites(env, { fresh: true });
@@ -122,8 +122,8 @@ async function lookUpAccount(env, store, fetchImpl) {
   const accounts = body.result || [];
   if (accounts.length !== 1) {
     throw new HttpError(503, accounts.length
-      ? 'Your Cloudflare token works for more than one account. Run npx wrangler secret put ACCOUNT_ID and paste the ID of the account Lede runs on.'
-      : 'Your Cloudflare token can’t see which account Lede runs on. Make a new token with the link in Lede’s docs, under “Deploy from the command line”, then run npx wrangler secret put ANALYTICS_TOKEN and paste it.');
+      ? 'Your Cloudflare token works for more than one account. Run npx wrangler secret put ACCOUNT_ID and paste the ID of the account Lede runs on: open that account in the Cloudflare dashboard, and it’s the long code after dash.cloudflare.com/ in the address.'
+      : 'Your Cloudflare token can’t see which account Lede runs on. Make a new token with the link in docs/how-it-works.md, under “Deploy from the command line”, then run npx wrangler secret put ANALYTICS_TOKEN and paste it.');
   }
   await store.put('account', accounts[0].id);
   return accounts[0].id;

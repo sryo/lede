@@ -161,15 +161,15 @@ export async function collect(req, env) {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' } });
   }
-  if (req.method !== 'POST') return new Response('Use POST', { status: 405, headers: CORS });
+  if (req.method !== 'POST') return new Response('Send events with POST.', { status: 405, headers: CORS });
 
   const ua = req.headers.get('User-Agent') || '';
   if (unwanted(req, env, ua)) return new Response(null, { status: 204, headers: CORS });
 
   let body;
   const text = await req.text();
-  if (text.length > MAX_BODY) return new Response('Too large', { status: 413, headers: CORS });
-  try { body = JSON.parse(text); } catch { return new Response('Invalid JSON', { status: 400, headers: CORS }); }
+  if (text.length > MAX_BODY) return new Response('The event is too large.', { status: 413, headers: CORS });
+  try { body = JSON.parse(text); } catch { return new Response('The event isn’t valid JSON.', { status: 400, headers: CORS }); }
   const ev = parseEvent(body, await getSites(env));
   if (!ev || !fromSite(req.headers.get('Origin'), ev.site)) return new Response(null, { status: 204, headers: CORS });
 

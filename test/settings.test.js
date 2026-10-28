@@ -67,7 +67,7 @@ test('the dashboard asks for a site, then answers for it', async () => {
   assert.deepEqual(await first.json(), { sites: [], demo: true });
   const before = await call('summary?days=30', env);
   assert.equal(before.status, 400);
-  assert.match((await before.json()).error, /site's address/);
+  assert.match((await before.json()).error, /site’s address/);
 
   const bad = await call('sites', env, { method: 'POST', body: JSON.stringify({ site: 'nope' }) });
   assert.equal(bad.status, 400);
