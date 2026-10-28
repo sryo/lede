@@ -2,7 +2,8 @@
 // the week's story every Monday, and a line when far more people than usual are here at once.
 // Nothing is read or sent until ALERT_WEBHOOK is set.
 import { sqlStore, withChannels, runSql } from './api.js';
-import { demoAlertStore } from './demo.js';
+import { demoAlertStore, DEMO_INSIGHT } from './demo.js';
+import { factSheet, insight, plain, MIN_VISITORS } from './insight.js';
 import { getSites } from './settings.js';
 import { DAY, hexOf } from './queries.js';
 import { COL } from './schema.js';
@@ -17,10 +18,7 @@ export const SPIKES = '*/15 * * * *';
 
 /* ---------- delivery ---------- */
 
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"' };
-// The home sentence is HTML with links on its names; a message keeps the words. Paths carry
-// non-breaking hyphens and <wbr> so they wrap well on screen.
-export const plain = html => html.replace(/<[^>]+>/g, '').replace(/‑/g, '-').replace(/&(amp|lt|gt|quot);/g, (_, e) => ENTITIES[e]);
+export { plain };
 
 const DISCORD = /(^|\.)discord(app)?\.com$/;
 
@@ -119,7 +117,13 @@ function supporting(S, pageRows, toldPage) {
   return lines;
 }
 
-async function weekText(store, site, nowMs, link) {
+// The line Workers AI adds after the sentence (src/insight.js), when the schedule has a request left for it.
+async function aiLine(env, facts, budget) {
+  if (env.DEMO === 'true') return DEMO_INSIGHT;
+  return env.AI?.run && budget.take() ? insight(env, facts()) : null;
+}
+
+async function weekText(env, store, site, nowMs, link, budget) {
   const q = weekQuery(site, nowMs);
   // Every query settles before the next site starts, so none of this site's is still asking then.
   const got = await Promise.allSettled([store.summary(q), store.series(q), store.breakdown(q, 'path'),
@@ -127,9 +131,11 @@ async function weekText(store, site, nowMs, link) {
   const failed = got.find(g => g.status === 'rejected');
   if (failed) throw failed.reason;
   const [totals, ser, pages, refs, flows] = got.map(g => g.value);
-  const S = readStory({ totals, ser, pages, refs, flows }), T = tellStory(S, ser, q.days, { now: 'this week', before: 'the week before' });
+  const span = { now: 'this week', before: 'the week before' };
+  const S = readStory({ totals, ser, pages, refs, flows }), T = tellStory(S, ser, q.days, span);
   const pageRows = pages.rows.map(r => ({ key: r.key, value: r.visitors, prev: r.prev?.visitors }));
-  return [`${displayHost(site)}, the week of ${fmtDay(dayDate(q.start, 0))}`, plain(T.html),
+  const line = S.c.visitors >= MIN_VISITORS ? await aiLine(env, () => factSheet({ site, span, S, T, ser, pages, flows }), budget) : null;
+  return [`${displayHost(site)}, the week of ${fmtDay(dayDate(q.start, 0))}`, plain(T.html), ...(line ? [line] : []),
     ...(S.c.visitors || S.p.visitors ? supporting(S, pageRows, T.page) : []), ...(link ? [link] : [])].join('\n');
 }
 
@@ -137,7 +143,7 @@ async function weekText(store, site, nowMs, link) {
 // address and the account. A site's week takes 6 to 9 queries (one more for each of its three lists when a
 // period needs a query of its own) and a query Cloudflare refuses at first is asked again, so sites are told
 // one at a time while the fewest could fit, and none may take the requests the message needs. A site that
-// runs out is named with those that didn't fit.
+// runs out is named with those that didn't fit. Its Workers AI request is made only while there's room.
 export const SUBREQUESTS = 50 - 3;
 const PER_SITE = 6;
 
@@ -157,7 +163,7 @@ async function weekly(env, store, nowMs, fetchImpl, budget) {
     if (left.length || budget.used() + PER_SITE > room) { left.push(site); continue; }
     budget.cap(room);
     try {
-      told.push({ site, text: await weekText(store, site, nowMs, link(site)) });
+      told.push({ site, text: await weekText(env, store, site, nowMs, link(site), budget) });
     } catch (e) {
       if (budget.used() >= room) left.push(site);
       else console.error(`Couldn’t write the week’s story for ${site} (${e.message}). It tries again next Monday.`);
@@ -282,7 +288,8 @@ export async function runAlerts(cron, env, nowMs = Date.now(), fetchImpl = fetch
   if (!on.includes(kind)) return;
   let used = 0, cap = Infinity;
   const counted = (...a) => (used >= cap ? Promise.reject(new Error('no requests left on this schedule')) : (used++, fetchImpl(...a)));
-  const budget = { used: () => used, cap: n => { cap = n; } };
+  // take: one request that isn't a fetch (Workers AI), counted like one, or false when none is left.
+  const budget = { used: () => used, cap: n => { cap = n; }, take: () => used < cap && ++used > 0 };
   try {
     const store = demo ? demoStore : alertStore(env, counted);
     await (kind === 'spikes' ? spikes : weekly)(env, store, nowMs, counted, budget);

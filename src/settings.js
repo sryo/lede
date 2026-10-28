@@ -10,6 +10,8 @@
 //   spike:<site>   the day's spike alerts sent so far; deletes itself after two days
 //   added:<site>   when the site's first event was seen (unix seconds), written once by alerts.js
 //   shot:… og:…    a page's picture for its view, and its share picture; see src/shot.js
+//   insight:<site>:<hash>  the line Workers AI wrote from the sheet of totals with that SHA-256 (src/insight.js);
+//                  deletes itself after 6 hours
 import { HttpError } from './errors.js';
 
 // Every event reads the sites and the salt, so each isolate keeps them for a minute

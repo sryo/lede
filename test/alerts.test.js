@@ -409,6 +409,6 @@ test('npm run dev (the demo) prints both messages when no webhook is set', async
     await runAlerts(SPIKES, e, WED, offline);
   } finally { console.log = log; }
   assert.equal(logged.length, 2);
-  assert.match(logged[0], /^Lede alert:\nbirds\.example, the week of Oct 19\n.+\.\n[\d,]+ visitors[.,]/);
+  assert.match(logged[0], /^Lede alert:\nbirds\.example, the week of Oct 19\n.+\.\nReaders spend longer on \/owls.+\.\n[\d,]+ visitors[.,]/, 'the demo’s fixed second line, with no Workers AI');
   assert.match(logged[1], /^Lede alert:\n24 people are on birds\.example right now, 17 of them on \/migration, most of those from Hacker News\. Usually about 2 at this time of day\.$/);
 });

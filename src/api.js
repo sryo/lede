@@ -2,8 +2,10 @@ import * as Q from './queries.js';
 import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, firstsOf, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience, pickVisits, pairNext, toFunnel, pagePath } from './shape.js';
 import { getSites, addSite, getAccountId, getSettings, saveSettings } from './settings.js';
 import { HttpError } from './errors.js';
-import { demoStore, demoNotes, DEMO_FUNNEL } from './demo.js';
+import { demoStore, demoNotes, DEMO_FUNNEL, DEMO_INSIGHT } from './demo.js';
 import { channelFor } from './channels.js';
+import { factSheet, insight, hashOf, MIN_VISITORS } from './insight.js';
+import { readStory, tellStory } from '../public/story.js';
 
 export { HttpError };
 
@@ -286,14 +288,45 @@ async function sitesFor(url, env) {
   return sites.length && (!want || sites.includes(want)) ? sites : getSites(env, { fresh: true });
 }
 
-// breakdown(dim) answers as /api/breakdown would for the same query, sharing its queries when both are asked at once.
-async function route(name, url, env, store, req, breakdown) {
+// A line from Workers AI is kept 6 hours, in the instance and in KV, under a hash of the facts it was made from.
+const INSIGHT_SECONDS = 6 * 3600;
+
+// The line under home's sentence (src/insight.js), or null. It reads the answers home just asked for, so a
+// home load that ran them costs no query; engagement and keywords come in only when a view already asked.
+async function insightFor(q, env, ask) {
+  const [totals, ser, pages, refs, flows, saved] = await Promise.all([ask.stat('summary'), ask.stat('series'),
+    ask.stat('breakdown', { dim: 'path' }), ask.stat('breakdown', { dim: 'referrer' }), ask.stat('flows'), getSettings(env, q.site)]);
+  if (totals.cur.visitors < MIN_VISITORS) return null;
+  const notes = settingsOf(saved, q, false).notes;
+  const S = readStory({ totals, ser, pages, refs, flows, notes }), T = tellStory(S, ser, q.days);
+  const facts = factSheet({ site: q.site, span: { now: `in the last ${q.days} days`, before: `the ${q.days} days before` },
+    S, T, ser, pages, flows, notes, engagement: await ask.seen('engagement'), keywords: await ask.seen('keywords') });
+  const key = `insight:${q.site}:${await hashOf(facts)}`;
+  return remember(key, INSIGHT_SECONDS, async () => {
+    const stored = await env.STORE.get(key).catch(() => null);
+    if (stored) return stored;
+    const text = await insight(env, facts);
+    if (text) await env.STORE.put(key, text, { expirationTtl: INSIGHT_SECONDS }).catch(() => {});
+    return text;
+  });
+}
+
+// ask.stat(name, params) answers as /api/<name> would for the same query, sharing its queries when both are
+// asked at once; ask.seen(name) is that answer only when it's already kept, else null.
+async function route(name, url, env, store, req, ask) {
   const demo = env.DEMO === 'true';
   if (name === 'sites') {
-    if (req.method === 'POST') return { sites: await addSite(env, (await req.json().catch(() => ({}))).site), demo };
-    return { sites: await getSites(env, { fresh: true }), demo };
+    // insight: whether to ask for the line under home's sentence; without Workers AI there's none.
+    const answer = sites => ({ sites, demo, insight: demo || !!env.AI });
+    if (req.method === 'POST') return answer(await addSite(env, (await req.json().catch(() => ({}))).site));
+    return answer(await getSites(env, { fresh: true }));
   }
   const q = parseQuery(url, await sitesFor(url, env));
+  if (name === 'insight') {
+    if (demo) return { text: DEMO_INSIGHT };
+    const text = env.AI ? await insightFor(q, env, ask) : null;
+    return text ? { text } : null;
+  }
   if (name === 'goals') return goals(req, q, env, demo);
   if (name === 'notes') return notes(req, url, q, env, demo);
   if (name === 'funnels') return funnels(req, q, env, demo);
@@ -309,7 +342,7 @@ async function route(name, url, env, store, req, breakdown) {
     // The day each page and source was first seen comes with the breakdowns; this answers it on its own.
     case 'firsts': {
       if (store.firsts) return store.firsts(q);
-      const [pages, sources] = await Promise.all([breakdown('path'), breakdown('referrer')]);
+      const [pages, sources] = await Promise.all([ask.stat('breakdown', { dim: 'path' }), ask.stat('breakdown', { dim: 'referrer' })]);
       return { start: q.start, pages: firstsOf(pages.rows), sources: firstsOf(sources.rows) };
     }
     case 'live': return store.live(q);
@@ -342,9 +375,11 @@ const recent = new Map();
 const RECENT_MAX = 200;
 const keyOf = url => `${url.pathname}?${new URLSearchParams([...url.searchParams].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))}`;
 
+const kept = key => { const hit = recent.get(key); return hit && Date.now() < hit.until ? hit : null; };
+
 function remember(key, seconds, answer) {
-  const hit = recent.get(key);
-  if (hit && Date.now() < hit.until) return hit.answer;
+  const hit = kept(key);
+  if (hit) return hit.answer;
   if (recent.size >= RECENT_MAX) recent.delete(recent.keys().next().value);
   const entry = { until: Date.now() + seconds * 1000, answer: answer().catch(e => { recent.delete(key); throw e; }) };
   recent.set(key, entry);
@@ -370,14 +405,19 @@ export async function handleApi(req, env, ctx) {
   }
   try {
     const store = demo ? demoStore : sqlStore(env);
-    const kept = (u, answer) => (demo || settings || req.method !== 'GET' ? answer() : remember(keyOf(u), maxAge, answer));
-    const breakdown = dim => {
+    const keep = (u, answer) => (demo || settings || req.method !== 'GET' ? answer() : remember(keyOf(u), maxAge, answer));
+    const at = (other, params = {}) => {
       const u = new URL(url);
-      u.pathname = '/api/breakdown';
-      u.searchParams.set('dim', dim);
-      return kept(u, () => route('breakdown', u, env, store, req, breakdown));
+      u.pathname = `/api/${other}`;
+      for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+      return u;
     };
-    const body = await kept(url, () => route(name, url, env, store, req, breakdown));
+    const ask = {
+      stat: (other, params) => { const u = at(other, params); return keep(u, () => route(other, u, env, store, req, ask)); },
+      seen: other => kept(keyOf(at(other)))?.answer.catch(() => null) ?? null,
+    };
+    const body = await keep(url, () => route(name, url, env, store, req, ask));
+    if (body == null) return new Response(null, { status: 204, headers: { 'Cache-Control': BROWSER(maxAge) } });
     const res = json(body, 200, maxAge);
     if (cache) {
       const copy = new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json', 'Cache-Control': `s-maxage=${maxAge}` } });

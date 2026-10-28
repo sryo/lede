@@ -84,6 +84,9 @@ const LEFT_BEFORE = { '/feeders': .2 };
 // The sample funnel, shown until one is saved: from the home page, few go on to the feeders guide, but
 // most of those who do go on to the nest boxes, so the first step is where nearly everyone is lost.
 export const DEMO_FUNNEL = ['/', '/feeders', '/nests'];
+// The line Workers AI would add under the sentence; the demo never asks it. True of the sample whatever the
+// day: /owls is read longest (READ) and loads slowest (VITALS).
+export const DEMO_INSIGHT = 'Readers spend longer on /owls than on any other page, and it is also the slowest page to load. Worth checking: what /owls loads before its words.';
 // Of the visits at one step, the share that go on to the next. Other pairs follow the next page's traffic.
 const NEXT = { '/>/feeders': [.09, .08], '/feeders>/nests': [.62, .55] };
 const N = 90;

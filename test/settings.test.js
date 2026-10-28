@@ -64,7 +64,7 @@ test('the dashboard asks for a site, then answers for it', async () => {
   const env = { STORE: memoryKV(), DEMO: 'true' };
   const first = await call('sites', env);
   assert.equal(first.headers.get('Cache-Control'), 'no-store');
-  assert.deepEqual(await first.json(), { sites: [], demo: true });
+  assert.deepEqual(await first.json(), { sites: [], demo: true, insight: true });
   const before = await call('summary?days=30', env);
   assert.equal(before.status, 400);
   assert.match((await before.json()).error, /site’s address/);
@@ -72,7 +72,7 @@ test('the dashboard asks for a site, then answers for it', async () => {
   const bad = await call('sites', env, { method: 'POST', body: JSON.stringify({ site: 'nope' }) });
   assert.equal(bad.status, 400);
   const added = await call('sites', env, { method: 'POST', body: JSON.stringify({ site: 'https://www.example.com' }) });
-  assert.deepEqual(await added.json(), { sites: ['example.com'], demo: true });
+  assert.deepEqual(await added.json(), { sites: ['example.com'], demo: true, insight: true });
   assert.equal((await call('summary?days=30', env)).status, 200);
 });
 

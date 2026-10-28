@@ -102,8 +102,8 @@ h1,h2,h3{margin:0;font:inherit}
 .sentence{margin:0;font-size:var(--fs-m);line-height:1.45}
 .say-col{display:flex;flex-direction:column;gap:8px;min-width:0}
 .goal-line{margin:0;min-height:32px;font-size:var(--fs-s);color:var(--muted);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.goal-line b{color:var(--ink)}
-.sampled{margin:0;font-size:var(--fs-s);color:var(--muted)}
+.goal-line b,.goal-text b{color:var(--ink)}
+.sampled,.goal-text{margin:0;font-size:var(--fs-s);color:var(--muted)}
 .flag{display:block;flex:none;color:var(--rule)} .flag.on{color:var(--page)}
 .seg button:has(.flag){display:inline-flex;align-items:center;gap:4px} .seg button[aria-pressed="true"] .flag{color:inherit}
 .lwrap{display:grid;grid-template-columns:minmax(0,1fr) 24px;align-items:center}
@@ -116,8 +116,6 @@ h1,h2,h3{margin:0;font:inherit}
 .goal-t:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 .goal-line .goal-t{margin:0 -4px}
 @media (hover:none){.goal-t{opacity:1}}
-.goal-text{margin:0;font-size:var(--fs-s);color:var(--muted)}
-.goal-text b{color:var(--ink)}
 
 .link{all:unset;cursor:pointer;text-decoration:underline;text-decoration-color:var(--rule);text-decoration-thickness:2.5px;text-underline-offset:4px}
 .link[data-f="referrer"],.link[data-f="channel"]{text-decoration-color:var(--src)} .link[data-f="path"]{text-decoration-color:var(--page)}
@@ -473,7 +471,8 @@ const $=(s,r=document)=>r.querySelector(s);
 const motion=matchMedia('(prefers-reduced-motion: reduce)');
 const TZ=new Date().getTimezoneOffset(),TZNAME=Intl.DateTimeFormat().resolvedOptions().timeZone||'';
 const store={get(k){try{return localStorage.getItem(k)}catch{return null}},set(k,v){try{localStorage.setItem(k,v)}catch{}}};
-let SITE='',SITES=[],DEMO=false,DAYS=30;
+// INSIGHT: home may get Workers AI's line under its sentence.
+let SITE='',SITES=[],DEMO=false,INSIGHT=false,DAYS=30;
 // What the home screen worked out, for the views that open from it. homeDrawn settles when the latest home
 // draw has: views fetch their own data first and wait for it only to read HOME.
 let HOME=null,homeDrawn=Promise.resolve(false);
@@ -2175,8 +2174,17 @@ async function drawHome(message){
   drawStay(stay.querySelector('.viz'),S,B);
   const shown=drawPages(pg.querySelector('.viz'),T,pageRows);
   pg.querySelector('.cap').innerHTML=(pagesFinding(pageRows,T.page)??pagesCaption(shown)).html;
+  if(INSIGHT)drawInsight(gen);
   if(message)announce(message);
   return true;
+}
+
+// Asked for once home is drawn; with no line, nothing shows.
+function drawInsight(gen){
+  api('insight').then(b=>{
+    const say=$('#story .sentence');
+    if(gen===homeRender&&b.text&&say)say.insertAdjacentHTML('afterend',`<p class="goal-text"><b>Lede noticed</b><span class="sr">:</span> ${esc(b.text)}</p>`);
+  },()=>{});
 }
 
 async function refreshOnline(){
@@ -2206,7 +2214,7 @@ async function boot(){
   const route=urlToView(location.pathname,location.search),saved=store.get('lede_site');
   const sites=api('sites',{},true);
   if(route.site||saved){SITE=route.site||saved;DAYS=route.days||30;prefetchHome()}
-  try{({sites:SITES,demo:DEMO}=await sites)}catch(e){showError($('#grid'),e,boot);return}
+  try{({sites:SITES,demo:DEMO,insight:INSIGHT}=await sites)}catch(e){showError($('#grid'),e,boot);return}
   if(!SITES.length){askForSite();return}
   SITE=SITES.includes(route.site)?route.site:SITES.includes(saved)?saved:SITES[0];
   store.set('lede_site',SITE);
