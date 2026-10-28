@@ -866,16 +866,18 @@ export function vitalsLine(r) {
   return { ratings, html: `Of the views measured, 3 in 4 ${listed(enough.map(k => `${VITAL_WORDS[k](`<b>${fmtVital(k, r[k])}</b>`)} (${ratings[k]})`))}.` };
 }
 // One page's speed told as a visit: how long readers wait for its main content (LCP), then how long they read
-// it. The note adds taps (INP) and layout movement (CLS) when enough views measured them. Null without enough
-// LCP; vitalsLine says the rest then.
+// it. rows: every page's engagement row, to say when this page is read longest. The note adds taps (INP) and
+// layout movement (CLS) when enough views measured them. Null without enough LCP; vitalsLine says the rest then.
 const LAYOUT = { good: 'the layout holds steady', 'needs work': 'the layout shifts a little', poor: 'the layout jumps around' };
-export function speedStory(r, path) {
+export function speedStory(r, path, rows = []) {
   if (r?.lcp == null || measured(r, 'lcp') < VITALS_MIN) return null;
   const read = r.median != null ? r.median / 1000 : r.time, p = r.prev;
   const was = p?.lcp != null && measured(p, 'lcp') >= VITALS_MIN ? p.lcp : null;
   const moved = was != null && Math.abs(r.lcp - was) >= Math.max(200, was * .1);
+  const others = rows.filter(x => x.key !== r.key && x.views >= 20 && x.median != null);
+  const longest = r.median != null && others.length > 0 && others.every(x => x.median < r.median);
   const html = `Readers wait <b>${fmtVital('lcp', r.lcp)}</b> for ${esc(pageName(path))}${moved ? `, ${r.lcp > was ? 'up' : 'down'} from ${fmtVital('lcp', was)}` : ''}`
-    + (read >= 1 ? `, then stay <b>${fmtDur(read)}</b>.` : ', then most leave.');
+    + (read >= 1 ? `, then stay <b>${fmtDur(read)}</b>${longest ? ', the longest of any page' : ''}.` : ', then most leave.');
   const after = [];
   if (r.inp != null && measured(r, 'inp') >= VITALS_MIN) after.push(`each tap then waits <b>${fmtVital('inp', r.inp)}</b> (${vitalRating('inp', r.inp)})`);
   if (r.cls != null && measured(r, 'cls') >= VITALS_MIN) after.push(`${LAYOUT[vitalRating('cls', r.cls)]} (${fmtVital('cls', r.cls)})`);

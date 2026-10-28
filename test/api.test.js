@@ -434,7 +434,10 @@ test('engagement rows say how many views measured each speed, so INP is told onc
 
 test('the engagement query for one page also counts how many got 10%, 20%... 100% of the way down, in the same query', () => {
   const page = engagementSql('lede', parseQuery(url('engagement?days=7&path=%2Fdocs'), SITES));
-  for (let d = 10; d <= 100; d += 10) assert.ok(page.includes(`sumIf(_sample_interval, double2 >= ${d}) AS r${d}`), `band ${d}`);
+  for (let d = 10; d <= 100; d += 10) assert.ok(page.includes(`sumIf(_sample_interval, hex(blob2) = '2F646F6373' AND double2 >= ${d}) AS r${d}`), `band ${d}`);
+  assert.match(page, /max\(hex\(blob2\) = '2F646F6373'\) AS asked,/);
+  assert.match(page, /ORDER BY asked DESC, n DESC/, 'the page asked for first, so the LIMIT keeps it');
+  assert.equal(page.split("hex(blob2) = '2F646F6373'").length - 1, 11, 'not in WHERE: every page comes back, so the view can compare');
   assert.match(page, /^SELECT if\(timestamp >= toDateTime\(\d+\), 1, 0\) AS p, /, 'both periods at once');
   const all = engagementSql('lede', parseQuery(url('engagement?days=7'), SITES));
   assert.ok(!all.includes('AS r10'), 'the list of every page has no use for them');
@@ -477,7 +480,8 @@ test('demo: pages are read for a plausible time, and links and downloads follow 
   const time = k => rows.find(r => r.key === k).time;
   assert.ok(time('/owls') > time('/'), 'a long guide holds people longer than the home page');
   const one = await demoStore.engagement({ ...q, filters: { path: '/owls' } });
-  assert.deepEqual(one.rows.map(r => r.key), ['/owls']);
+  assert.equal(one.rows[0].key, '/owls', 'the page asked for first, every page after it');
+  assert.ok(one.rows.length > 5 && one.rows[0].reach && one.rows.slice(1).every(r => !r.reach));
   const links = await demoStore.links(q);
   assert.ok(links.outbound.length && links.downloads.length);
   assert.ok(links.downloads.every(r => r.key.startsWith('example.com/')), 'files sit on the site itself');

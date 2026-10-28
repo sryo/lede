@@ -289,15 +289,17 @@ async function sitesFor(url, env) {
 }
 
 // The line under home's sentence (src/insight.js), or null. It reads the answers home just asked for, so a
-// home load that ran them costs no query; engagement and keywords come in only when a view already asked.
+// home load that ran them costs only the reading times, page speeds and search words, which home doesn't ask
+// for but the line's best links need; a view that asked for them a moment ago has them kept.
 async function insightFor(q, env, ask) {
-  const [totals, ser, pages, refs, flows, saved] = await Promise.all([ask.stat('summary'), ask.stat('series'),
-    ask.stat('breakdown', { dim: 'path' }), ask.stat('breakdown', { dim: 'referrer' }), ask.stat('flows'), getSettings(env, q.site)]);
+  const [totals, ser, pages, refs, flows, saved, engagement, keywords] = await Promise.all([ask.stat('summary'), ask.stat('series'),
+    ask.stat('breakdown', { dim: 'path' }), ask.stat('breakdown', { dim: 'referrer' }), ask.stat('flows'), getSettings(env, q.site),
+    ask.stat('engagement').catch(() => null), ask.stat('keywords').catch(() => null)]);
   if (totals.cur.visitors < MIN_VISITORS) return null;
   const notes = settingsOf(saved, q, false).notes;
   const S = readStory({ totals, ser, pages, refs, flows, notes }), T = tellStory(S, ser, q.days);
   const facts = factSheet({ site: q.site, span: { now: `in the last ${q.days} days`, before: `the ${q.days} days before` },
-    S, T, ser, pages, flows, notes, engagement: await ask.seen('engagement'), keywords: await ask.seen('keywords') });
+    S, T, ser, pages, flows, notes, engagement, keywords });
   return facts ? lineFor(env, `insight:${q.site}:${q.days}`, facts) : null;
 }
 
@@ -316,7 +318,7 @@ async function shares(req, url, env) {
 }
 
 // ask.stat(name, params) answers as /api/<name> would for the same query, sharing its queries when both are
-// asked at once; ask.seen(name) is that answer only when it's already kept, else null. shared: the one site a
+// asked at once. shared: the one site a
 // read-only link shows; src/index.js has already refused every other site and every change.
 async function route(name, url, env, store, req, ask, shared) {
   const demo = env.DEMO === 'true';
@@ -421,7 +423,6 @@ export async function handleApi(req, env, ctx, shared = null) {
     };
     const ask = {
       stat: (other, params) => { const u = at(other, params); return keep(u, () => route(other, u, env, store, req, ask, shared)); },
-      seen: other => kept(keyOf(at(other)))?.answer.catch(() => null) ?? null,
     };
     const body = await keep(url, () => route(name, url, env, store, req, ask, shared));
     if (body == null) return new Response(null, { status: 204, headers: { 'Cache-Control': BROWSER(maxAge) } });

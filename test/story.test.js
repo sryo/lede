@@ -938,12 +938,13 @@ test('a page’s speed reads as a visit: the wait for its main content, then how
   const strip = h => h.replace(/<[^>]+>/g, '');
   const owls = { key: '/owls', views: 3200, median: 100000, lcp: 4700, inp: 560, cls: .09, lcpN: 3000, inpN: 900, clsN: 3000,
     prev: { views: 2800, median: 96000, lcp: 3100, inp: 300, cls: .12, lcpN: 2600, inpN: 700, clsN: 2600 } };
-  const S = speedStory(owls, '/owls');
-  assert.equal(strip(S.html), 'Readers wait 4.7 s for /owls, up from 3.1 s, then stay 1m 40s.');
+  const rows = [owls, { key: '/', views: 9000, median: 20000 }, { key: '/robin', views: 2000, median: 50000 }];
+  const S = speedStory(owls, '/owls', rows);
+  assert.equal(strip(S.html), 'Readers wait 4.7 s for /owls, up from 3.1 s, then stay 1m 40s, the longest of any page.');
   assert.equal(strip(S.note), 'Each tap then waits 560 ms (poor); the layout holds steady (0.09). Times are for 3 in 4 views; the rest took longer.');
   assert.deepEqual([S.wait, S.was, S.read, S.rating], [4.7, 3.1, 100, 'poor']);
   // A small change isn't one, and the home page has its name.
-  const home = speedStory({ ...owls, key: '/', lcp: 1800, prev: { ...owls.prev, lcp: 1750 } }, '/');
+  const home = speedStory({ ...owls, key: '/', lcp: 1800, prev: { ...owls.prev, lcp: 1750 } }, '/', [owls]);
   assert.equal(strip(home.html), 'Readers wait 1.8 s for the home page, then stay 1m 40s.');
   assert.equal(home.was, 1.75, 'the period before is still drawn');
   // Few taps measured, or no reading time: say only what is known.

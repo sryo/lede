@@ -1234,7 +1234,7 @@ async function renderFilter(body,f){
       n('Time on page',fmtDur(t),!r.prev?'new':was==null?'':changeWord(t,was),mid?'Half the views had this page open and in view for longer than this':'Average time people had this page open and in view')
       +n('How far down',fmtPct(r.scroll),r.prev?pts(r.scroll,r.prev.scroll):'new','How far down the page people got, on average'));
     drawReach(body,r,f.path);
-    const S=speedStory(r,f.path),V=!S&&vitalsLine(r);
+    const S=speedStory(r,f.path,e.rows),V=!S&&vitalsLine(r);
     if(S)drawSpeed(body,S,f.path);
     else if(V)body.querySelector('.nums').insertAdjacentHTML('afterend',`<p class="say-sub vitals" title="${esc(VITALS_HINT)}">${V.html}</p>`);
   },()=>{});

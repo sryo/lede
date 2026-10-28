@@ -130,7 +130,7 @@ test('the demo answers its own line and never asks Workers AI', async () => {
   assert.deepEqual(await res.json(), { text: DEMO_INSIGHT });
 });
 
-test('after home, the line costs no query; the same facts ask Workers AI once, and the line is kept in KV per site and period', async () => {
+test('after home, the line adds only the reading, speed and search-word queries; the same facts ask Workers AI once, and the line is kept in KV per site and period', async () => {
   await withSql(2, async calls => {
     let runs = 0;
     const env = { ...ENV(), AI: { run: async (model, { messages }) => { runs++; assert.match(messages[1].content, /Hacker News/); return { response: 'Hacker News sent 40 visitors to /blog. Worth checking: /blog.' }; } } };
@@ -140,7 +140,7 @@ test('after home, the line costs no query; the same facts ask Workers AI once, a
     const res = await get(`insight?${qs}`, env);
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { text: 'Hacker News sent 40 visitors to /blog. Worth checking: /blog.' });
-    assert.equal(calls.length, home, 'every answer it needs was just asked for by home');
+    assert.equal(calls.length - home, 3, 'reading and speed (1) and search words (2); the rest home just asked for');
     assert.equal(runs, 1);
     assert.equal(env.STORE.puts[0].key, 'insight:example.com:7');
     assert.equal(JSON.parse(env.STORE.puts[0].v).text, 'Hacker News sent 40 visitors to /blog. Worth checking: /blog.');

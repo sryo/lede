@@ -376,7 +376,6 @@ export const demoStore = {
       const [lcp, inp, cls] = (before && VITALS_BEFORE[P.key]) || VITALS[P.key] || [0, 0, 0];
       // The median read is shorter than the mean: a few long reads pull the mean up.
       const r = { key: P.key, n: 0, ms: 0, depth: 0, median_ms: READ[P.key][0] * 800, lcp, inp, cls, lcp_n: 0, inp_n: 0, cls_n: 0 };
-      if (f.path != null && P.key !== f.path) return r;
       SOURCES.forEach((S, si) => {
         if ((f.referrer != null && S.key !== f.referrer) || (f.channel != null && S.ch !== f.channel)) return;
         let n = 0;
@@ -387,9 +386,10 @@ export const demoStore = {
       });
       // Most views measure LCP and CLS; fewer have a tap or key press for INP. A page with no data has none.
       if (lcp) Object.assign(r, { lcp_n: r.n * .7, inp_n: r.n * .3, cls_n: r.n * .7 });
-      if (f.path != null) BANDS.forEach((d, i) => { r[`r${d}`] = r.n * REACH[P.key][i]; });
+      // Like the SQL: with a page asked for, every page comes back, the bands for that page alone, its row first.
+      if (f.path != null) { r.asked = +(P.key === f.path); BANDS.forEach((d, i) => { r[`r${d}`] = r.asked * r.n * REACH[P.key][i]; }); }
       return r;
-    }).filter(r => r.n >= 1).sort((a, b) => b.n - a.n);
+    }).filter(r => r.n >= 1).sort((a, b) => (b.key === f.path) - (a.key === f.path) || b.n - a.n);
     return toEngagement(rows(w.cur), rows(w.prev, true));
   },
   async links(q) {

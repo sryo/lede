@@ -163,7 +163,8 @@ const reading = r => {
   out.inp = vital(r, 'inp');
   out.cls = vital(r, 'cls', 1000);
   for (const k of ['lcp', 'inp', 'cls']) out[`${k}N`] = num(r[`${k}_n`]);
-  if (r.r10 != null) out.reach = BANDS.map(d => n ? num(r[`r${d}`]) / n : 0);
+  // Only the page a view asked for has its bands counted (see engagementSql).
+  if (r.r10 != null && (r.asked == null || num(r.asked) > 0)) out.reach = BANDS.map(d => n ? num(r[`r${d}`]) / n : 0);
   return out;
 };
 export function toEngagement(cur, prev) {

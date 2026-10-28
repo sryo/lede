@@ -230,7 +230,7 @@ export const hourlySql = (ds, q, from, to) =>
 // Per page: page views that sent an engagement event (n), and their engaged milliseconds and scroll
 // percentages summed, each weighted by the views a sampled row stands for. Averages are taken in shape.js.
 // For one page it also counts the views that got at least 10%, 20%... 100% of the way down (r10...r100),
-// so the page's view can show where readers stop without a query of its own.
+// so the page's view can show where readers stop without a query of its own (see engagementSql).
 // It also takes the median engaged time, and the 75th percentile of each Web Vital (what Google's
 // thresholds are judged on) over the views that measured it: a view with 0 had none (an older tracker,
 // a browser without the API, no tap or key for INP). CLS is stored one higher, so a page that never
@@ -239,11 +239,16 @@ export const hourlySql = (ds, q, from, to) =>
 export const BANDS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
 const VITALS = [['lcp', COL.lcp], ['inp', COL.inp], ['cls', `(${COL.cls} - 1)`]]
   .map(([k, v]) => `, quantileExactWeighted(0.75)(${v}, if(${COL[k]} > 0, _sample_interval, 0)) AS ${k}, sumIf(_sample_interval, ${COL[k]} > 0) AS ${k}_n`).join('');
-export const engagementSql = (ds, q, only) =>
-  `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, sum(_sample_interval) AS n, sum(_sample_interval * ${COL.engaged}) AS ms, sum(_sample_interval * ${COL.scroll}) AS depth`
-  + `, quantileExactWeighted(0.5)(${COL.engaged}, _sample_interval) AS median_ms${VITALS}`
-  + (q.filters.path == null ? '' : BANDS.map(d => `, sumIf(_sample_interval, ${COL.scroll} >= ${d}) AS r${d}`).join(''))
-  + ` FROM ${ds} WHERE ${within(q, only, ['engagement'])} GROUP BY p, key ORDER BY n DESC ${limit(LISTS.pages, only)}`;
+// A page's own view asks for every page too, so its sentence can say how the page compares: the reach bands
+// count that page's views alone, and its row comes first, so the LIMIT never leaves it out.
+export const engagementSql = (ds, q, only) => {
+  const path = q.filters.path, page = path == null ? null : `hex(${COL.path}) = '${hexOf(path)}'`;
+  const all = page ? { ...q, filters: { ...q.filters, path: null } } : q;
+  return `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, sum(_sample_interval) AS n, sum(_sample_interval * ${COL.engaged}) AS ms, sum(_sample_interval * ${COL.scroll}) AS depth`
+    + `, quantileExactWeighted(0.5)(${COL.engaged}, _sample_interval) AS median_ms${VITALS}${page ? `, max(${page}) AS asked` : ''}`
+    + (page ? BANDS.map(d => `, sumIf(_sample_interval, ${page} AND ${COL.scroll} >= ${d}) AS r${d}`).join('') : '')
+    + ` FROM ${ds} WHERE ${within(all, only, ['engagement'])} GROUP BY p, key ORDER BY ${page ? 'asked DESC, ' : ''}n DESC ${limit(LISTS.pages, only)}`;
+};
 
 // Links to other sites and files, by the visitors who clicked them.
 export const linksSql = (ds, q, only) =>
