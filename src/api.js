@@ -1,8 +1,8 @@
 import * as Q from './queries.js';
-import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, toFirsts, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience, pickVisits, pairNext } from './shape.js';
+import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, toFirsts, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience, pickVisits, pairNext, toFunnel } from './shape.js';
 import { getSites, addSite, getAccountId } from './settings.js';
 import { HttpError } from './errors.js';
-import { demoStore, demoNotes } from './demo.js';
+import { demoStore, demoNotes, DEMO_FUNNEL } from './demo.js';
 import { channelFor } from './channels.js';
 
 export { HttpError };
@@ -120,6 +120,9 @@ export function sqlStore(env, fetchImpl = fetch) {
     async conversions(q, goals) {
       return toConversions(await run(Q.conversionsSql(ds, q, q.start, q.end, goals)));
     },
+    async funnel(q, steps) {
+      return toFunnel(await run(Q.funnelSql(ds, q, steps)), steps);
+    },
     async engagement(q) {
       const { cur, prev } = await lists(only => Q.engagementSql(ds, q, only), Q.LISTS.pages);
       return toEngagement(cur, prev);
@@ -153,7 +156,8 @@ export function parseGoals(list) {
 }
 
 // Goals are kept in KV, so everyone who opens the dashboard sees the same ones. Reading them also
-// answers with the notes, since the dashboard needs both as it opens: one request instead of two.
+// answers with the notes and the funnels, since the dashboard needs them as it opens: one request instead of three,
+// and the Overview asks for funnel numbers only when there is a funnel.
 async function goals(req, q, env, demo) {
   const key = `goals:${q.site}`;
   if (req.method === 'PUT') {
@@ -161,8 +165,8 @@ async function goals(req, q, env, demo) {
     await env.STORE.put(key, JSON.stringify(list));
     return { goals: list };
   }
-  const [list, saved] = await Promise.all([env.STORE.get(key), readNotes(q, env, demo)]);
-  return { goals: JSON.parse(list || '[]'), notes: saved };
+  const [list, saved, f] = await Promise.all([env.STORE.get(key), readNotes(q, env, demo), funnels(req, q, env)]);
+  return { goals: JSON.parse(list || '[]'), notes: saved, ...f };
 }
 
 // The owner's notes on days ("Posted on Hacker News"): one per day, YYYY-MM-DD in the owner's time zone.
@@ -205,6 +209,33 @@ async function notes(req, url, q, env, demo) {
 // The channel a referrer host falls in when no UTM tags say otherwise.
 export const withChannels = out => ({ ...out, rows: out.rows.map(r => ({ ...r, channel: channelFor(r.key, new URLSearchParams()) })) });
 
+// A funnel: two to five different pages a visit goes through, in order. Steps are shorter than goals
+// (200 characters), so five of them, written twice each as hex, keep the query well under 10 KiB.
+export function parseFunnel(steps) {
+  const ok = Array.isArray(steps) && steps.length >= 2 && steps.length <= 5 && new Set(steps).size === steps.length
+    && steps.every(s => typeof s === 'string' && s.startsWith('/') && s.length <= 200);
+  if (!ok) throw new HttpError(400, 'A funnel is two to five different pages, each starting with "/".');
+  return steps;
+}
+
+export function parseFunnels(list) {
+  if (!Array.isArray(list) || list.length > 5) throw new HttpError(400, 'Funnels must be a list of up to five.');
+  const byKey = new Map(list.map(parseFunnel).map(f => [f.join('\n'), f]));
+  return [...byKey.values()];
+}
+
+// Funnels are kept in KV beside the goals. The sample site shows one until a list is saved.
+async function funnels(req, q, env) {
+  const key = `funnels:${q.site}`;
+  if (req.method === 'PUT') {
+    const list = parseFunnels((await req.json().catch(() => ({}))).funnels);
+    await env.STORE.put(key, JSON.stringify(list));
+    return { funnels: list };
+  }
+  const saved = await env.STORE.get(key);
+  return { funnels: saved ? JSON.parse(saved) : env.DEMO === 'true' ? [DEMO_FUNNEL] : [] };
+}
+
 async function route(name, url, env, store, req) {
   const demo = env.DEMO === 'true';
   if (name === 'sites') {
@@ -214,6 +245,7 @@ async function route(name, url, env, store, req) {
   const q = parseQuery(url, await getSites(env, { fresh: true }));
   if (name === 'goals') return goals(req, q, env, demo);
   if (name === 'notes') return notes(req, url, q, env, demo);
+  if (name === 'funnels') return funnels(req, q, env);
   switch (name) {
     case 'summary': return store.summary(q);
     case 'series': return store.series(q);
@@ -228,6 +260,7 @@ async function route(name, url, env, store, req) {
     case 'next':
       if (q.filters.path == null) throw new HttpError(400, 'Say which page with ?path=.');
       return store.next(q);
+    case 'funnel': return store.funnel(q, parseFunnel(url.searchParams.getAll('steps')));
     case 'conversions': {
       const list = url.searchParams.getAll('goal');
       return store.conversions(q, parseGoals(list.length ? list : null));
@@ -260,7 +293,7 @@ export async function handleApi(req, env, ctx) {
   const url = new URL(req.url);
   const name = url.pathname.replace(/^\/api\//, '');
   const demo = env.DEMO === 'true';
-  const settings = name === 'goals' || name === 'notes' || name === 'sites';
+  const settings = name === 'goals' || name === 'notes' || name === 'funnels' || name === 'sites';
   const maxAge = settings ? 0 : CACHE_SECONDS[name] || CACHE_SECONDS.default;
   // Each stats request runs several SQL queries, so successful answers are cached briefly at the edge.
   const cache = !demo && !settings && typeof caches !== 'undefined' ? caches.default : null;

@@ -48,3 +48,7 @@ test('an unknown address opens home', () => {
   assert.deepEqual(urlToView('/nope/x', ''), { view: null, days: null, site: null });
   assert.deepEqual(urlToView('/bounce', '?days=99'), { view: { v: 'bounce' }, days: null, site: null });
 });
+
+test('an old /funnels link opens the Overview, where funnels now are', () => {
+  assert.deepEqual(urlToView('/funnels', ''), { view: { v: 'overview' }, days: null, site: null });
+});

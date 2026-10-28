@@ -156,8 +156,8 @@ test('notes on days are saved for everyone, one per day, and each change is one 
   await notes('&day=2026-10-03', { method: 'DELETE' });
   assert.equal(writes, 4, 'removing a note that is not there writes nothing');
   assert.deepEqual(await notes(), { notes: [{ day: '2026-10-16', text: 'Posted on Hacker News again' }] });
-  // The dashboard reads goals and notes with one request.
-  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: [], notes: [{ day: '2026-10-16', text: 'Posted on Hacker News again' }] });
+  // The dashboard reads goals, notes and funnels with one request.
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: [], notes: [{ day: '2026-10-16', text: 'Posted on Hacker News again' }], funnels: [] });
 });
 
 test('a note is a real day and a few words, at most 80 characters', async () => {

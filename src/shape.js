@@ -61,6 +61,12 @@ export function toConversions(rows) {
   return { rows: out, visits: out.reduce((a, r) => a + r.visits, 0), reached: out.reduce((a, r) => a + r.reached, 0) };
 }
 
+// Visits reaching each step, this period and the one before; a period with no visits has no row.
+export function toFunnel(rows, steps) {
+  const { cur: [c = {}], prev: [p = {}] } = byPeriod(rows);
+  return { steps, cur: steps.map((_, i) => num(c[`s${i}`])), prev: steps.map((_, i) => num(p[`s${i}`])) };
+}
+
 export const toFirsts = rows => rows.map(r => ({ key: r.key ?? '', day: num(r.d), visitors: num(r.visitors) }));
 
 export function toHourly(rows, days) {

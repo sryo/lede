@@ -162,6 +162,19 @@ export const conversionsSql = (ds, q, from, to, goals) =>
   `SELECT src, count() AS visits, sum(hit) AS reached FROM ${visits(ds, where(q, from, to), `, ${VISIT_KEYS.referrer} AS src, `
   + `max(if(${goals.map(g => `hex(${COL.path}) = '${hexOf(g)}'`).join(' OR ')}, 1, 0)) AS hit`)} GROUP BY src ORDER BY visits DESC LIMIT 200`;
 
+// A funnel: per visit, the first time it viewed each step (NEVER when it didn't), then per period the
+// visits that reached each step in order: s_k counts visits with t0 < t1 < … < t_k < NEVER, each step
+// first seen strictly after the one before. Only views of the step pages are read. The dashboard's
+// filters don't apply: a path filter would leave out every step but one.
+const NEVER = 4294967295;
+export function funnelSql(ds, q, steps) {
+  const is = s => `hex(${COL.path}) = '${hexOf(s)}'`;
+  const firsts = steps.map((s, i) => `min(if(${is(s)}, toUnixTimestamp(timestamp), ${NEVER})) AS t${i}`).join(', ');
+  const reached = steps.map((_, k) => `countIf(${[...steps.slice(0, k).map((_, i) => `t${i} < t${i + 1}`), `t${k} < ${NEVER}`].join(' AND ')}) AS s${k}`).join(', ');
+  const cond = `${within({ ...q, filters: {} })} AND (${steps.map(is).join(' OR ')})`;
+  return `SELECT p, ${reached} FROM (SELECT ${PERIOD(q)} AS p, ${COL.visit} AS visit, ${firsts} FROM ${ds} WHERE ${cond} GROUP BY p, visit) GROUP BY p`;
+}
+
 // Visitors by the source a visit came from and the page it landed on, for the Sankey.
 export const flowSql = (ds, q, only) =>
   `SELECT p, src, landing, count(DISTINCT visitor) AS visitors FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS.referrer} AS src, ${VISIT_KEYS.entry} AS landing`, PERIOD(q))} `

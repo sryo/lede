@@ -74,6 +74,11 @@ const LEADS = {
   '/wren': { '/robin': 3 }, '/nests': { '/feeders': 3 }, '/swift': { '/migration': 4 }, '/kingfisher': { '/heron': 3 }, '/about': {},
 };
 const LEFT_BEFORE = { '/feeders': .2 };
+// The sample funnel, shown until one is saved: from the home page, few go on to the feeders guide, but
+// most of those who do go on to the nest boxes, so the first step is where nearly everyone is lost.
+export const DEMO_FUNNEL = ['/', '/feeders', '/nests'];
+// Of the visits at one step, the share that go on to the next. Other pairs follow the next page's traffic.
+const NEXT = { '/>/feeders': [.09, .08], '/feeders>/nests': [.62, .55] };
 const N = 90;
 // An ordinary month with one of each thing the dashboard notices: as autumn goes on, search sends
 // more people to /migration and AI assistants grow slowly; a new page, /swift, goes up; bsky.app starts
@@ -327,6 +332,25 @@ export const demoStore = {
       if (visits >= 1) rows.push({ src: S.key, visits, reached });
     });
     return toConversions(rows.sort((a, b) => b.visits - a.visits));
+  },
+  async funnel(q, steps) {
+    const w = windows(q), m = data();
+    const side = ([d0, d1], period) => {
+      const counts = [];
+      steps.forEach((step, i) => {
+        const pi = PATHS.findIndex(P => P.key === step);
+        if (pi < 0) return counts.push(0);
+        if (!i) {
+          let v = 0;
+          for (let d = Math.max(0, d0); d < d1; d++) SOURCES.forEach((S, si) => { v += m[d][si][pi] * S.vf; });
+          return counts.push(Math.round(v));
+        }
+        const rate = NEXT[`${steps[i - 1]}>${step}`]?.[period] ?? Math.min(.6, .1 + PATHS[pi].w / 30 * .4);
+        counts.push(Math.floor(counts[i - 1] * rate));
+      });
+      return counts;
+    };
+    return { steps, cur: side(w.cur, 0), prev: side(w.prev, 1) };
   },
   async engagement(q) {
     const w = windows(q), f = q.filters, m = data();

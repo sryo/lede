@@ -44,8 +44,8 @@ export function urlToView(pathname, search) {
   const parts = pathname.split('/');
   let view = null;
   if (parts.length === 2 && SIMPLE.includes(parts[1])) view = { v: parts[1] };
-  // Keywords were once a view of their own; they are a card on the overview now.
-  else if (pathname === '/keywords') view = { v: 'overview' };
+  // Keywords and funnels were once views of their own; they are cards on the overview now.
+  else if (pathname === '/keywords' || pathname === '/funnels') view = { v: 'overview' };
   else if (parts[1] === 'page' && parts.length >= 3) {
     const f = { path: decodeURI('/' + parts.slice(2).join('/')) };
     if (q.has('referrer')) f.referrer = q.get('referrer');

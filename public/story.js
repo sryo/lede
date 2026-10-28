@@ -740,3 +740,56 @@ export const KEYWORDS_EMPTY = {
   site: 'No searches yet. Lede reads the words after ?q= or ?s= in your search page’s address, so a search box that puts them there shows up here.',
   paid: 'No ad words yet. Add utm_term={keyword} to your ads’ links, and the words people searched to see the ad show up here.',
 };
+/* ---------- funnels ---------- */
+
+// Below this many visits at the first step, a funnel is too small to say where people are lost.
+const FUNNEL_MIN = 30;
+const stepName = k => esc(pageName(k));
+const stepLabel = k => k === '/' ? 'Home page' : k;
+export const funnelName = steps => steps.map(stepLabel).join(' → ');
+export function stepHint({ steps, cur }, i) {
+  const s = `${stepLabel(steps[i])}: ${fmtInt(cur[i])} ${cur[i] === 1 ? 'visit' : 'visits'}`, lost = i ? cur[i - 1] - cur[i] : 0;
+  if (!i) return s;
+  return `${s}, ${cur[i - 1] ? fmtPct(cur[i] / cur[i - 1]) : '0%'} of those at ${pageName(steps[i - 1])}${lost ? `; ${fmtInt(lost)} lost on the way` : ''}`;
+}
+
+// "Of 120 visits that saw /pricing, 9 finished. Most were lost between /pricing and /signup."
+// drop: the step most visits never reached (the loss is between drop - 1 and drop), or -1 when none is picked out.
+export function funnelStory({ steps, cur }, days) {
+  const first = cur[0], last = cur[cur.length - 1], from = stepName(steps[0]);
+  if (!first) return { html: `No visits saw ${from} in the last ${days} days.`, drop: -1 };
+  if (first < FUNNEL_MIN) return { html: `Too few visits to say yet: <b>${fmtInt(first)}</b> saw ${from} and <b>${fmtInt(last)}</b> finished.`, drop: -1 };
+  const lost = cur.map((n, i) => i ? cur[i - 1] - n : 0), drop = lost.indexOf(Math.max(...lost));
+  const done = last === first ? `all <b>${fmtInt(last)}</b>` : last ? `<b>${fmtInt(last)}</b>` : '<b>none</b>';
+  let s = `Of <b>${fmtInt(first)}</b> visits that saw ${from}, ${done} finished.`;
+  if (last === first) return { html: s, drop: -1 };
+  const where = `between ${stepName(steps[drop - 1])} and ${stepName(steps[drop])}`;
+  s += lost[drop] * 2 > first - last ? ` Most were lost ${where}.` : ` The biggest drop was ${where}.`;
+  return { html: s, drop };
+}
+
+// A funnel's bars in px of span: each step's visits, at least 8px so the last step stays visible, and on top the
+// visits lost on the way to it, up to the step before: a pale neutral, stronger for the biggest drop. Never bounce red.
+export function funnelBars(cur, drop, span) {
+  const hs = cur.map(v => v && Math.max(8, Math.round(span * v / cur[0])));
+  return hs.map((h, i) => ({ v: cur[i], h, lost: i && Math.max(0, hs[i - 1] - h), hot: i === drop, lostFill: `var(--${i === drop ? 'lost' : 'line'})` }));
+}
+
+export const FUNNEL_EMPTY = 'A funnel shows where visits drop off on their way to a page that matters, such as a sign-up.';
+
+// Filled in, ready to save: the busiest page, then the first goal, unless a saved funnel already goes there.
+export function funnelOffer(rows, goals, funnels) {
+  const last = goals[0], first = rows.find(r => r.key !== last)?.key;
+  return last && first && !funnels.some(f => f[0] === first && f.at(-1) === last) ? `${first} → ${last}` : '';
+}
+
+// Steps typed on one line: "/pricing → /signup, /thanks".
+export function parseSteps(text) {
+  const steps = text.split(/[\s,→>]+/).filter(Boolean);
+  if (steps.length < 2) return { error: 'Type at least two pages, in the order a visit sees them.' };
+  if (steps.length > 5) return { error: 'A funnel can have at most five pages.' };
+  const bad = steps.find(s => !s.startsWith('/'));
+  if (bad) return { error: `Each page starts with a slash: /${bad}, not ${bad}.` };
+  if (new Set(steps).size < steps.length) return { error: 'A page can only be in a funnel once. Type each page twice and it would have to follow itself.' };
+  return { steps };
+}

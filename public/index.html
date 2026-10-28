@@ -55,6 +55,8 @@
   --live-t:color-mix(in srgb,var(--live) var(--a-rest),transparent); --live-p:color-mix(in srgb,var(--live) var(--a-pale),transparent);
   --live-ps:color-mix(in srgb,var(--live) var(--a-pale-s),transparent);
   --rule:color-mix(in srgb,var(--ink) 30%,var(--tile));
+  /* a funnel's biggest drop */
+  --lost:color-mix(in srgb,var(--ink) 20%,var(--tile));
   --focus:var(--page);
 }
 
@@ -240,7 +242,7 @@ button.tile-title:hover{color:var(--ink)}
 .add input{flex:1;min-width:0;height:32px;box-sizing:border-box;border:0;border-radius:999px;padding:0 16px;background:var(--tile);box-shadow:inset 0 0 0 1px var(--line);color:var(--ink);font:inherit;font-size:var(--fs-s)}
 .add input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .add .retry{margin:0;height:32px;padding:0 16px}
-.onboard .err{color:var(--bnc)} .onboard .err:empty{display:none}
+.err{color:var(--bnc);font-size:var(--fs-s)} .err:empty{display:none}
 .retry{border:0;border-radius:999px;padding:8px 16px;background:var(--ink);color:var(--win);cursor:pointer;font-size:var(--fs-s);font-weight:600;margin-top:4px}
 .retry:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .sk{display:block;background:var(--line);border-radius:6px}
@@ -323,6 +325,7 @@ button.tile-title:hover{color:var(--ink)}
 .ticks .t-top{transform:none} .ticks .t-end{transform:translateY(-100%)}
 .t-drop{color:var(--page);font-weight:700}
 .reach-fig figcaption{max-width:320px}
+.fun-head{margin-top:12px}
 .landed{position:relative;min-height:276px;height:28vh}
 .landed .lbl{all:unset;position:absolute;transform:translateY(-50%);font-size:var(--fs-xs);line-height:1.3;cursor:pointer;white-space:nowrap;max-width:calc(40% - 18px);overflow:hidden;text-overflow:ellipsis}
 .landed .lbl span{color:var(--muted)}
@@ -454,7 +457,7 @@ button.lrow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
 <script type="module">
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, spikeSegment, waterfall, waterfallCaption, bounceSplit, bounceCaption,
-  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems,
+  flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
   dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -492,13 +495,13 @@ const FILTER_OF={path:'path',entry:'path',exit:'path',referrer:'referrer',channe
 
 /* ---------- goals ---------- */
 // Pages that count as a visitor doing something, saved by the Worker for everyone who opens the dashboard.
-// The same answer carries the owner's notes on days ("Posted on Hacker News").
-let GOALS=[],NOTES=[],goalsReady=Promise.resolve();
+// The same answer carries the owner's notes on days ("Posted on Hacker News") and the funnels.
+let GOALS=[],NOTES=[],FUNNELS=[],goalsReady=Promise.resolve();
 // Runs alongside the stats; whatever needs the goals or notes waits on goalsReady. A reply for a site that is no
 // longer showing is dropped, so one site's goals are never saved over another's.
 function loadGoals(){
   const site=SITE;
-  return goalsReady=api('goals',{},true).catch(()=>({})).then(b=>{if(site===SITE){GOALS=b.goals||[];NOTES=b.notes||[]}});
+  return goalsReady=api('goals',{},true).catch(()=>({})).then(b=>{if(site===SITE){GOALS=b.goals||[];NOTES=b.notes||[];FUNNELS=b.funnels||[]}});
 }
 async function saveGoals(list){
   const before=GOALS;GOALS=list;
@@ -1128,7 +1131,7 @@ async function renderFilter(body,f){
   body.innerHTML=`<p class="say">${say}</p>${heroHTML(c,pr)}
     <section class="card"><div class="card-head"><div class="card-title">Visitors per day${pr.visitors?` vs the ${DAYS} days before`:''}</div>${overview&&HOME?'<span class="tile-key">Pick a day to note what you did</span>':''}</div><div class="chart"></div>${overview&&HOME?'<div class="marks"></div>':own.length?'<div class="marks own"></div>':''}</section>
     ${overview&&HOME?`<section class="card"><div class="card-title">What happened</div>${HOME.events.length?'<div class="events-list"></div>':`<p class="muted" style="margin:0">Nothing unusual in the last ${DAYS} days.</p>`}</section>`:''}
-    ${overview?'<section class="card"><div class="card-title heat-title">By weekday and hour</div><div class="chart"></div></section>':''}
+    ${overview?'<section class="card"><div class="card-title heat-title">By weekday and hour</div><div class="chart"></div></section><section class="card funnels-card" hidden></section>':''}
     ${f.path!=null?'<section class="card"><div class="card-title">Where readers came from, and where they went next</div><p class="cross-say"></p><div class="landed cross"></div><p class="say-sub landed-note"></p></section>':''}
     ${f.path!=null?'<section class="card goal-card" hidden></section>':''}
     ${f.path==null?'<section data-group="pages"></section>':''}
@@ -1151,6 +1154,7 @@ async function renderFilter(body,f){
     if(drawHeat(charts[1],HOME.S,HOME.ser,hourly)&&HOME.S.spike>=0)
       body.querySelector('.heat-title').innerHTML+=` · <span class="ring"></span> mostly visitors on ${fmtDate(dayDate(HOME.ser.start,HOME.S.spike))}`;
   }
+  if(overview)drawFunnels(body,gen);
   if(marks){
     drawMarks(marks,HOME.events,HOME.ser);
     body.querySelector('.events-list')?.replaceChildren(...HOME.events.map(e=>eventButton(e,HOME.ser,true)));
@@ -1294,6 +1298,73 @@ function renderDim(body,group){
   if(W)drawGrowth(body.querySelector('.steps'),W);
   // The list bolds whatever this page's sentence names.
   return dimSection(body.lastElementChild,group,{},false,new Set(cap?.key!=null?[cap.key]:[]));
+}
+
+/* ---------- funnels ---------- */
+// The overview's card: the first funnel's sentence, a chart per funnel, then the field to add one.
+async function drawFunnels(body,gen){
+  const sec=body.querySelector('.funnels-card');
+  await goalsReady;
+  const funnels=FUNNELS;let data;
+  try{data=await Promise.all(funnels.map(steps=>api('funnel',{steps})))}catch{return}
+  if(stale(body,gen))return;
+  const stories=data.map(f=>funnelStory(f,DAYS));
+  sec.innerHTML=`<div class="card-title">Funnels</div><p class="card-say">${stories[0]?.html||FUNNEL_EMPTY}</p>
+    ${data.map((f,i)=>`<div class="card-head fun-head"><span class="goal-text">${esc(funnelName(f.steps))}</span><button type="button" class="link goal-text">Remove</button></div>${i?`<p class="goal-text">${stories[i].html}</p>`:''}<div class="steps"></div>`).join('')}
+    ${funnels.length<5?`<form novalidate><div class="add"><input name="steps" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="/pricing → /signup → /thanks" aria-label="Pages, in order"><button class="retry">Save</button></div><span class="err" role="alert"></span></form>`:''}`;
+  sec.hidden=false;
+  const save=async(list,done)=>{
+    const r=await fetch(`/api/funnels?site=${encodeURIComponent(SITE)}`,{method:'PUT',body:JSON.stringify({funnels:list})}).catch(()=>null);
+    if(!r?.ok)return false;
+    FUNNELS=list;announce(done);drawFunnels(body,gen);return true;
+  };
+  sec.querySelectorAll('.steps').forEach((el,i)=>drawFunnel(el,data[i],stories[i].drop));
+  sec.querySelectorAll('.fun-head button').forEach((b,i)=>{
+    b.setAttribute('aria-label',`Remove the funnel ${funnelName(funnels[i])}`);
+    b.onclick=async()=>{if(!await save(funnels.filter((_,j)=>j!==i),'Funnel removed'))announce("Couldn't remove the funnel. Try again.")};
+  });
+  const form=sec.querySelector('form');if(!form)return;
+  const input=form.steps,err=form.querySelector('.err');
+  input.value=funnelOffer(HOME?.pageRows||[],GOALS,funnels);
+  input.oninput=()=>{err.textContent=''};
+  form.onsubmit=async e=>{
+    e.preventDefault();
+    const p=parseSteps(input.value);
+    if(p.error){err.textContent=p.error;return}
+    if(!await save([...funnels,p.steps],'Funnel saved'))err.textContent="Couldn't save it. Try again.";
+  };
+}
+
+// Visits at each step, and on top the visits lost on the way to it, the biggest drop's count in bold.
+function drawFunnel(el,f,drop){
+  const {steps,cur}=f,n=steps.length;
+  if(!cur[0]){el.innerHTML='<div class="empty">No visits yet</div>';return}
+  observe(el,()=>{
+    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+    const padT=26,base=H-40,slot=W/n,bw=Math.min(96,slot*.62),x=i=>i*slot+(slot-bw)/2,fit=Math.max(6,Math.floor(slot/7)),B=funnelBars(cur,drop,base-padT),top=i=>base-B[i].h;
+    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(steps.map((k,i)=>stepHint(f,i)).join('. '))}"><line x1="0" x2="${W}" y1="${base+.5}" y2="${base+.5}" stroke="var(--rule)"/>`;
+    B.forEach((b,i)=>{
+      const mid=x(i)+bw/2,y=top(i);
+      // The drop runs on under the bar, so the two meet without a notch between their rounded corners.
+      if(b.lost){
+        s+=`<rect x="${x(i)}" y="${y-b.lost}" width="${bw}" height="${Math.min(base,y+3)-y+b.lost}" rx="3" fill="${b.lostFill}"/>`;
+        s+=`<text x="${mid}" y="${y-b.lost-8}" text-anchor="middle" font-size="${b.hot?14:12}"${b.hot?' font-weight="700"':''} fill="var(--${b.hot?'ink':'muted'})">${fmtSigned(b.v-cur[i-1])}</text>`;
+      }
+      s+=`<rect x="${x(i)}" y="${y}" width="${bw}" height="${b.h}" rx="3" fill="var(--page)"/>`;
+      if(i)s+=`<line x1="${x(i-1)+bw}" x2="${x(i)}" y1="${top(i-1)}" y2="${top(i-1)}" stroke="var(--rule)" stroke-dasharray="3 3"/>`;
+      s+=`<text x="${mid}" y="${base+16}" text-anchor="middle" font-size="12" fill="var(--muted)">${esc(shorten(funnelName([steps[i]]),fit))}</text>`;
+      s+=`<text x="${mid}" y="${base+32}" text-anchor="middle" font-size="12" font-weight="600" fill="var(--ink)">${fmtInt(b.v)}${i?` · ${fmtPct(cur[i-1]?b.v/cur[i-1]:0)}`:''}</text>`;
+    });
+    el.innerHTML=s+'</svg>';
+    // Each step opens its page, as the steps in the other waterfalls open what they name.
+    steps.forEach((k,i)=>{
+      const b=document.createElement('button'),t=Math.max(0,top(i&&i-1)-26);b.type='button';b.className='step';b.title=stepHint(f,i);
+      Object.assign(b.style,{left:x(i)-4+'px',top:t+'px',width:bw+8+'px',height:H-t+'px'});
+      b.setAttribute('aria-label',`${b.title}. Zoom in`);
+      b.onclick=e=>{e.stopPropagation();openFilter({path:k},k,b)};
+      el.appendChild(b);
+    });
+  });
 }
 
 // The link to the bounce page says what bounce did overall, not what it did for this slice.
