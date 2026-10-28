@@ -18,10 +18,15 @@
   "kv_namespaces": [{ "binding": "STORE" }],
   // Alerts (src/alerts.js): the week's story on Monday at 08:00 UTC, and a check for spikes every 15 minutes.
   // Both do nothing until ALERT_WEBHOOK is set.
-  "triggers": { "crons": ["0 8 * * 1", "*/15 * * * *"] }
-  // Secrets, asked for by the deploy button or set with `npx wrangler secret put <NAME>`:
-  //   ANALYTICS_TOKEN     API token with Account Analytics Read
+  "triggers": { "crons": ["0 8 * * 1", "*/15 * * * *"] },
+  // Workers Logs: what Lede says when something goes wrong (a query that failed, a webhook that didn't
+  // answer), in the Cloudflare dashboard under Workers & Pages, lede, Observability. The line Cloudflare
+  // adds for every request is left out, so page views don't use up the free plan's 200,000 log lines a day.
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } }
+  // Secrets, asked for by the deploy button (the first two) or set with `npx wrangler secret put <NAME>`:
+  //   ANALYTICS_TOKEN     API token from the link in docs/how-it-works.md: reads the stats, finds the account, takes page pictures
   //   DASHBOARD_PASSWORD  protects the dashboard and stats API
+  // Set only with `npx wrangler secret put ALERT_WEBHOOK`:
   //   ALERT_WEBHOOK       optional: a Slack, Discord or ntfy address that gets the weekly story and spikes
   // Optional vars:
   //   ACCOUNT_ID          only when the token reaches more than one account
@@ -29,7 +34,9 @@
   //   RESPECT_GPC         "true" leaves out browsers that send Global Privacy Control
   //   ALERTS              "weekly", "spikes" or "weekly,spikes" (the default) once ALERT_WEBHOOK is set
   //   DASHBOARD_URL       the dashboard's address for the links in alerts, when it isn't where you last signed in
-  // Optional: Cloudflare's rate limiter, so the 60 events a minute per sender (src/collect.js) also counts
-  // across Worker instances. Not on by default, since Cloudflare doesn't say the Free plan includes it:
-  //   "ratelimits": [{ "name": "BEACON_LIMIT", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } }]
+  // Optional: Cloudflare's rate limiter, so the 60 events a minute per sender (src/collect.js) and the
+  // sign-in tries (src/index.js) also count across Worker instances. Not on by default, since Cloudflare
+  // doesn't say the Free plan includes it:
+  //   "ratelimits": [{ "name": "BEACON_LIMIT", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } },
+  //                  { "name": "SIGNIN_LIMIT", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }]
 }
