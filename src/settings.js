@@ -3,6 +3,8 @@
 //   salt:YYYY-MM   random secret that hashes that month's visitors; deletes itself when the month is over
 //   account        Cloudflare account ID, read from the API token the first time stats are asked for
 //   goals:<site>   JSON list of goal paths
+//   origin         the dashboard's address, for the links in alerts; saved when the dashboard opens
+//   spike:<site>   the day's spike alerts sent so far; deletes itself after two days
 import { HttpError } from './errors.js';
 
 // Every event reads the sites and the salt, so each isolate keeps them for a minute
@@ -123,4 +125,13 @@ async function lookUpAccount(env, store, fetchImpl) {
   }
   await store.put('account', accounts[0].id);
   return accounts[0].id;
+}
+
+// The Worker can't tell its own address on a schedule, so it keeps the one the dashboard was last opened at.
+// Each isolate checks KV once per address, and writes only when it changed.
+const origins = new WeakMap();
+export async function rememberOrigin(env, origin) {
+  if (!env.STORE || origins.get(env.STORE) === origin) return;
+  origins.set(env.STORE, origin);
+  if (await env.STORE.get('origin') !== origin) await env.STORE.put('origin', origin);
 }

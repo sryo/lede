@@ -193,3 +193,12 @@ export const liveSql = (ds, site) =>
   `SELECT ${COL.visitor} AS visitor, argMax(${COL.path}, timestamp) AS path, argMin(${COL.referrer}, timestamp) AS referrer, `
   + `argMin(${COL.country}, timestamp) AS country, toUnixTimestamp(min(timestamp)) AS first, toUnixTimestamp(max(timestamp)) AS last `
   + `FROM ${ds} WHERE index1 = '${site}' AND (${COL.type} = 'pageview' OR ${COL.type} = 'ping') AND timestamp > now() - INTERVAL '30' MINUTE GROUP BY visitor ORDER BY last DESC LIMIT 200`;
+
+// How many people are usually here at this time of day: visitors seen in the same 5 minutes (the span
+// "here now" counts) on each of the days days before now, one row per day that had any.
+export const usualSql = (ds, site, nowSec, days) => {
+  const from = nowSec - days * DAY - 300, at = `(toUnixTimestamp(timestamp) - ${from})`;
+  return `SELECT intDiv(${at}, ${DAY}) AS d, count(DISTINCT ${COL.visitor}) AS visitors FROM ${ds} `
+    + `WHERE index1 = '${site}' AND (${COL.type} = 'pageview' OR ${COL.type} = 'ping') `
+    + `AND timestamp >= toDateTime(${from}) AND timestamp < toDateTime(${nowSec - DAY}) AND ${at} - intDiv(${at}, ${DAY}) * ${DAY} < 300 GROUP BY d`;
+};

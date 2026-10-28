@@ -1,5 +1,7 @@
 import { collect } from './collect.js';
 import { handleApi } from './api.js';
+import { runAlerts } from './alerts.js';
+import { rememberOrigin } from './settings.js';
 
 async function sameSecret(a, b) {
   const enc = s => crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
@@ -54,8 +56,16 @@ export default {
     // Everything else but /api/* is served straight from the assets (see wrangler.jsonc); this is for local dev.
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(req);
     if (crossSite(req, url)) return new Response('Changes can only be made from the dashboard.', { status: 403 });
-    if (pathname === '/api/signin' && req.method === 'POST') return signIn(req, env);
-    if (!await signedIn(req, env)) return json({ error: 'Enter your password.', signIn: true }, 401);
-    return handleApi(req, env, ctx);
+    const res = pathname === '/api/signin' && req.method === 'POST' ? await signIn(req, env)
+      : !await signedIn(req, env) ? json({ error: 'Enter your password.', signIn: true }, 401)
+        : await handleApi(req, env, ctx);
+    // Alerts link to the dashboard, but a schedule doesn't know the Worker's address. The dashboard asks for
+    // the sites when it opens, and signs in from the same address.
+    if (res.ok && (pathname === '/api/signin' || pathname === '/api/sites')) ctx.waitUntil(rememberOrigin(env, url.origin));
+    return res;
+  },
+  // The weekly story and spike alerts (src/alerts.js), on the crons in wrangler.jsonc.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(runAlerts(event.cron, env, event.scheduledTime));
   },
 };

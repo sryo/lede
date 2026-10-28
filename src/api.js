@@ -100,8 +100,12 @@ export function sqlStore(env, fetchImpl = fetch) {
       const from = Q.hourlyStart(q);
       return { start: from, days: q.days, visitors: toHourly(await run(Q.hourlySql(ds, q, from, q.end)), q.days) };
     },
-    async live(q) {
-      return shapeLive(await run(Q.liveSql(ds, q.site)), Math.floor(Date.now() / 1000));
+    async live(q, nowSec = Math.floor(Date.now() / 1000)) {
+      return shapeLive(await run(Q.liveSql(ds, q.site)), nowSec);
+    },
+    // Rows per day; days with nobody have none.
+    async usual(site, nowSec, days) {
+      return (await run(Q.usualSql(ds, site, nowSec, days))).map(r => Number(r.visitors) || 0);
     },
     async conversions(q, goals) {
       return toConversions(await run(Q.conversionsSql(ds, q, q.start, q.end, goals)));
@@ -141,6 +145,9 @@ async function goals(req, q, env) {
   return { goals: JSON.parse(await env.STORE.get(key) || '[]') };
 }
 
+// The channel a referrer host falls in when no UTM tags say otherwise.
+export const withChannels = out => ({ ...out, rows: out.rows.map(r => ({ ...r, channel: channelFor(r.key, new URLSearchParams()) })) });
+
 async function route(name, url, env, store, req) {
   const demo = env.DEMO === 'true';
   if (name === 'sites') {
@@ -166,9 +173,7 @@ async function route(name, url, env, store, req) {
       const dim = url.searchParams.get('dim');
       if (!Q.BREAKDOWNS.includes(dim)) throw new HttpError(400, `dim must be one of: ${Q.BREAKDOWNS.join(', ')}.`);
       const out = await store.breakdown(q, dim);
-      // The channel a referrer host falls in when no UTM tags say otherwise.
-      if (dim === 'referrer') out.rows = out.rows.map(r => ({ ...r, channel: channelFor(r.key, new URLSearchParams()) }));
-      return out;
+      return dim === 'referrer' ? withChannels(out) : out;
     }
     default: throw new HttpError(404, 'Unknown API route.');
   }

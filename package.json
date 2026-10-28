@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --var DEMO:true",
+    "dev": "wrangler dev --var DEMO:true --test-scheduled",
     "deploy": "wrangler deploy",
     "test": "node --test",
     "bench": "node scripts/bench.mjs",

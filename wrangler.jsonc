@@ -15,12 +15,18 @@
   // Created on first write; the stats API queries it by this name.
   "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "lede" }],
   // Created on deploy. Keeps the sites, the visitor salt, the account ID and goals.
-  "kv_namespaces": [{ "binding": "STORE" }]
+  "kv_namespaces": [{ "binding": "STORE" }],
+  // Alerts (src/alerts.js): the week's story on Monday at 08:00 UTC, and a check for spikes every 15 minutes.
+  // Both do nothing until ALERT_WEBHOOK is set.
+  "triggers": { "crons": ["0 8 * * 1", "*/15 * * * *"] }
   // Secrets, asked for by the deploy button or set with `npx wrangler secret put <NAME>`:
   //   ANALYTICS_TOKEN     API token with Account Analytics Read
   //   DASHBOARD_PASSWORD  protects the dashboard and stats API
+  //   ALERT_WEBHOOK       optional: a Slack, Discord or ntfy address that gets the weekly story and spikes
   // Optional vars:
   //   ACCOUNT_ID          only when the token reaches more than one account
   //   KEEP_DATACENTER     "true" counts visits from cloud and hosting networks (dropped by default)
   //   RESPECT_GPC         "true" leaves out browsers that send Global Privacy Control
+  //   ALERTS              "weekly", "spikes" or "weekly,spikes" (the default) once ALERT_WEBHOOK is set
+  //   DASHBOARD_URL       the dashboard's address for the links in alerts, when it isn't where you last signed in
 }

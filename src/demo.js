@@ -299,3 +299,17 @@ export const demoStore = {
     return shapeLive(LIVE.map(v => ({ ...v, first: now - v.ago - v.span, last: now - v.ago })), now);
   },
 };
+
+// For the alerts `npm run dev` can run on its schedule: the same weeks, and a busy moment where a link on
+// Hacker News has brought 24 people at once, most to /migration, at an hour that usually has about 2.
+const HN_CROWD = Array.from({ length: 24 }, (_, i) => ({ path: i < 17 ? '/migration' : PATHS[i % 5].key, referrer: i % 4 ? 'news.ycombinator.com' : 'google.com',
+  country: ['US', 'GB', 'DE', 'CA'][i % 4], ago: 8 + i * 11, span: 40 + i * 7 }));
+export const demoAlertStore = {
+  ...demoStore,
+  async live(q, now = Math.floor(Date.now() / 1000)) {
+    return shapeLive(HN_CROWD.map(v => ({ ...v, first: now - v.ago - v.span, last: now - v.ago })), now);
+  },
+  async usual() {
+    return [3, 2, 1, 2, 4, 2, 1, 3, 2, 2, 1, 3, 2, 2];
+  },
+};

@@ -41,6 +41,23 @@ A page's view shows how long the page is read on average and how far down people
 
 A goal is a page that means a visitor did something, such as `/signup`. Flag it from the Pages list or a page's view, or answer the question on home when a page looks like one. Click the flag again to stop tracking it.
 
+## Get the story by message
+
+Lede can send the week's story every Monday, and a line when far more people than usual are on your site at once, to Slack, Discord or ntfy. Nothing is sent, and no stats are read for it, until you give it an address.
+
+1. Make an incoming webhook: in Slack, an [incoming webhook](https://api.slack.com/messaging/webhooks) for a channel; in Discord, the channel's settings, Integrations, Webhooks, New Webhook, Copy Webhook URL; for ntfy, any topic address, such as `https://ntfy.sh/<a-long-name-only-you-know>`, then subscribe to it in the ntfy app.
+2. Run `npx wrangler secret put ALERT_WEBHOOK` and paste the address.
+3. Open the dashboard once, so the messages can link to it: Lede remembers the address it was last opened at. On a custom domain, or to link somewhere else, add `"DASHBOARD_URL": "https://stats.example.com"` to `vars` in `wrangler.jsonc` instead.
+
+Both messages are on once the webhook is set. For only one, add `"ALERTS": "weekly"` or `"ALERTS": "spikes"` to `vars`.
+
+- **The week's story**, Monday at 08:00 UTC: for each site, the same sentence home shows for 7 days, about Monday to Sunday (UTC) against the week before, then the visitor total, the top source and the page that moved most (or was read most), and a link to the dashboard's last 7 days. All sites go in one message.
+- **Spikes**, checked every 15 minutes: when at least 10 people are here now and that's at least twice the usual (or the usual plus 10, at a quiet hour), it says how many, the page most of them are on, where most came from, and how many are usually here at this time of day, such as "42 people are on /blog/x right now, most from Hacker News. Usually about 3 at this time of day." The usual is the average of the same 5 minutes on each of the 14 days before. At most two a day per site, at least 3 hours apart, so one long spike is told once.
+
+Slack gets `{"text": …}`, Discord `{"content": …}` (and pings nobody), and any other address the text itself in a `POST`, which is what ntfy expects. A webhook that fails is logged in the Worker's logs and nothing else stops. The times are in `triggers.crons` in `wrangler.jsonc`; the spike check must stay `*/15 * * * *`, and any other schedule sends the week's story.
+
+To see the messages without a webhook, run `npm run dev` and open http://localhost:8787/__scheduled?cron=0+8+*+*+1 (the story) or http://localhost:8787/__scheduled?cron=*/15+*+*+*+* (a spike): the terminal prints them, from the sample data. With `ALERT_WEBHOOK` in `.dev.vars`, they go to the webhook, which is a quick way to test it.
+
 ## Pieces
 
 | Piece | Where |
@@ -50,7 +67,8 @@ A goal is a page that means a visitor did something, such as `/signup`. Flag it 
 | Stats API (`GET /api/*`) | `src/api.js` and `src/queries.js`. Runs SQL against Analytics Engine through the SQL API and keeps answers for 60 s (15 s for live). Changes (`POST`/`PUT`) are only accepted from the dashboard's own origin. |
 | Dashboard (`/`) | `public/index.html`, with the story logic (what the sentences say, the bounce split, the waterfall, the crowd) in `public/story.js`, which `test/story.test.js` covers. The crowd's figures are [Wee People](https://github.com/propublica/weepeople) by ProPublica (CC BY-NC-ND 3.0), in `public/weepeople.woff2`. |
 | Password (`POST /api/signin`) | `src/index.js`. When `DASHBOARD_PASSWORD` is set, the stats answer only with a cookie that holds a hash of it; the dashboard page shows its own password card until then. Changing the password signs everyone out. |
-| Settings | `src/settings.js`. Sites, each month's visitor salt, the account ID and goals, kept in the `STORE` KV namespace. |
+| Settings | `src/settings.js`. Sites, each month's visitor salt, the account ID, goals, the dashboard's address (for links in messages) and how many spike messages went out today, kept in the `STORE` KV namespace. |
+| Messages | `src/alerts.js`, run by the Worker's `scheduled` handler on the crons in `wrangler.jsonc`. Tells the week with `readStory` and `tellStory` from `public/story.js`, the same code home uses. |
 | Sample data | `src/demo.js`, used when `DEMO="true"` (`npm run dev` sets it). |
 
 Each event is one data point, indexed by site. The blob order is defined once in `src/schema.js`:
@@ -105,6 +123,7 @@ Days run from local midnight to local midnight in `tzName`, so the day the clock
 
 ### Limits
 
+- Messages read stats only once `ALERT_WEBHOOK` is set. The spike check is one Analytics Engine query per site every 15 minutes (96 a day), plus one for the usual crowd when 10 or more people are here and a message could go out, so 96 to at most 192 a day per site; the week's story is 6 queries per site once a week. The free limit is 10,000 queries a day, and loading the dashboard home is 10. They write to KV only when a spike message goes out (at most 2 a day per site, of the free 1,000), and when the dashboard's address changes.
 - Analytics Engine keeps data for 3 months, so periods are capped at 45 days (the comparison period doubles that).
 - Every event is one Analytics Engine write and one Worker request. Engagement adds roughly one write per page view (a little less: glances under a second and some closed tabs never send one), and link clicks a few more, so a site writes about twice as many data points with it on. The Workers Free plan allows 100,000 Analytics Engine writes and 100,000 Worker requests a day: about 100,000 page views a day without engagement, or about 50,000 with it. Past that, add `data-engagement="false"` to the script tag, or move to Workers Paid.
 - At very high volume Analytics Engine samples data. View counts, and engagement averages, are corrected with `_sample_interval`; distinct visitor counts are not. Bounce counts the events stored for a visit, so a sampled single view still counts as one page. When this happens in a period, home says so under the sentence.
