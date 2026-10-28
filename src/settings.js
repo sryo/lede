@@ -5,7 +5,7 @@
 //   settings:<site> JSON {goals, funnels, notes}: goal paths, funnels (lists of paths) and the owner's notes
 //                  on days, {day: YYYY-MM-DD, text}; a field not there was never saved. Read and written in
 //                  api.js. Older versions kept each in its own key (goals:<site>, funnels:<site>,
-//                  notes:<site>), which are read until the site's settings are first saved.
+//                  notes:<site>); the first read moves them here.
 //   origin         the dashboard's address, for the links in alerts; saved when the dashboard opens
 //   spike:<site>   the day's spike alerts sent so far; deletes itself after two days
 //   added:<site>   when the site's first event was seen (unix seconds), written once by alerts.js
@@ -60,8 +60,12 @@ export async function getSettings(env, site) {
   const store = storeOf(env);
   const saved = await store.get(`settings:${site}`);
   if (saved) return JSON.parse(saved);
+  // Settings in the older keys move to the one key the first time they're read (one write per site, ever),
+  // so the weekly message, which reads only that key, has the owner's notes too.
   const old = await Promise.all(PARTS.map(k => store.get(`${k}:${site}`)));
-  return Object.fromEntries(PARTS.flatMap((k, i) => old[i] == null ? [] : [[k, JSON.parse(old[i])]]));
+  const moved = Object.fromEntries(PARTS.flatMap((k, i) => old[i] == null ? [] : [[k, JSON.parse(old[i])]]));
+  if (Object.keys(moved).length) await saveSettings(env, site, moved).catch(() => {});
+  return moved;
 }
 
 export const saveSettings = (env, site, settings) => storeOf(env).put(`settings:${site}`, JSON.stringify(settings));

@@ -244,10 +244,10 @@ async function daysOfData(env, store, site, nowSec) {
   return first ? Math.max(0, Math.min(USUAL_DAYS, Math.floor((nowSec - 300 - first) / DAY))) : USUAL_DAYS;
 }
 
-async function spike(env, store, site, nowSec, many, fetchImpl) {
-  const live = await store.live({ site }, nowSec);
+const crowded = live => live.visitors.filter(v => v.active).length >= MIN_PEOPLE;
+
+async function spike(env, store, site, live, nowSec, many, fetchImpl) {
   const here = live.visitors.filter(v => v.active);
-  if (here.length < MIN_PEOPLE) return;
   const key = `spike:${site}`, day = new Date(nowSec * 1000).toISOString().slice(0, 10);
   const was = JSON.parse(await env.STORE.get(key) || 'null');
   const sent = was?.day === day ? was.sent : 0;
@@ -263,10 +263,24 @@ async function spike(env, store, site, nowSec, many, fetchImpl) {
   if (await send(env, text, fetchImpl)) await env.STORE.put(key, JSON.stringify({ day, sent: sent + 1, at: nowSec }), { expirationTtl: 2 * DAY });
 }
 
-async function spikes(env, store, nowMs, fetchImpl) {
-  const sites = await getSites(env), nowSec = Math.floor(nowMs / 1000);
-  await Promise.all(sites.map(site => spike(env, store, site, nowSec, sites.length > 1, fetchImpl)
-    .catch(e => console.error(`Couldn’t check ${site} for a crowd (${e.message}). It tries again in 15 minutes.`))));
+// Looking for a crowd is one query a site, so a run looks at as many sites as leave room for one crowd's
+// follow-up (KV, the usual, the source, the message: CROWD requests at most). With more sites than that,
+// each run takes the next ones in turn, so every site is still looked at every few runs.
+const CROWD = 10;
+
+async function spikes(env, store, nowMs, fetchImpl, budget) {
+  const sites = await getSites(env), nowSec = Math.floor(nowMs / 1000), many = sites.length > 1;
+  budget.cap(SUBREQUESTS);
+  const n = Math.min(sites.length, SUBREQUESTS - CROWD), from = Math.floor(nowSec / 900) * n % (sites.length || 1);
+  const turn = Array.from({ length: n }, (_, i) => sites[(from + i) % sites.length]);
+  const fail = site => e => console.error(`Couldn’t check ${site} for a crowd (${e.message}). It tries again in 15 minutes.`);
+  const lives = await Promise.all(turn.map(site => store.live({ site }, nowSec).then(live => ({ site, live }), fail(site))));
+  const later = [];
+  for (const { site, live } of lives.filter(x => x && crowded(x.live))) {
+    if (budget.used() + CROWD > SUBREQUESTS) later.push(site);
+    else await spike(env, store, site, live, nowSec, many, fetchImpl).catch(fail(site));
+  }
+  if (later.length) console.error(`${names(later)} had a crowd, but this run had no requests left to tell it. Lede looks again in 15 minutes.`);
 }
 
 /* ---------- the schedule ---------- */

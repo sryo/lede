@@ -305,6 +305,20 @@ test('fewer than 10 people, or a usual crowd, sends nothing; under 10 costs one 
   assert.equal(usual.sent.length, 0, '30 against a usual 20 is a busy moment, not a spike');
 });
 
+test('with many sites, a spike run stays within a Free schedule’s requests and looks at the next sites each time', async () => {
+  const sites = Array.from({ length: 60 }, (_, i) => `s${i}.org`), e = env({ STORE: memoryKV({ sites: JSON.stringify(sites) }) });
+  const looked = new Set();
+  for (const step of [0, 1, 2]) {
+    const f = fakes({ here: 40 });
+    await run(SPIKES, e, f, WED + step * 15 * 60e3);
+    const live = f.sql.filter(b => b.includes('argMax(blob2'));
+    assert.ok(f.sql.length + f.sent.length <= SUBREQUESTS, `run ${step}: ${f.sql.length + f.sent.length} requests`);
+    assert.ok(live.length < sites.length && f.sent.length >= 1, 'a slice of the sites, and a crowd still told');
+    for (const b of live) looked.add(b.match(/index1 = '([^']+)'/)[1]);
+  }
+  assert.equal(looked.size, sites.length, 'three runs look at every site');
+});
+
 test('at most two spike messages a day per site, hours apart, and the count starts again the next day', async () => {
   const f = fakes({ here: 50 });
   const e = env();

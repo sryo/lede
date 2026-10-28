@@ -162,13 +162,14 @@ test('goals and funnels saved by an older version are read as they would be save
   assert.equal((await call(`conversions?site=example.com&${goals}`, { ...env, DEMO: 'true' })).status, 200);
 });
 
-test('goals, funnels and notes share one key per site; the old keys are read until it is first saved', async () => {
+test('goals, funnels and notes share one key per site; the old keys move there the first time they are read', async () => {
   const STORE = memoryKV({ sites: '["example.com"]', 'goals:example.com': '["/signup"]', 'notes:example.com': '[{"day":"2026-10-16","text":"Hi"}]' });
   let reads = 0;
   const get = STORE.get;
   STORE.get = k => (reads++, get(k));
   const env = { STORE };
   assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/signup'], funnels: [], notes: [{ day: '2026-10-16', text: 'Hi' }] });
+  assert.deepEqual(JSON.parse(STORE.m.get('settings:example.com')), { goals: ['/signup'], notes: [{ day: '2026-10-16', text: 'Hi' }] }, 'so the weekly message reads one key');
   await call('funnels?site=example.com', env, { method: 'PUT', body: JSON.stringify({ funnels: [['/', '/signup']] }) });
   assert.deepEqual(JSON.parse(STORE.m.get('settings:example.com')), { goals: ['/signup'], notes: [{ day: '2026-10-16', text: 'Hi' }], funnels: [['/', '/signup']] });
   reads = 0;
