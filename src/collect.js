@@ -241,7 +241,7 @@ export async function collect(req, env, ctx) {
   const salt = await getSalt(env, now);
   const ip = req.headers.get('CF-Connecting-IP') || '';
   // Senders are hashes, so no address is kept in memory. BEACON_LIMIT is Cloudflare's rate limiter,
-  // used when it's bound in wrangler.jsonc (see docs/how-it-works.md, Limits); it counts across this
+  // used when it's bound in wrangler.jsonc (see docs/how-it-works.md, Cost and limits); it counts across this
   // location's Worker instances, which the in-memory caps can't. It's asked once per request.
   const address = senderKey(`${salt}|${ip}`);
   if (env.BEACON_LIMIT && !(await env.BEACON_LIMIT.limit({ key: address })).success) return new Response(null, { status: 204, headers: CORS });
