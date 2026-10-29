@@ -351,6 +351,9 @@ button.tile-title:hover{color:var(--ink)}
 .io-k{all:unset;cursor:pointer;white-space:nowrap;padding-block:4px}
 .io-k:hover{text-decoration:underline}.io-k:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
 .io .sw{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:1px}
+:where(.hatch-diag,.hatch-dots,.hatch-back,.hatch-squiggle){position:relative}:is(.hatch-diag,.hatch-dots,.hatch-back,.hatch-squiggle)::after{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:var(--hatch-ink,oklch(from var(--hatch-on,currentColor) calc(l - clamp(-1,(l - .599999)*1e9,1)*.4) c h));opacity:var(--hatch-a,.85);-webkit-mask:var(--hatch-g,linear-gradient(#0000,#0000)) 0 0/var(--hatch-size,8px);mask:var(--hatch-g,linear-gradient(#0000,#0000)) 0 0/var(--hatch-size,8px);print-color-adjust:exact;forced-color-adjust:none}@media (forced-colors:active){*{--hatch-ink:CanvasText!important;--hatch-a:1!important}}.hatch-diag.w1{--hatch-g:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path d='M0 7.36 7.36 0H8v.64L.64 8H0zM0 0h.64L0 .64zM8 7.36V8h-.64z'/></svg>")}.hatch-dots.w2{--hatch-g:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path d='M.139 2a1.861 1.861 0 1 0 3.722 0a1.861 1.861 0 1 0-3.722 0zM4.139 6a1.861 1.861 0 1 0 3.722 0a1.861 1.861 0 1 0-3.722 0z'/></svg>")}.hatch-back.w3{--hatch-g:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path fill-rule='evenodd' d='M0 0h8v8H0zM0 0h1.72L8 6.28V8h-1.72L0 1.72zM0 6.28 1.72 8H0zM6.28 0H8v1.72z'/></svg>")}.hatch-squiggle.w4{--hatch-g:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path fill-rule='evenodd' d='M0 0h8v8H0zM-.382 4A2.382 2.382 0 0 1 4.382 4H3.618A1.618 1.618 0 0 0 .382 4zM3.618 4A2.382 2.382 0 0 0 8.382 4H7.618A1.618 1.618 0 0 1 4.382 4zM-4.382 4A2.382 2.382 0 0 0 .382 4H-.382A1.618 1.618 0 0 1 -3.618 4zM7.618 4A2.382 2.382 0 0 1 12.382 4H11.618A1.618 1.618 0 0 0 8.382 4z'/></svg>")}@media (prefers-color-scheme:dark){.hatch-diag.w1{--hatch-g:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path d='M0 6.8 6.8 0H8v1.2L1.2 8H0zM0 0h1.2L0 1.2zM8 6.8V8h-1.2z'/></svg>")}.hatch-dots.w2{--hatch-g:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path fill-rule='evenodd' d='M0 0h8v8H0zM-.165 2a2.165 2.165 0 1 0 4.329 0a2.165 2.165 0 1 0-4.329 0zM-.165 10a2.165 2.165 0 1 0 4.329 0a2.165 2.165 0 1 0-4.329 0zM7.835 2a2.165 2.165 0 1 0 4.329 0a2.165 2.165 0 1 0-4.329 0zM7.835 10a2.165 2.165 0 1 0 4.329 0a2.165 2.165 0 1 0-4.329 0zM-4.165 -2a2.165 2.165 0 1 0 4.329 0a2.165 2.165 0 1 0-4.329 0zM-4.165 6a2.165 2.165 0 1 0 4.329 0a2.165 2.165 0 1 0-4.329 0zM3.835 -2a2.165 2.165 0 1 0 4.329 0a2.165 2.165 0 1 0-4.329 0zM3.835 6a2.165 2.165 0 1 0 4.329 0a2.165 2.165 0 1 0-4.329 0z'/></svg>")}.hatch-back.w3{--hatch-g:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path fill-rule='evenodd' d='M0 0h8v8H0zM0 0h1.12L8 6.88V8h-1.12L0 1.12zM0 6.88 1.12 8H0zM6.88 0H8v1.12z'/></svg>")}.hatch-squiggle.w4{--hatch-g:url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'><path fill-rule='evenodd' d='M0 0h8v8H0zM-.382 4A2.382 2.382 0 0 1 4.382 4H3.618A1.618 1.618 0 0 0 .382 4zM3.618 4A2.382 2.382 0 0 0 8.382 4H7.618A1.618 1.618 0 0 1 4.382 4zM-4.382 4A2.382 2.382 0 0 0 .382 4H-.382A1.618 1.618 0 0 1 -3.618 4zM7.618 4A2.382 2.382 0 0 1 12.382 4H11.618A1.618 1.618 0 0 0 8.382 4z'/></svg>")}}
+.sw.hk{display:inline-block;width:14px;height:14px;border-radius:3px;margin-right:6px;vertical-align:-3px;overflow:hidden}
+.src-h,.page-h,.time-h{--hatch-ink:var(--tile);--hatch-a:1}.src-h,.src-s{background:var(--src)}.page-h,.page-s{background:var(--page)}.time-h,.time-s{background:var(--time)}
 .io small{color:var(--muted);font-size:var(--fs-xs);margin-left:4px}.io .io-more{color:var(--muted)}
 .more-link{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) 10px;align-items:center;gap:12px;
   width:calc(100% - 8px);margin:0 -8px;padding:8px;border-radius:8px;font-size:var(--fs-s);color:var(--muted)}
@@ -1424,6 +1427,10 @@ async function renderFilter(body,f){
 
 // The overview's sources and pages, one strip each, from the rows home already has: led by what home's sentence left
 // out on each side, the row it names solid and the rest faded, as on the audience card; each label opens its row.
+// A strip shades by position: the first segment plain, each next one under more texture.
+const GLYPHS4=['diag','dots','back','squiggle'];
+const shadeSeg=(subj,i)=>i?`class="${subj}-h hatch-${GLYPHS4[Math.min(4,i)-1]} w${Math.min(4,i)}"`:`class="${subj}-s"`;
+const keySw=(subj,i)=>`<span ${shadeSeg(subj,i).replace('class="','class="sw hk ')}></span>`;
 function drawInOut(sec,H){
   const src=findings(H.S,H.T.told,`the ${DAYS} days before`)[0],pg=pagesFinding(H.pageRows,H.T.page);
   const said=[src,pg].filter(Boolean).map(x=>x.html.replace(/\.?$/,'.')).join(' ');
@@ -1434,11 +1441,13 @@ function drawInOut(sec,H){
   [[sources,'Sources','sources','referrer','src',src?.key],[H.pageRows.filter(r=>r.value>0),'Pages','pages','path','page',pg?.key]].forEach(([rows,title,group,f,subj,named])=>{
     const all=sum(rows.map(r=>r.value)),on=rows.find(r=>r.key===named),far=rows.indexOf(on)>3;
     const top=rows.slice(0,far?3:4).concat(far?[on]:[]),rest=all-sum(top.map(r=>r.value));
-    io.insertAdjacentHTML('beforeend',`<span class="k">${title}</span><div class="strip" aria-hidden="true">${top.map(r=>`<i style="flex:${r.value};background:var(--${subj}${r===on?'':'-t'})" title="${esc(r.label)}"></i>`).join('')}${rest>0?`<i style="flex:${rest};background:var(--${subj}-p)"></i>`:''}</div><p></p>`);
+    const at=r=>top.indexOf(r),seg=(r,i)=>shadeSeg(subj,i);
+    io.insertAdjacentHTML('beforeend',`<span class="k">${title}</span><div class="strip" aria-hidden="true">${top.map((r,i)=>`<i ${seg(r,i)} style="flex:${r.value}" title="${esc(r.label)}"></i>`).join('')}${rest>0?`<i ${seg(null,top.length)} style="flex:${rest}"></i>`:''}</div><p></p>`);
     const p=io.lastChild;
     for(const r of top){
       const b=document.createElement('button');b.type='button';b.className='io-k';
-      b.innerHTML=r===on?`<span class="sw" style="background:var(--${subj})"></span><b>${esc(r.label)}</b> ${fmtShare(r.value,all)}<small>${change(r.value,r.prev)}</small>`:`${esc(r.label)} ${fmtShare(r.value,all)}`;
+      const sw=keySw(subj,at(r));
+      b.innerHTML=r===on?`${sw}<b>${esc(r.label)}</b> ${fmtShare(r.value,all)}<small>${change(r.value,r.prev)}</small>`:`${sw}${esc(r.label)} ${fmtShare(r.value,all)}`;
       b.setAttribute('aria-label',`${rowLabel(r.label,r.value,r.prev,all)}. Open`);b.onclick=()=>openFilter({[f]:r.key},r.label,b);p.append(b);
     }
     const more=document.createElement('button');more.type='button';more.className='io-k io-more';more.textContent=`All ${H.cut?.[group]?'':`${rows.length} `}${group} ›`;more.onclick=()=>openView({v:group},more);p.append(more);
@@ -1509,8 +1518,8 @@ function drawAudience(sec,A){
     const rows=A[dim].filter(r=>r.visitors),all=sum(rows.map(r=>r.visitors)),on=rows.find(r=>dim==S.dim&&r.key==S.key),far=rows.indexOf(on)>3;
     const top=rows.slice(0,far?3:4).concat(far?[on]:[]).map(r=>[labelOf(dim,r.key),r.visitors,r==on]),n=rows.length-top.length;
     if(n)top.push([`${n} more`,all-sum(top.map(r=>r[1])),0,'-p']);
-    return all?`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v,b,a])=>`<i style="flex:${v};background:var(--time${b?'':a||'-t'})" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}</div>
-      <p>${top.map(([l,v,b])=>`<span>${b?`<b>${esc(l)}</b>`:esc(l)} ${fmtPct(v/all)}</span>`).join('')}</p>
+    return all?`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v],i)=>`<i ${shadeSeg('time',i)} style="flex:${v}" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}</div>
+      <p>${top.map(([l,v,b],i)=>`<span>${keySw('time',i)}${b?`<b>${esc(l)}</b>`:esc(l)} ${fmtPct(v/all)}</span>`).join('')}</p>
       ${n?`<button type="button" class="mix-more" aria-expanded="false">All ${fmtInt(rows.length)}</button><p hidden>${rows.map(r=>`<span>${esc(labelOf(dim,r.key))} ${fmtPct(r.visitors/all)} · ${fmtInt(r.visitors)}</span>`).join('')}</p>`:''}</div>`:''}).join('')}<p class="say-sub">${audienceNote(A,DAYS)}</p>`;
   // "All N" opens every part of a list under its strip, with its share and visitors.
   sec.querySelectorAll('.mix-more').forEach(b=>b.onclick=()=>{const p=b.nextElementSibling,open=p.hidden;p.hidden=!open;b.setAttribute('aria-expanded',open);b.textContent=open?'Fewer':`All ${p.children.length}`});
@@ -1546,8 +1555,8 @@ async function drawAudienceMore(sec,gen,body){
   for(const [t,items] of parts){
     const all=sum(items.map(x=>x[1]));if(!all)continue;
     const sorted=t==='Screens'?items:items.slice().sort((a,b)=>b[1]-a[1]),top=sorted.slice(0,4),rest=all-sum(top.map(x=>x[1]));
-    note.insertAdjacentHTML('beforebegin',`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v])=>`<i style="flex:${v};background:var(--time-t)" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}${rest>0?`<i style="flex:${rest};background:var(--time-p)"></i>`:''}</div>
-      <p>${top.map(([l,v])=>`<span>${esc(l)} ${fmtPct(v/all)}</span>`).join('')}${rest>0?`<span>${sorted.length-top.length} more ${fmtPct(rest/all)}</span>`:''}</p>
+    note.insertAdjacentHTML('beforebegin',`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v],i)=>`<i ${shadeSeg('time',i)} style="flex:${v}" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}${rest>0?`<i ${shadeSeg('time',top.length)} style="flex:${rest}"></i>`:''}</div>
+      <p>${top.map(([l,v],i)=>`<span>${keySw('time',i)}${esc(l)} ${fmtPct(v/all)}</span>`).join('')}${rest>0?`<span>${keySw('time',top.length)}${sorted.length-top.length} more ${fmtPct(rest/all)}</span>`:''}</p>
       ${sorted.length>4?`<button type="button" class="mix-more" aria-expanded="false">All ${fmtInt(sorted.length)}</button><p hidden>${sorted.map(([l,v])=>`<span>${esc(l)} ${fmtPct(v/all)} · ${fmtInt(v)}</span>`).join('')}</p>`:''}</div>`);
   }
   sec.querySelectorAll('.mix-more').forEach(b=>b.onclick=()=>{const p=b.nextElementSibling,open=p.hidden;p.hidden=!open;b.setAttribute('aria-expanded',open);b.textContent=open?'Fewer':`All ${p.children.length}`});
