@@ -877,9 +877,9 @@ test('a page or source on its own says its change in visits when the month split
 
 test('the notes under the sentence say which period was sampled, and when the month splits one', () => {
   assert.deepEqual(countNotes({ sampled: false }, 30), []);
-  assert.deepEqual(countNotes({ sampled: true }, 30), ['These 30 days were busy enough that Cloudflare kept only some of the views, so visitor counts may run a little low.']);
-  assert.match(countNotes({ sampled: false, prevSampled: true }, 7)[0], /^The 7 days before were busy enough/);
-  assert.match(countNotes({ sampled: true, prevSampled: true }, 7)[0], /^These 7 days and the 7 before were busy enough/);
+  assert.deepEqual(countNotes({ sampled: true }, 30), ['Cloudflare stored some views from these 30 days as samples, each counted for the few like it, so the counts are estimates.']);
+  assert.match(countNotes({ sampled: false, prevSampled: true }, 7)[0], /from the 7 days before as samples/);
+  assert.match(countNotes({ sampled: true, prevSampled: true }, 7)[0], /from these 7 days and the 7 before as samples/);
   const both = { cur: { visitors: 300 }, prev: { visitors: 200 } };
   assert.deepEqual(countNotes({ ...both, split: { cur: true, prev: false } }, 7),
     ['Lede counts each visitor once a month, and these 7 days cross the start of one, so the two are compared on visits instead of visitors.']);

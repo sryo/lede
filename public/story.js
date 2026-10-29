@@ -330,11 +330,11 @@ export function todayPace(hourly, nowSec) {
 
 /* ---------- what the counts can't say ---------- */
 
-// Under the home sentence, when the numbers come with a catch: Cloudflare kept only some of the views, or only
+// Under the home sentence, when the numbers come with a catch: Cloudflare stored some views as samples, or only
 // one of the two periods crosses the start of a month (see unitOf).
 export function countNotes(totals, days) {
   const out = [], cur = totals.sampled, prev = totals.prevSampled;
-  if (cur || prev) out.push(`${cur && prev ? `These ${days} days and the ${days} before were` : cur ? `These ${days} days were` : `The ${days} days before were`} busy enough that Cloudflare kept only some of the views, so visitor counts may run a little low.`);
+  if (cur || prev) out.push(`Cloudflare stored some views from ${cur && prev ? `these ${days} days and the ${days} before` : cur ? `these ${days} days` : `the ${days} days before`} as samples, each counted for the few like it, so the counts are estimates.`);
   if (unitOf(totals) === 'visits') out.push(`Lede counts each visitor once a month, and ${totals.split.cur ? `these ${days} days cross` : `the ${days} days before cross`} the start of one, so the two are compared on visits instead of visitors.`);
   return out;
 }
