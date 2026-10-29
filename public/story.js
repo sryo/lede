@@ -318,7 +318,8 @@ export function todayPace(hourly, nowSec) {
   }
   if (past.length < 2) return null;
   const usual = median(past.map(upTo)), today = upTo(day);
-  if (usual < 20) return null;
+  // Under 20, a percentage swings on a handful of people, so the counts say it.
+  if (usual < 20) return { today, usual, pct: null, html: `Today so far: <b>${fmtInt(today)}</b> visitors, against a usual ${fmtInt(usual)} by this hour on a ${name}` };
   const pct = Math.round((today - usual) / usual * 100);
   const html = `Today so far: ${Math.abs(pct) < 10 ? 'about as busy as' : `<b>${Math.abs(pct)}%</b> ${pct > 0 ? 'busier' : 'quieter'} than`} a usual ${name}`;
   return { today, usual, pct, html };
@@ -963,30 +964,33 @@ export function pageStory(totals, flows, path, days, site = null) {
 export function scrollStory(r) {
   const reach = r?.reach, n = Math.round(r?.views || 0), half = '<b>Half</b> your readers ';
   if (!reach || !n) return null;
-  if (n < 50) return { few: true, drop: -1, sub: null, html: `Only ${n > 1 ? n + ' views' : 'one view'} of this page so far, too few to say how far people read.` };
-  const at = (reach.findIndex(x => x < .5) + 1) * 10, end = reach[9];
-  const html = !at ? (end >= .85 ? '<b>Nearly all</b> readers ' : end > .5 ? '<b>Most</b> readers ' : half) + 'reach the end.'
+  // Under 50 views a tenth is a handful of people: it's told all the same, with how few, and no drop is named.
+  const few = n < 50, at = (reach.findIndex(x => x < .5) + 1) * 10, end = reach[9];
+  const told = !at ? (end >= .85 ? '<b>Nearly all</b> readers ' : end > .5 ? '<b>Most</b> readers ' : half) + 'reach the end.'
     : half + (at === 50 ? 'stop before <b>the middle</b> of this page.' : at === 100 ? 'stop just short of the end.' : `stop before they're <b>${at}%</b> of the way down this page.`);
+  const html = few ? `${told} That's from only ${n > 1 ? n + ' views' : 'one view'} so far.` : told;
   // An even fade loses a few points every tenth; a drop loses clearly more.
   const drops = reach.map((x, i) => (reach[i - 1] ?? 1) - x), most = maxOf(drops);
-  const drop = most >= .1 && most >= 1.5 * median(drops) ? drops.indexOf(most) : -1;
+  const drop = !few && most >= .1 && most >= 1.5 * median(drops) ? drops.indexOf(most) : -1;
   const where = drop ? `between ${drop}0% and ${drop === 9 ? 'the end' : `${drop + 1}0% of the way down`}` : 'in the first 10% of the page';
-  return { few: false, drop, where, html, sub: drop < 0 ? null : `More readers stop ${where} than anywhere else: <b>${fmtPct(most)}</b> of them.` };
+  return { few, drop, where, html, sub: drop < 0 ? null : `More readers stop ${where} than anywhere else: <b>${fmtPct(most)}</b> of them.` };
 }
 
 // The same reads over a picture of the page: a shade that darkens, tenth by tenth, as the share still reading
 // falls (shade 0 where everyone reads, never fully dark), a line through the middle of the tenth the sentence
 // names, and hover text per tenth. Under the reads threshold there is no picture, only the sentence.
+// A share still reading, as a count of the views when there are few of them.
+const readShare = (S, r) => x => S.few ? `${Math.round(x * r.views)} of ${Math.round(r.views)}` : fmtPct(x);
 export function scrollPicture(r) {
   const S = scrollStory(r);
-  if (!S || S.few) return null;
-  const R = r.reach, d = S.drop, top = `${fmtPct(R[0])} at 10%`, end = `${fmtPct(R[9])} reach the end`;
+  if (!S) return null;
+  const R = r.reach, d = S.drop, share = readShare(S, r), top = `${share(R[0])} at 10%`, end = `${share(R[9])} reach the end`;
   const drop = d < 0 ? null : { at: (d + .5) / 10, label: `${fmtPct(R[d - 1] ?? 1)} → ${fmtPct(R[d])}` };
   return {
     stops: [1, ...R].map((x, i) => ({ at: i / 10, shade: (1 - x) * .85 })),
     top, end, drop,
-    bands: R.map((x, i) => `${i + 1}0% of the way down: ${fmtPct(x)} still reading`),
-    aria: `A picture of the page, darker where fewer read: ${fmtPct(R[0])} still reading at 10% of the way down, ${drop ? `${drop.label} ${S.where}, ` : ''}${end}.`,
+    bands: R.map((x, i) => `${i + 1}0% of the way down: ${share(x)} still reading`),
+    aria: `A picture of the page, darker where fewer read: ${share(R[0])} still reading at 10% of the way down, ${drop ? `${drop.label} ${S.where}, ` : ''}${end}.`,
   };
 }
 
@@ -994,10 +998,10 @@ export function scrollPicture(r) {
 // or, with no drop worth naming, at the top, the middle and the end.
 export function scrollNumbers(r) {
   const S = scrollStory(r);
-  if (!S || S.few) return null;
-  const R = r.reach, d = S.drop;
+  if (!S) return null;
+  const R = r.reach, d = S.drop, share = readShare(S, r);
   return [...new Set([...(d > 0 ? [d - 1, d] : [0, 4]), 9])].map(i =>
-    ({ value: fmtPct(R[i]), label: i === 9 ? 'reach the end' : i === 4 ? 'read past the middle' : `read past ${i + 1}0%`, drop: i === d }));
+    ({ value: share(R[i]), label: i === 9 ? 'reach the end' : i === 4 ? 'read past the middle' : `read past ${i + 1}0%`, drop: i === d }));
 }
 
 // Under the picture: what it is and when it was taken, or why there is none yet. kind is shot (Cloudflare's
@@ -1110,8 +1114,9 @@ export const fmtRate = x => x < .1 ? (x * 100).toFixed(1) + '%' : Math.round(x *
 // "Of visits that saw /owls, 6.0% went on to reach /signup, against 4.2% of all visits." cur: /api/next's period,
 // with reached when goals were asked for; conv: /api/conversions for the same goals. Needs 50 visits that saw the page.
 export function goalFromPage(cur, conv, goals, path) {
-  if (cur?.reached == null || cur.visits < 50 || !conv?.visits) return null;
+  if (cur?.reached == null || !cur.visits || !conv?.visits) return null;
   const what = goals.length === 1 ? esc(pageName(goals[0])) : 'a goal';
+  if (cur.visits < 50) return `Of the ${fmtInt(cur.visits)} visits that saw ${esc(pageName(path))}, <b>${fmtInt(cur.reached)}</b> went on to reach ${what}, against ${fmtRate(conv.reached / conv.visits)} of all visits.`;
   return `Of visits that saw ${esc(pageName(path))}, <b>${fmtRate(cur.reached / cur.visits)}</b> went on to reach ${what}, against ${fmtRate(conv.reached / conv.visits)} of all visits.`;
 }
 
@@ -1122,8 +1127,10 @@ export function pageVerdict(S) {
 // "1.3% of visits reached /signup; from Hacker News only 0.1%." The source the summary names gets a mention when it
 // converts at half or twice the overall rate; otherwise the source that did best, when it did twice as well.
 export function goalStory(conv, goals, leadKey) {
-  if (!conv || conv.visits < 50) return null;
+  if (!conv?.visits) return null;
   const all = conv.reached / conv.visits, what = goals.length === 1 ? esc(pageName(goals[0])) : 'a goal';
+  // Under 50 visits a rate would be read as more than it is, so the counts say it.
+  if (conv.visits < 50) return `<b>${fmtInt(conv.reached)}</b> of ${fmtInt(conv.visits)} visits reached ${what}.`;
   let s = `<b>${fmtRate(all)}</b> of visits reached ${what}`;
   const rate = r => r.reached / r.visits, big = conv.rows.filter(r => r.visits >= 100);
   const lead = big.find(r => r.key === leadKey);
@@ -1251,19 +1258,17 @@ const listed = a => a.length > 1 ? `${a.slice(0, -1).join(', ')} and ${a.at(-1)}
 // One page's speed, from an engagement row: "Of the views measured, 3 in 4 loaded within 2.1 s (good) and …".
 // Each measure needs VITALS_MIN views of its own. Null with no measures.
 export function vitalsLine(r) {
-  const have = Object.keys(VITALS).filter(k => r?.[k] != null);
-  if (!have.length) return null;
-  const enough = have.filter(k => measured(r, k) >= VITALS_MIN);
-  if (!enough.length) return { html: 'Too few views yet to say how fast this page is.', ratings: {} };
-  const ratings = Object.fromEntries(enough.map(k => [k, vitalRating(k, r[k])]));
-  return { ratings, html: `Of the views measured, 3 in 4 ${listed(enough.map(k => `${VITAL_WORDS[k](`<b>${fmtVital(k, r[k])}</b>`)} (${ratings[k]})`))}.` };
+  const said = Object.keys(VITALS).filter(k => r?.[k] != null && measured(r, k) > 0);
+  if (!said.length) return null;
+  const n = Math.min(...said.map(k => measured(r, k))), ratings = Object.fromEntries(said.map(k => [k, vitalRating(k, r[k])]));
+  return { ratings, html: `Of ${n < VITALS_MIN ? `only ${fmtInt(n)} views` : 'the views'} measured, 3 in 4 ${listed(said.map(k => `${VITAL_WORDS[k](`<b>${fmtVital(k, r[k])}</b>`)} (${ratings[k]})`))}.` };
 }
 // One page's speed told as a visit: how long readers wait for its main content (LCP), then how long they read
 // it. rows: every page's engagement row, to say when this page is read longest. The note adds taps (INP) and
 // layout movement (CLS) when enough views measured them. Null without enough LCP; vitalsLine says the rest then.
 const LAYOUT = { good: 'the layout holds steady', 'needs work': 'the layout shifts a little', poor: 'the layout jumps around' };
 export function speedStory(r, path, rows = []) {
-  if (r?.lcp == null || measured(r, 'lcp') < VITALS_MIN) return null;
+  if (r?.lcp == null || !measured(r, 'lcp')) return null;
   const read = r.median != null ? r.median / 1000 : r.time, p = r.prev;
   const was = p?.lcp != null && measured(p, 'lcp') >= VITALS_MIN ? p.lcp : null;
   const moved = was != null && Math.abs(r.lcp - was) >= Math.max(200, was * .1);
@@ -1274,12 +1279,15 @@ export function speedStory(r, path, rows = []) {
   const html = `Readers wait <b>${s(r.lcp)}</b> (${vitalRating('lcp', r.lcp)}) for ${esc(pageName(path))}${moved ? `, ${r.lcp > was ? 'up' : 'down'} from ${s(was)}` : ''}`
     + (read >= 1 ? `, then stay <b>${fmtDur(read)}</b>${longest ? ', the longest of any page' : ''}.` : ', then most leave.');
   const after = [];
-  if (r.inp != null && measured(r, 'inp') >= VITALS_MIN) after.push(`each tap then waits <b>${fmtVital('inp', r.inp)}</b> (${vitalRating('inp', r.inp)})`);
+  if (r.inp != null && measured(r, 'inp')) after.push(`each tap then waits <b>${fmtVital('inp', r.inp)}</b> (${vitalRating('inp', r.inp)})`);
   // The layout's score means nothing to most owners; the words say it, and VITALS_HINT gives the numbers.
-  if (r.cls != null && measured(r, 'cls') >= VITALS_MIN) after.push(LAYOUT[vitalRating('cls', r.cls)]);
-  const note = (after.length ? `${after.join('; ')}. `.replace(/^./, c => c.toUpperCase()) : '') + 'Times are for 3 in 4 views; the rest took longer.';
+  if (r.cls != null && measured(r, 'cls')) after.push(LAYOUT[vitalRating('cls', r.cls)]);
+  // Under VITALS_MIN measures a 75th percentile is a handful of views: it's said with how few.
+  const counts = [['views', measured(r, 'lcp')], ...(r.inp != null && measured(r, 'inp') ? [['taps', measured(r, 'inp')]] : [])], [what, n] = counts.sort((a, b) => a[1] - b[1])[0];
+  const note = (after.length ? `${after.join('; ')}. `.replace(/^./, c => c.toUpperCase()) : '') + 'Times are for 3 in 4 views; the rest took longer.'
+    + (n < VITALS_MIN ? ` Only ${fmtInt(n)} ${what} measured.` : '');
   // layout: the score behind the note's words about the layout, for its hover.
-  const layout = r.cls != null && measured(r, 'cls') >= VITALS_MIN ? `Layout movement: ${fmtVital('cls', r.cls)} (${vitalRating('cls', r.cls)}).` : null;
+  const layout = r.cls != null && measured(r, 'cls') ? `Layout movement: ${fmtVital('cls', r.cls)} (${vitalRating('cls', r.cls)}).` : null;
   return { html, note, moved, rating: vitalRating('lcp', r.lcp), wait: r.lcp / 1000, was: was == null ? null : was / 1000, read, layout };
 }
 // Read or skimmed: every page by how long half its readers stay (median) and how far down they get (on average),

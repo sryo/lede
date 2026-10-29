@@ -704,7 +704,7 @@ async function drawGoalCard(card,path){
   let text='';
   try{text=goalStory(await api('conversions',{goal:[path]}),[path],HOME?.S?.lead?.key)||''}catch{text='Couldn’t load this. Check your connection, then reopen the page.'}
   card.innerHTML=`<div class="card-head"><div class="card-title">${SHARED?'Visits that reached this goal':'Is this page a goal?'}</div>${SHARED?'':goalSeg(path,on?true:no?false:null)}</div>
-    <p class="goal-text">${text||`Too few visits yet to say how often they reach ${esc(pageName(path))}.`}</p><p class="goal-text muted">A goal is a page you want visits to reach, like a sign-up or thank-you page.</p>`;
+    <p class="goal-text">${text||`No visits yet in these ${DAYS} days.`}</p><p class="goal-text muted">A goal is a page you want visits to reach, like a sign-up or thank-you page.</p>`;
   card.hidden=false;
   if(SHARED)return;
   card.querySelector('[data-a="yes"]').onclick=()=>{store.set(`lede_not_goal:${SITE}:${path}`,'');if(!on)toggleGoal(path)};

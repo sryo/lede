@@ -469,12 +469,12 @@ test('SQL store averages engagement per page and splits links from downloads', a
   assert.deepEqual(links.downloads, [{ key: 'example.com/guide.pdf', visitors: 2, clicks: 2, prev: null }]);
 });
 
-test('engagement rows say how many views measured each speed, so INP is told once enough taps measured it', () => {
+test('engagement rows say how many views measured each speed, so INP is told with how few taps measured it', () => {
   const row = n => ({ key: '/a', n: '100', ms: '0', depth: '0', median_ms: '0', lcp: '2000', lcp_n: '80', inp: '600', inp_n: String(n), cls: '50', cls_n: '80' });
   const [r] = toEngagement([row(40)], []).rows;
   assert.deepEqual([r.lcpN, r.inpN, r.clsN], [80, 40, 80]);
   assert.equal(vitalsLine(r).ratings.inp, 'poor');
-  assert.equal(vitalsLine(toEngagement([row(10)], []).rows[0]).ratings.inp, undefined, 'ten taps are too few');
+  assert.match(vitalsLine(toEngagement([row(10)], []).rows[0]).html, /^Of only 10 views measured/, 'ten taps, said as ten');
 });
 
 test('the engagement query for one page also counts how many got 10%, 20%... 100% of the way down, in the same query', () => {

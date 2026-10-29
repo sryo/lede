@@ -332,6 +332,8 @@ test('today against the same weekday so far, counting finished hours only', () =
   assert.equal(P.pct, 50);
   assert.equal(strip(P.html), 'Today so far: 50% busier than a usual Sunday');
   assert.equal(todayPace(hourly, at(1, 30)), null, 'too early in the day to say');
+  const quiet = { start: START, days: 28, visitors: Array.from({ length: 28 * 24 }, (_, i) => Math.floor(i / 24) === 27 ? 2 : 1) };
+  assert.equal(strip(todayPace(quiet, at(10, 10)).html), 'Today so far: 20 visitors, against a usual 10 by this hour on a Sunday', 'a quiet site gets the counts');
 });
 
 test('a channel whose share only shifted because another source moved is not a finding', () => {
@@ -446,7 +448,8 @@ test('goal line: the overall rate, and the named source when it converts very di
 test('goal line names the best source when the named one converts like everyone else', () => {
   const c = conv([{ key: 'google.com', visits: 30000, reached: 300 }, { key: 'github.com', visits: 3000, reached: 120 }, { key: '', visits: 20000, reached: 200 }]);
   assert.equal(strip(goalStory(c, ['/signup', '/thanks'], 'google.com')), '1.2% of visits reached a goal; visits from github.com did best, 4.0%.');
-  assert.equal(goalStory(conv([{ key: 'a.com', visits: 20, reached: 1 }]), ['/signup'], null), null, 'too few visits to say');
+  assert.equal(strip(goalStory(conv([{ key: 'a.com', visits: 20, reached: 1 }]), ['/signup'], null)), '1 of 20 visits reached /signup.', 'a few visits as counts');
+  assert.equal(goalStory(conv([]), ['/signup'], null), null, 'no visits, nothing to say');
 });
 
 test('a page that looks like a goal is suggested once there are none', () => {
@@ -495,11 +498,11 @@ test('scroll: names the steepest drop, when one stands out', () => {
   assert.deepEqual([all.drop, all.sub], [-1, null], 'a page that fits on one screen');
 });
 
-test('scroll: too few readers is said plainly, with no chart to read into', () => {
+test('scroll: a few readers are told as they read, with how few they are, and no drop named', () => {
   const few = scrollStory(read(12, .5, .4, .3, .2, .1, .1, .1, .1, .1, .1));
-  assert.equal(strip(few.html), 'Only 12 views of this page so far, too few to say how far people read.');
+  assert.equal(strip(few.html), 'Half your readers stop before they\'re 20% of the way down this page. That\'s from only 12 views so far.');
   assert.deepEqual([few.few, few.drop, few.sub], [true, -1, null]);
-  assert.equal(strip(scrollStory(read(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)).html), 'Only one view of this page so far, too few to say how far people read.');
+  assert.equal(strip(scrollStory(read(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)).html), 'Nearly all readers reach the end. That\'s from only one view so far.');
   assert.equal(scrollStory(read(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)), null);
   assert.equal(scrollStory(read(49, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)).few, true);
   assert.equal(scrollStory({ views: 50 }), null, 'no bands, nothing to say');
@@ -730,8 +733,10 @@ test('scroll picture: labels the top, the steepest drop and the end', () => {
   assert.equal(P.bands[4], '50% of the way down: 43% still reading');
 });
 
-test('scroll picture: none under the reads threshold, only the sentence', () => {
-  assert.equal(scrollPicture(read(12, .5, .4, .3, .2, .1, .1, .1, .1, .1, .1)), null);
+test('scroll picture: drawn for a few readers too, with no drop named; none with no reads', () => {
+  const few = scrollPicture(read(12, .5, .4, .3, .2, .1, .1, .1, .1, .1, .1));
+  assert.equal(few.drop, null);
+  assert.equal(few.bands[0], '10% of the way down: 6 of 12 still reading');
   assert.equal(scrollPicture(read(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)), null);
   assert.equal(scrollPicture({ views: 400 }), null);
 });
@@ -750,7 +755,7 @@ test('scroll numbers: with no picture, the shares either side of the drop and at
   // No drop stands out: the top, the middle and the end, none in violet.
   assert.deepEqual(nums(read(900, .96, .92, .88, .84, .8, .76, .72, .68, .64, .6)),
     [['96%', 'read past 10%', false], ['80%', 'read past the middle', false], ['60%', 'reach the end', false]]);
-  assert.equal(scrollNumbers(read(12, .5, .4, .3, .2, .1, .1, .1, .1, .1, .1)), null, 'too few reads: the sentence alone');
+  assert.deepEqual(nums(read(12, .5, .4, .3, .2, .1, .1, .1, .1, .1, .1)), [['6 of 12', 'read past 10%', false], ['1 of 12', 'read past the middle', false], ['1 of 12', 'reach the end', false]], 'a few reads as counts');
 });
 
 test('scroll picture: the caption says what the picture is and when it was taken', () => {
@@ -921,18 +926,17 @@ test('a page\'s speed line: what 3 in 4 views got, in plain words, only for what
     'Of the views measured, 3 in 4 loaded within 2.1 s (good), answered a tap or click within 180 ms (good) and moved their layout by 0.05 or less (good).');
   assert.equal(strip(vitalsLine({ views: 400, lcp: 4800, inp: null, cls: null }).html), 'Of the views measured, 3 in 4 loaded within 4.8 s (poor).');
   assert.deepEqual(vitalsLine({ views: 400, lcp: 3000, inp: 300, inpN: 60 }).ratings, { lcp: 'needs work', inp: 'needs work' });
-  assert.equal(vitalsLine({ views: 12, lcp: 2000 }).html, 'Too few views yet to say how fast this page is.');
+  assert.equal(strip(vitalsLine({ views: 12, lcp: 2000 }).html), 'Of only 12 views measured, 3 in 4 loaded within 2.0 s (good).');
   assert.equal(vitalsLine({ views: 400 }), null, 'nothing measured yet, nothing said');
   assert.equal(vitalsLine({ views: 400, lcp: null, inp: null, cls: null }), null);
 });
 
-test('each speed measure needs enough views that measured it, not just enough views', () => {
-  // 40 views, a tap on only 4 of them: their answer time is left out, not called poor.
+test('each speed measure is told from the views that measured it, with how few when they are few', () => {
   const r = { views: 40, lcp: 2000, inp: 650, lcpN: 36, inpN: 4 };
-  assert.deepEqual(vitalsLine(r).ratings, { lcp: 'good' });
-  assert.doesNotMatch(vitalsLine(r).html, /tap/);
-  assert.equal(vitalsLine({ views: 400, inp: 650 }).html, 'Too few views yet to say how fast this page is.', 'without its own count, INP is never enough');
-  assert.equal(vitalsLine({ views: 400, lcp: 2000, lcpN: 12 }).html, 'Too few views yet to say how fast this page is.');
+  assert.deepEqual(vitalsLine(r).ratings, { lcp: 'good', inp: 'poor' });
+  assert.match(strip(vitalsLine(r).html), /^Of only 4 views measured, 3 in 4 loaded within 2\.0 s \(good\) and answered a tap or click within 650 ms \(poor\)\.$/);
+  assert.equal(vitalsLine({ views: 400, inp: 650 }), null, 'without its own count, INP was never measured');
+  assert.equal(strip(vitalsLine({ views: 400, lcp: 2000, lcpN: 12 }).html), 'Of only 12 views measured, 3 in 4 loaded within 2.0 s (good).');
   assert.equal(vitalsFinding([{ key: '/', views: 500, inp: 650, inpN: 4 }], [{ key: '/', value: 600 }], 1000), null);
   assert.equal(vitalsFinding([{ key: '/', views: 500, inp: 650 }], [{ key: '/', value: 600 }], 1000), null);
 });
@@ -976,10 +980,10 @@ test('a page’s speed reads as a visit: the wait for its main content, then how
   // Few taps measured, or no reading time: say only what is known.
   const fewTaps = speedStory({ ...owls, inpN: 12, cls: .3, prev: null }, '/owls');
   assert.equal(strip(fewTaps.html), 'Readers wait 4.7\u00a0s (poor) for /owls, then stay 1m 40s.');
-  assert.match(strip(fewTaps.note), /^The layout jumps around\./);
+  assert.match(strip(fewTaps.note), /^Each tap then waits [^;]+; the layout jumps around\. Times are for 3 in 4 views; the rest took longer\. Only 12 taps measured\.$/);
   assert.equal(strip(speedStory({ ...owls, median: 400, prev: null }, '/owls').html), 'Readers wait 4.7\u00a0s (poor) for /owls, then most leave.');
-  // Too few loads measured: no card, and the one-line summary takes over.
-  assert.equal(speedStory({ ...owls, lcpN: 20 }, '/owls'), null);
+  // A few loads measured: said, and how few.
+  assert.match(strip(speedStory({ ...owls, lcpN: 20, inpN: 0, cls: null, prev: null }, '/owls').note), /Only 20 views measured\.$/);
   assert.equal(speedStory({ key: '/x', views: 50, lcp: null }, '/x'), null);
 });
 
@@ -1068,7 +1072,7 @@ test('a page’s view says whether readers of it go on to the goal, against all 
   const conv = { visits: 101725, reached: 4272 };
   assert.equal(strip(goalFromPage({ visits: 250, reached: 15 }, conv, ['/signup'], '/owls')), 'Of visits that saw /owls, 6.0% went on to reach /signup, against 4.2% of all visits.');
   assert.equal(strip(goalFromPage({ visits: 250, reached: 15 }, conv, ['/signup', '/thanks'], '/owls')), 'Of visits that saw /owls, 6.0% went on to reach a goal, against 4.2% of all visits.');
-  assert.equal(goalFromPage({ visits: 30, reached: 3 }, conv, ['/signup'], '/owls'), null, 'too few visits to say');
+  assert.equal(strip(goalFromPage({ visits: 30, reached: 3 }, conv, ['/signup'], '/owls')), 'Of the 30 visits that saw /owls, 3 went on to reach /signup, against 4.2% of all visits.');
   assert.equal(goalFromPage({ visits: 250 }, conv, ['/signup'], '/owls'), null, 'no count without goals');
 });
 
