@@ -124,7 +124,7 @@ export default {
     const url = new URL(req.url);
     const { pathname } = url;
     // Blocklists match /api/event on workers.dev (it's Plausible's path), so the tracker posts to /lede.
-    // The old path still works for trackers browsers cached before the move.
+    // /api/event still works, for trackers that browsers cached with that path.
     if (pathname === '/lede' || pathname === '/api/event') return collect(req, env, ctx);
     if (pathname.startsWith('/s/') && req.method === 'GET') return openShare(env, pathname.slice(3));
     // Everything else but /api/* is served straight from the assets (see wrangler.jsonc); this is for local dev.

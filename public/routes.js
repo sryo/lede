@@ -44,7 +44,7 @@ export function urlToView(pathname, search) {
   const parts = pathname.split('/');
   let view = null;
   if (parts.length === 2 && SIMPLE.includes(parts[1])) view = { v: parts[1] };
-  // Keywords and funnels were once views of their own; they are cards on the overview now.
+  // /keywords and /funnels open the overview, where those cards are, so saved links still land somewhere.
   else if (pathname === '/keywords' || pathname === '/funnels') view = { v: 'overview' };
   else if (parts[1] === 'page' && parts.length >= 3) {
     const f = { path: decodeURI('/' + parts.slice(2).join('/')) };

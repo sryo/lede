@@ -299,7 +299,7 @@ def final():
     yield "6-lockup-dark", body, w
 
 
-# ---------- refinement of the picks: 1-warm-three, 4-indigo-cyan, 6-lockup ----------
+# ---------- refinement of round 2's 1-warm-three, 4-indigo-cyan and 6-lockup ----------
 
 INK = "#1A1D2E"  # the app's own ink, from public/index.html
 RUNS = {
@@ -401,7 +401,7 @@ def refine():
 
 
 def chosen():
-    """The three colourways the user picked, each as icon, lockup and dark lockup."""
+    """The three chosen colourways, each as icon, lockup and dark lockup."""
     for k in ("1-warm", "2-indigo-cyan", "3-green-lime"):
         run = FAMILY3[k]
         yield f"{k}-icon", tile(PICK, run, smooth=SMOOTH)

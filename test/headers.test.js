@@ -25,7 +25,7 @@ test('browsers keep the tracker for a while, but not forever', () => {
   assert.ok(!/immutable/.test(cc), 'the tracker URL has no fingerprint, so it must not be immutable');
 });
 
-test('the font rule is unchanged', () => {
+test('the font is cached for a year as immutable', () => {
   assert.equal(rules()['/weepeople.woff2']?.['cache-control'], 'public, max-age=31536000, immutable');
 });
 

@@ -209,10 +209,11 @@ export function funnelSql(ds, q, steps) {
   return `SELECT p, ${reached} FROM (SELECT ${PERIOD(q)} AS p, ${COL.visit} AS visit, ${times} FROM ${ds} WHERE ${cond} GROUP BY p, visit) GROUP BY p`;
 }
 
-// Visitors by the source a visit came from and the page it landed on, for the Sankey.
+// Visitors by the source a visit came from and the page it landed on, for the Sankey, with the pair's visits
+// and those that left after one page, so a pair can say how many left after its first page.
 // landing keeps only the visits that landed on that page, for its own view.
 export const flowSql = (ds, q, only, landing) =>
-  `SELECT p, src, landing, count(DISTINCT visitor) AS visitors FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS.referrer} AS src, ${VISIT_KEYS.entry} AS landing`, PERIOD(q))} `
+  `SELECT p, src, landing, count(DISTINCT visitor) AS visitors, count() AS visits, countIf(n = 1) AS bounces FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS.referrer} AS src, ${VISIT_KEYS.entry} AS landing`, PERIOD(q))} `
   + `${landing == null ? '' : `WHERE hex(landing) = '${hexOf(landing)}' `}GROUP BY p, src, landing ORDER BY visitors DESC ${limit(LISTS.flows, only)}`;
 
 // Where the hourly answer's hour 0 sits: whole days of 24 hours back from today's local midnight, so
@@ -267,7 +268,7 @@ export const linksSql = (ds, q, only) =>
 // byVisitor in shape.js makes one row per visitor. hid is when the page view was last left (an engagement
 // event marked left: its tab hidden or closed, or a single-page app moving on) and shown when it was last
 // seen otherwise, so a reader leaves "here now" as they go instead of 5 minutes later, and a tab shown again
-// pings. Rows from before views were sent (view 0) are one per visitor and never left, as before. Only forms
+// pings. Rows from before views were sent (view 0) are one per visitor and never left. Only forms
 // the SQL API already takes elsewhere: no query over this one's aggregates.
 export const liveSql = (ds, site) => {
   const ts = 'toUnixTimestamp(timestamp)';

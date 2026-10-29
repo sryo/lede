@@ -81,7 +81,7 @@ test('home’s third tile asks whether visitors stayed: bounce, who bounces most
   assert.match(fn('drawStay'), /fmtDur\(c\.duration\)/);
 });
 
-test('a note can be written from home’s chart, which no longer sends a click on a day to the overview', () => {
+test('a note can be written from home’s chart; a click on a day stays there rather than opening the overview', () => {
   assert.match(fn('drawHome'), /noteDays\(days\.querySelector\('\.viz'\),ser,0\)/);
   assert.doesNotMatch(html, /Pick a day to note what you did/, 'no line always on: the day itself says it');
   assert.match(fn('dayBars'), /Click to add a note/);
@@ -109,9 +109,9 @@ test('the overview’s cards go from the story to the details: in and out, words
   assert.match(fn('renderFilter'), /What happened[\s\S]*inout[\s\S]*card kw[\s\S]*card aud[\s\S]*By weekday and hour[\s\S]*funnels-card/);
 });
 
-test('home has a labelled way into the overview, a quiet link aligned with the tiles', () => {
-  assert.match(fn('drawHome'), /class="home-more"><span><b>More about these/);
-  assert.match(html, /\.home-more\{all:unset/);
+test('home goes to the overview from its visitors-per-day tile, with no second link to it under the tiles', () => {
+  assert.match(fn('drawHome'), /tile\('t-days',[^\n]*openOverview\)/);
+  assert.doesNotMatch(html, /home-more/);
 });
 
 test('a funnel’s lost visits say they left', () => {
@@ -266,4 +266,23 @@ test('a state is a dot and a word, not a pill that looks like a button', () => {
 test('a quiet footer under the window names Lede and links to the project', () => {
   assert.match(html, /<footer class="foot">[\s\S]*href="https:\/\/github\.com\/sryo\/lede"[\s\S]*<\/footer>/);
   assert.match(html, /\.foot\{/);
+});
+
+test('home’s Sankey gives a source’s change its own line under the name, so the label column stays narrow', () => {
+  assert.match(fn('drawFlow'), /b\.innerHTML=`<span>\$\{told\?`<b>\$\{esc\(name\)\}<\/b>`:esc\(name\)\}<\/span><span class="chg">/);
+  assert.match(html, /\.flow\{height:100%;display:grid;grid-template-columns:120px minmax\(0,1fr\) 120px;/);
+});
+
+test('popovers float with one shadow: the note editor, and Share and Setup, which a card’s outline can’t flatten', () => {
+  assert.match(html, /--pop:0 0 0 1px var\(--line\),0 10px 28px -8px rgba\(0,0,0,\.3\)/);
+  assert.match(html, /\.note-edit\{[^}]*box-shadow:var\(--pop\)/);
+  assert.match(html, /\.card\.share-panel\{[^}]*box-shadow:var\(--pop\)/);
+});
+
+test('the tab shows the site’s icon, and Setup offers the nine colourways with the automatic one', () => {
+  assert.match(html, /const iconURL=i=>'data:image\/svg\+xml,'\+encodeURIComponent\(iconSVG\(i\)\)/);
+  assert.match(fn('setIcon'), /link\[rel="icon"\][\s\S]*iconURL\(iconFor\(SITE,SITES,ICON\)\)/);
+  assert.match(fn('loadGoals'), /ICON=[^;]*b\.icon/);
+  assert.match(fn('drawSetup'), /Tab icon[\s\S]*ICONS\.map/);
+  assert.match(fn('drawSetup'), /\/api\/icon\?site=/);
 });

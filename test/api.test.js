@@ -55,6 +55,7 @@ test('flows key each visit by its first referrer and first page; hours count fro
   assert.match(flows, /argMin\(blob4, timestamp\) AS src/);
   assert.match(flows, /argMin\(blob2, timestamp\) AS landing/);
   assert.match(flows, /GROUP BY p, src, landing/);
+  assert.match(flows, /count\(\) AS visits, countIf\(n = 1\) AS bounces/, 'each pair carries its visits and those that left after one page');
   assert.match(hourlySql('lede', q, 3600, 7200), /intDiv\(toUnixTimestamp\(timestamp\) - 3600, 3600\) AS hr/);
   assert.ok(breakdownSql('lede', q, 'path').includes(`intDiv(toUnixTimestamp(min(timestamp)) - ${q.start}, 86400) AS d FROM`), 'the day a page was first seen');
   assert.ok(breakdownSql('lede', q, 'referrer').includes(`intDiv(min(t0) - ${q.start}, 86400) AS d FROM`), 'the day a source first sent a visit');
@@ -77,7 +78,7 @@ function fakeSql(calls) {
       { p: 0, country: 'AR', device: 'phone', browser: 'chrome', visitors: '20', visits: '22', views: '30', bounces: '12', total_time: '300' },
     ];
     else if (sql.includes('AS hr')) data = [{ hr: '1', visitors: '4' }, { hr: '50', visitors: '2' }, { hr: '9999', visitors: '9' }];
-    else if (sql.includes('AS landing')) data = [{ p: 1, src: 'news.ycombinator.com', landing: '/blog', visitors: '12' }, { p: 0, src: 'news.ycombinator.com', landing: '/blog', visitors: '6' }, { p: 1, src: '', landing: '/', visitors: '5' }, { p: 0, src: '', landing: '/', visitors: '5' }];
+    else if (sql.includes('AS landing')) data = [{ p: 1, src: 'news.ycombinator.com', landing: '/blog', visitors: '12', visits: '14', bounces: '9' }, { p: 0, src: 'news.ycombinator.com', landing: '/blog', visitors: '6', visits: '6', bounces: '2' }, { p: 1, src: '', landing: '/', visitors: '5', visits: '7', bounces: '1' }, { p: 0, src: '', landing: '/', visitors: '5', visits: '5', bounces: '0' }];
     else if (sql.includes('AS d, count(DISTINCT visitor)')) data = [{ p: 1, d: '3', visitors: '5', visits: '6', views: '9', bounces: '3', total_time: '120' }, { p: 1, d: '5', visitors: '1', visits: '1', views: '1', bounces: '1', total_time: '0' }, { p: 0, d: '1', visitors: '7', visits: '7', views: '7', bounces: '7', total_time: '0' }];
     else if (sql.includes('AS ref')) data = [{ d: '0', ref: 'google.com', visitors: '4' }, { d: '0', ref: '', visitors: '1' }];
     else if (sql.includes('AS r10')) data = [{ p: 1, key: '/docs', n: '20', ms: '900000', depth: '1000', ...bands(20, 18, 16, 14, 8, 7, 6, 5, 4, 2) }, { p: 0, key: '/docs', n: '10', ms: '300000', depth: '500', ...bands(10, 10, 9, 8, 7, 6, 5, 5, 5, 5) }];
@@ -113,8 +114,8 @@ test('SQL store shapes summary, series and breakdown responses', async () => {
   assert.equal(calls.length, 3, 'days for both periods, and the top sources');
 
   const { flows, prev: prevFlows } = await store.flows(q);
-  assert.deepEqual(flows[0], { source: 'news.ycombinator.com', page: '/blog', visitors: 12 });
-  assert.deepEqual(prevFlows[0], { source: 'news.ycombinator.com', page: '/blog', visitors: 6 });
+  assert.deepEqual(flows[0], { source: 'news.ycombinator.com', page: '/blog', visitors: 12, visits: 14, bounces: 9 });
+  assert.deepEqual(prevFlows[0], { source: 'news.ycombinator.com', page: '/blog', visitors: 6, visits: 6, bounces: 2 });
   assert.equal(prevFlows.length, 2);
   const hourly = await store.hourly(q);
   assert.equal(hourly.visitors.length, 72);
@@ -147,6 +148,7 @@ test('demo store answers every route with the same shapes', async () => {
   assert.equal(ser.topVisitors.length, 30);
   const { flows, prev: prevFlows } = await demoStore.flows(q);
   assert.ok(flows.length > 0 && flows.every(f => f.visitors > 0));
+  assert.ok(flows.every(f => f.visits >= f.visitors && f.bounces >= 0 && f.bounces <= f.visits), 'a pair has at least a visit per visitor, and no more bounces than visits');
   assert.ok(prevFlows.length > 0);
   const onPath = await demoStore.flows({ ...q, filters: { path: '/robin' } });
   assert.ok(onPath.flows.every(f => f.page === '/robin'));
@@ -579,4 +581,12 @@ test('demo: countries, devices and browsers add up to everyone, and phones leave
   const by = Object.fromEntries(A.device.map(r => [r.key, r]));
   assert.ok(by.phone.bounce - by.computer.bounce >= .1);
   assert.equal(A.partial, null);
+});
+
+test('demo: the story’s pair bounces more than the site, so the Sankey has a red landing to show', async () => {
+  const q = parseQuery(url('flows?days=30'), SITES);
+  const { flows } = await demoStore.flows(q);
+  const s = await demoStore.summary(q);
+  const f = flows.find(x => x.source === 'google.com' && x.page === '/migration');
+  assert.ok(f.bounces / f.visits > s.cur.bounce + .1, `google.com → /migration: ${f.bounces} of ${f.visits}`);
 });

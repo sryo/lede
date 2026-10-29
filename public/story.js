@@ -348,7 +348,6 @@ export function quietRuns(cur, prev = []) {
 
 /* ---------- daily bars ---------- */
 
-// The part of the spike's bar that came from its top source.
 // The busy day's bar shows the source that made it: the lead's spike, or any spike one source sent most of.
 export function spikeSegment(S, ser) {
   let i = S.spike;
@@ -366,7 +365,7 @@ export function spikeSegment(S, ser) {
 /* ---------- where the change came from ---------- */
 
 // The Sources screen's steps: the n sources that moved most, whatever home's sentence named, with AI assistants as
-// one step when more than one sent visitors, then everyone else, which is then the smallest step. fresh: the biggest
+// one step when more than one sent visitors, then everyone else, the rest that makes the steps add up. fresh: the biggest
 // new source (none before, and 1% of the total) not among them, for the caption.
 export function waterfallMovers(S, n = 3) {
   if (!S.p.visitors) return null;
@@ -418,6 +417,7 @@ export function waterfallCaption(W, S) {
 // Splits the change in bounce rate (cur − prev) into:
 //   mix:        Σ visits_cur(s)·bounce_prev(s) / Σ visits_cur(s) − bounce_prev   (last period's rates on this period's sources)
 //   behaviour:  visits_cur(s)·(bounce_cur(s) − bounce_prev(s)) / visits_cur      (each source's own change, weighted by its share)
+//   top:        the biggest behaviour, when it goes the total's way
 //   rest:       whatever is left, so mix + top + rest = total (other sources' behaviour, sources new this period).
 export function bounceSplit(S) {
   const { c, p } = S;
@@ -461,6 +461,44 @@ const bouncers = s => s.dim === 'entry' ? `visits landing on <b>${pathHTML(s.lab
 export const bounceHeld = (rate, s) => s ? `Bounce held at <b>${fmtPct(rate)}</b>; ${bouncers(s)} bounce most, ${fmtPct(s.bounce)}.`
   : `Bounce held at <b>${fmtPct(rate)}</b>, about the same as before.`;
 
+/* ---------- who stayed, on the Sankey ---------- */
+
+// "6 in 10 left": the share of visits that left after one page. Under 20 visits a rate is a guess, so it gives the counts.
+export function leftWord(bounces, visits) {
+  if (!visits) return '';
+  if (visits < 20) return `${fmtInt(bounces)} of ${fmtInt(visits)} left`;
+  const tenths = Math.round(bounces / visits * 10);
+  return !bounces ? 'none left' : tenths < 1 ? 'under 1 in 10 left' : tenths >= 10 ? 'nearly all left' : `${tenths} in 10 left`;
+}
+
+const tenthsOf = rate => leftWord(Math.round(rate * 1000), 1000).replace(' left', '');
+const pairSentence = (p, site) => `Of the ${fmtInt(p.visits)} visits <b>${esc(labelOf('referrer', p.source))}</b> sent to <b>${p.page === '/' ? 'the home page' : pathHTML(p.page)}</b>, `
+  + `<b>${leftWord(p.bounces, p.visits)}</b> after that page, against ${tenthsOf(site)} across the site.`;
+
+// Whether the visits one source sent to one page, the pair home's sentence tells, left after that page far more or
+// less often than the site's: 50 visits or more, 10 points or more apart, as bounceStandout asks. Null otherwise.
+export function pairStay(flows, source, page, site) {
+  const f = flows.find(x => x.source === source && x.page === page);
+  if (!f || f.visits < 50 || Math.abs(f.bounces / f.visits - site) < .1) return null;
+  const p = { source, page, visits: f.visits, bounces: f.bounces };
+  return { word: leftWord(p.bounces, p.visits).replace(' left', ' of them left'), hint: pairSentence(p, site) };
+}
+
+// The source and landing page whose visits bounce most beyond the site's, by the rule bounceStandout keeps.
+export function bounciestPair(flows, site) {
+  const rows = flows.filter(f => f.visits).map(f => ({ source: f.source, page: f.page, visits: f.visits, bounces: f.bounces, bounce: f.bounces / f.visits }));
+  return bounceStandout(rows, site);
+}
+
+// The Bounce screen's Sankey, in a sentence: the pair that leaves most against the site, or that none stands out.
+export function outcomeStory(flows, site) {
+  const visits = sum(flows.map(f => f.visits));
+  if (visits < 30) return { html: 'Too few visits yet to say who leaves after one page.', pair: null };
+  const pair = bounciestPair(flows, site);
+  if (!pair) return { html: `No source and landing page stand out: visits leave after one page at about the site’s rate, ${tenthsOf(site)}.`, pair: null };
+  return { pair, html: pairSentence(pair, site) };
+}
+
 /* ---------- sources → pages ---------- */
 
 export function flowShare(flows, source, page) {
@@ -498,6 +536,26 @@ export function crowd(live, told, max = 18) {
   const order = p => p.here ? (p.named ? 0 : 1) : 2;
   return people.map((p, i) => [p, i]).sort((a, b) => order(a[0]) - order(b[0]) || a[1] - b[1]).map(([p]) => p).slice(0, max);
 }
+
+// Here now as lanes: a lane per page, those here first, each person placed along it by how long they've been on
+// their page. Past max pages, the busiest max - 1 keep their lanes and the rest share one (path null, pages: how
+// many), so a crowd on many pages stays a few lanes. html names where the people reading past 2 minutes came from.
+export function lanes(live, told, max = 8) {
+  const byPage = new Map();
+  for (const p of crowd(live, told, Infinity)) byPage.set(p.v.path, [...(byPage.get(p.v.path) || []), p]);
+  const rows = [...byPage].map(([path, people]) => ({ path, here: people.filter(p => p.here).length, people: people.sort((a, b) => a.v.seconds - b.v.seconds) }))
+    .sort((a, b) => b.here - a.here || b.people.length - a.people.length);
+  if (rows.length > max) {
+    const rest = rows.splice(max - 1);
+    rows.push({ path: null, pages: rest.length, here: sum(rest.map(r => r.here)), people: rest.flatMap(r => r.people).sort((a, b) => a.v.seconds - b.v.seconds) });
+  }
+  const here = (live?.visitors || []).filter(v => v.active), long = here.filter(v => v.seconds >= 120);
+  const from = [...new Set(long.map(v => labelOf('referrer', v.referrer)))];
+  const html = long.length ? `${long.length === here.length ? (here.length === 1 ? 'The one person here has' : `All ${here.length} here have`) : `${long.length} of the ${here.length} here ${long.length === 1 ? 'has' : 'have'}`} been on their page past 2 minutes, from ${listed(from.map(l => `<b>${esc(l)}</b>`))}.` : null;
+  return { rows, html };
+}
+// Where on a lane: the square root of the time, so the first minutes, where most people are, get the most room; 30 minutes is the end.
+export const laneX = s => Math.sqrt(Math.min(Math.max(s, 0), 1800) / 1800);
 
 // The crowd as a line: people here now first, then those who left, each group in the order it arrived
 // (someone last seen `ago` seconds ago after `seconds` on the site arrived ago + seconds ago). Past `max`,
@@ -1150,6 +1208,28 @@ export function speedStory(r, path, rows = []) {
   const layout = r.cls != null && measured(r, 'cls') >= VITALS_MIN ? `Layout movement: ${fmtVital('cls', r.cls)} (${vitalRating('cls', r.cls)}).` : null;
   return { html, note, moved, rating: vitalRating('lcp', r.lcp), wait: r.lcp / 1000, was: was == null ? null : was / 1000, read, layout };
 }
+// Read or skimmed: every page by how long half its readers stay (median) and how far down they get (on average),
+// cut at the site's own medians over the pages with 20 read views or more; those with fewer are drawn hollow and
+// left out of the medians and the sentence. slow: poor LCP on enough views. told: the pages the sentence names.
+const CORNERS = { end: 'Read to the end', skimmed: 'Skimmed to the end', top: 'Stayed near the top', early: 'Left early' };
+export function readingMap(rows) {
+  const points = rows.filter(r => r.views > 0 && r.median != null).map(r => ({ key: r.key, views: r.views, read: r.median / 1000, depth: r.scroll, few: r.views < 20,
+    slow: vitalRating('lcp', r.lcp) === 'poor' && measured(r, 'lcp') >= VITALS_MIN, lcp: r.lcp }));
+  const solid = points.filter(p => !p.few);
+  if (solid.length < 3) return { points, mid: null, told: [], html: 'Too few pages read yet to compare how each is read.' };
+  const mid = { read: median(solid.map(p => p.read)), depth: median(solid.map(p => p.depth)) };
+  for (const p of points) p.corner = p.read >= mid.read ? (p.depth >= mid.depth ? 'end' : 'top') : (p.depth >= mid.depth ? 'skimmed' : 'early');
+  const longest = solid.reduce((a, b) => b.read > a.read ? b : a), busiest = solid.reduce((a, b) => b.views > a.views ? b : a);
+  const soonest = solid.reduce((a, b) => b.read < a.read ? b : a), name = k => k === '/' ? 'The home page' : pathHTML(k);
+  let html = `<b>${name(longest.key)}</b> is read longest: half its readers stay past ${fmtDur(longest.read)}${longest.slow ? `, and it is slow to load, ${fmtVital('lcp', longest.lcp)}` : ''}.`;
+  const told = [longest.key];
+  if (busiest !== longest && busiest.read < mid.read) {
+    html += ` <b>${name(busiest.key)}</b> is opened most ${busiest === soonest ? `and left soonest, at ${fmtDur(busiest.read)}` : `but read for less than most pages, ${fmtDur(busiest.read)}`}.`;
+    told.push(busiest.key);
+  }
+  return { points, mid, told, html, corners: CORNERS };
+}
+
 export const VITALS_HINT = 'Good is within 2.5 s to load, 200 ms to answer and 0.1 of layout movement; poor is over 4 s, 500 ms and 0.25.';
 
 // The busiest page that is slow for many of its readers: poor loading or answering, at least 50 visitors and
@@ -1167,3 +1247,34 @@ export function vitalsFinding(rows, pageRows, total) {
   const page = `<button type="button" class="link told" data-f="path" data-k="${esc(r.key)}">${r.key === '/' ? 'The home page' : pathHTML(r.key)}</button>`;
   return { key: r.key, html: `${page} is slow for many of its ${fmtInt(v)} visitors: of the views measured, ${parts.join(', and ')}.` };
 }
+
+/* ---------- the tab icon ---------- */
+
+// Lede's mark in nine colourways (brand/squares/family), outer square to inner, so tabs for different sites tell
+// apart at a glance. The first is Lede's own.
+export const ICONS = [
+  ['#E10602', '#FF7300', '#FCD000'], ['#4800FF', '#0A6CFF', '#00C8FF'], ['#12974A', '#3CC23A', '#C8F03C'],
+  ['#5B10E8', '#F0157A', '#FF9A1F'], ['#B8005C', '#FF3D7F', '#FFB08A'], ['#00706E', '#00BFA8', '#6FF0C6'],
+  ['#0033CC', '#2F8BFF', '#6FC8FF'], ['#4A0E7A', '#9B4DFF', '#D99BFF'], ['#0040B8', '#00A3A3', '#B8F000'],
+];
+
+// The colourway the owner picked, or else the one the site's name hashes to, so a site looks the same in any
+// Lede that counts it. Within one Lede, a site whose colourway an earlier site in the list took gets the next one
+// free, so its sites differ while there are colourways left.
+export function iconFor(site, sites, chosen) {
+  if (Number.isInteger(chosen) && chosen >= 0 && chosen < ICONS.length) return chosen;
+  const taken = new Set();
+  for (const s of sites.includes(site) ? sites : [...sites, site]) {
+    let i = hash(s) % ICONS.length;
+    for (let k = 0; k < ICONS.length && taken.has(i); k++) i = (i + 1) % ICONS.length;
+    if (s === site) return i;
+    taken.add(i);
+  }
+}
+
+// The mark, as public/icon.svg draws it: a rounded tile, then two squares from its top-right corner.
+export const iconSVG = i => {
+  const [a, b, c] = ICONS[i];
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><clipPath id="t"><rect width="512" height="512" rx="115.2"/></clipPath>`
+    + `<g clip-path="url(#t)"><path d="M0 0h512v512H0z" fill="${a}"/><path d="M160 0h352v352H160z" fill="${b}"/><path d="M320 0h192v192H320z" fill="${c}"/></g></svg>`;
+};

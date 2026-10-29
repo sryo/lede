@@ -14,7 +14,8 @@
   },
   // Created on first write; the stats API queries it by this name.
   "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "lede" }],
-  // Created on deploy. Keeps the sites, the visitor salt, the account ID and goals.
+  // Created on deploy. Keeps the sites, the monthly salts, the account ID, each site's goals, funnels and notes,
+  // read-only links, and kept pictures and lines (see src/settings.js).
   "kv_namespaces": [{ "binding": "STORE" }],
   // "Here now" as it happens (src/live.js): one Durable Object per site, which pushes who is here to an open
   // dashboard. SQLite-backed, which the Free plan includes; it's only asked anything while a dashboard watches.
@@ -43,8 +44,8 @@
   //   ALERTS              "weekly", "spikes" or "weekly,spikes" (the default) once ALERT_WEBHOOK is set
   //   DASHBOARD_URL       the dashboard's address for the links in alerts, when it isn't where you last signed in
   //   DATASET             the dataset the stats are read from, when you change its name above ("lede" by default)
-  // Optional: Cloudflare's rate limiter, so the 60 events a minute per sender (src/collect.js) and the
-  // sign-in tries (src/index.js) also count across Worker instances. Not on by default, since Cloudflare
+  // Optional: Cloudflare's rate limiter, so the beacons from one address (src/collect.js) and the sign-in
+  // tries (src/index.js) are also counted across Worker instances. Not on by default, since Cloudflare
   // doesn't say the Free plan includes it:
   //   "ratelimits": [{ "name": "BEACON_LIMIT", "namespace_id": "1001", "simple": { "limit": 60, "period": 60 } },
   //                  { "name": "SIGNIN_LIMIT", "namespace_id": "1002", "simple": { "limit": 10, "period": 60 } }]

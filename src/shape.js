@@ -55,8 +55,7 @@ export function toSeries(rows, days, first = 0) {
   return out;
 }
 
-// rows are ordered by day, then visitors descending, so the first row seen per day wins.
-// Returns each day's top source and how many visitors it sent.
+// topSourceSql's rows, one per day: each day's top source and how many visitors it sent.
 export function topByDay(rows, days) {
   const top = Array(days).fill(null), visitors = Array(days).fill(0);
   for (const r of rows) {
@@ -66,7 +65,7 @@ export function topByDay(rows, days) {
   return { top, topVisitors: visitors };
 }
 
-export const toFlows = rows => rows.map(r => ({ source: r.src ?? '', page: r.landing ?? '', visitors: num(r.visitors) }));
+export const toFlows = rows => rows.map(r => ({ source: r.src ?? '', page: r.landing ?? '', visitors: num(r.visitors), visits: num(r.visits), bounces: num(r.bounces) }));
 
 export function toConversions(rows) {
   const out = rows.map(r => ({ key: r.src ?? '', visits: num(r.visits), reached: num(r.reached) }));

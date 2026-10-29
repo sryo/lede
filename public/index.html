@@ -62,6 +62,8 @@
   --lost:color-mix(in srgb,var(--ink) 20%,var(--tile));
   --lost-p:color-mix(in srgb,var(--ink) 12%,var(--tile));
   --focus:var(--page);
+  /* what floats over the page: an outline, and a shadow below */
+  --pop:0 0 0 1px var(--line),0 10px 28px -8px rgba(0,0,0,.3);
 }
 
 html,body{height:100%;margin:0}
@@ -91,7 +93,7 @@ h1,h2,h3{margin:0;font:inherit}
 /* Share: a quiet button beside the site's name, opening a small card of read-only links */
 .share-b{height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:var(--fs-s);cursor:pointer}
 .share-b[aria-expanded="true"]{color:var(--ink)}
-.share-panel{position:absolute;top:calc(100% + 8px);left:0;z-index:5;width:min(380px,calc(100vw - 32px));font-size:var(--fs-s);box-shadow:0 0 0 1px var(--line),0 8px 24px rgb(0 0 0/.12)}
+.card.share-panel{position:absolute;top:calc(100% + 8px);left:0;z-index:5;width:min(380px,calc(100vw - 32px));font-size:var(--fs-s);box-shadow:var(--pop)}
 .share-panel p{margin:0} .share-panel b{font-size:inherit;font-weight:650;letter-spacing:normal;color:var(--ink)}
 .share-panel ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .share-panel li{display:flex;align-items:center;justify-content:space-between;gap:8px}
@@ -100,13 +102,17 @@ h1,h2,h3{margin:0;font:inherit}
 .share-panel li .share-b{flex:none;height:28px}
 .share-panel .msg:empty{display:none}
 .share-b[aria-expanded="true"]{background:var(--tile);border-color:var(--rule)}
-.setup-panel{gap:0;padding:4px 20px;width:min(400px,calc(100vw - 32px))}
+.card.setup-panel{gap:0;padding:4px 20px;width:min(400px,calc(100vw - 32px))}
 .setup-panel>div{display:flex;flex-direction:column;gap:8px;padding:16px 0}
 .setup-panel>div+div{border-top:1px solid var(--line)}
 .setup-panel .sh{display:flex;align-items:center;justify-content:space-between;min-height:24px}
 .setup-panel .onoff{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-s);line-height:16px;color:var(--muted)}
 .setup-panel .onoff:not(.on)::before{background:var(--rule)}
 .setup-panel .onoff.on{color:var(--ink);font-weight:600}
+.icons{display:flex;flex-wrap:wrap;gap:6px}
+.icons button{all:unset;cursor:pointer;border-radius:10px;padding:3px;line-height:0}
+.icons button[aria-pressed="true"]{box-shadow:0 0 0 2px var(--ink)}
+.icons button:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 .setup-panel .code{display:flex;align-items:center;gap:8px;padding:6px 6px 6px 12px;border-radius:12px;background:var(--win);box-shadow:inset 0 0 0 1px var(--line)}
 .setup-panel .code code{flex:1;min-width:0;font:12px/1.5 var(--mono);color:var(--ink);white-space:normal;overflow-wrap:anywhere}
 .setup-panel .code .share-b{flex:none;height:28px;background:var(--tile);color:var(--ink)}
@@ -168,7 +174,6 @@ h1,h2,h3{margin:0;font:inherit}
 .crowd{display:grid;grid-template-columns:repeat(10,.31em);font-family:WeePeople;font-size:26px;font-weight:400;line-height:.86;color:var(--live);padding-right:4px}
 .crowd span{white-space:nowrap}
 .crowd .named{color:var(--src)}
-.crowd.big{font-size:40px}
 /* Online's crowd: one row across the width (two on a phone), ending in how many more there were */
 .crowd.wide{display:flex;flex-wrap:wrap;row-gap:6px;padding-right:0}
 .crowd.wide>span:not(.crowd-more){flex:none;width:.31em}
@@ -230,7 +235,7 @@ button.tile-title:hover{color:var(--ink)}
 .notable:focus-visible::after{content:"";position:absolute;top:8px;bottom:2px;pointer-events:none;border-radius:4px;outline:2px solid var(--focus);
   width:calc((100% - var(--pad)) / var(--n));left:calc((100% - var(--pad)) * var(--i) / var(--n))}
 .note-edit{position:fixed;z-index:11;width:min(320px,calc(100vw - 32px));box-sizing:border-box;margin:0;padding:12px;border-radius:14px;
-  background:var(--tile);box-shadow:0 0 0 1px var(--line),0 10px 28px -8px rgba(0,0,0,.3);display:flex;flex-direction:column;gap:8px;font-size:var(--fs-s)}
+  background:var(--tile);box-shadow:var(--pop);display:flex;flex-direction:column;gap:8px;font-size:var(--fs-s)}
 .note-edit .add{margin:0;max-width:none}
 .note-edit .err{color:var(--bnc);font-size:var(--fs-xs)} .note-edit .err:empty{display:none}
 .note-edit .del{all:unset;cursor:pointer;color:var(--muted);font-size:var(--fs-xs);align-self:flex-start;border-radius:4px}
@@ -249,10 +254,10 @@ button.tile-title:hover{color:var(--ink)}
 .events-list .event:hover{background:var(--line)}
 
 /* sankey */
-.flow{height:100%;display:grid;grid-template-columns:150px minmax(0,1fr) 150px;gap:8px}
+.flow{height:100%;display:grid;grid-template-columns:120px minmax(0,1fr) 120px;gap:8px}
 .flow svg{width:100%;height:100%;display:block;overflow:visible}
 .nodes{position:relative}
-.node{all:unset;position:absolute;transform:translateY(-50%);cursor:pointer;font-size:var(--fs-xs);line-height:1.3;max-width:150px}
+.node{all:unset;position:absolute;transform:translateY(-50%);cursor:pointer;font-size:var(--fs-xs);line-height:1.3;max-width:120px}
 .nodes.left .node{right:0;text-align:right}
 .nodes.right .node{left:0}
 .node.told>span:first-child{white-space:normal;overflow-wrap:normal}
@@ -280,7 +285,7 @@ button.tile-title:hover{color:var(--ink)}
 .heat .days{display:grid;grid-template-rows:repeat(7,minmax(0,1fr));font-size:var(--fs-xs);color:var(--muted);align-items:center}
 .heat .cells{display:grid;grid-template-columns:repeat(24,minmax(0,1fr));grid-template-rows:repeat(7,minmax(0,1fr));gap:2px}
 .heat .cells i{border-radius:2px}
-/* coral ring with a thin tile-coloured gap inside, so it shows on any blue */
+/* amber ring with a thin tile-coloured gap inside, so it shows on any blue */
 .heat .cells i.hit{outline:2px solid var(--src);outline-offset:-2px;box-shadow:inset 0 0 0 3px var(--tile)}
 .heat .hours{display:grid;grid-template-columns:repeat(24,minmax(0,1fr));gap:2px;font-size:var(--fs-xs);color:var(--muted);position:relative;padding-top:6px}
 /* what the hours card's sentence names: the busiest hour outlined, the busiest three hours underlined */
@@ -348,14 +353,8 @@ button.tile-title:hover{color:var(--ink)}
 .more-link{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) 10px;align-items:center;gap:12px;
   width:calc(100% - 8px);margin:0 -8px;padding:8px;border-radius:8px;font-size:var(--fs-s);color:var(--muted)}
 .more-link:hover{background:var(--line);color:var(--ink)}
-/* home's way into the overview: a quiet link under the tiles, lined up with them */
-.home-more{all:unset;box-sizing:border-box;cursor:pointer;align-self:flex-start;display:inline-flex;align-items:center;gap:8px;max-width:100%;
-  margin-top:-4px;border-radius:6px;font-size:var(--fs-s);line-height:1.35;color:var(--muted)}
-.home-more b{font-weight:600;color:var(--ink)}
-.home-more:hover b{text-decoration:underline;text-decoration-thickness:1.5px;text-underline-offset:3px}
-.home-more .chev,.now .chev{flex:none;transition:transform .15s}
-.home-more:hover .chev,.now:hover .chev{transform:translateX(2px);color:var(--ink)}
-.home-more:focus-visible{outline:2px solid var(--focus);outline-offset:4px}
+.now .chev{flex:none;transition:transform .15s}
+.now:hover .chev{transform:translateX(2px);color:var(--ink)}
 
 .delta{font-size:var(--fs-xs);font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
 .delta .muted{font-weight:400}
@@ -431,6 +430,22 @@ p,li,figcaption,.say-sub,.cap{text-wrap:pretty}
 .cross-say{margin:0 0 12px;font-size:var(--fs-s)}
 .cross-k{display:flex;justify-content:space-between;font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px}
 .cross-say:empty{display:none}
+/* three columns, in visits: sources, the pages they landed on, then read on or left */
+.landed.outcome{height:340px}
+.outcome .lbl{max-width:30%}.outcome span.lbl{cursor:auto;text-decoration:none}
+.outcome .lbl.l{transform:translate(-100%,-50%);text-align:right}
+.outcome .lbl.m{text-shadow:0 0 3px var(--tile),0 0 3px var(--tile),0 0 3px var(--tile)}
+.svgc [tabindex]:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
+.node .left{color:var(--ink)}
+.rmap{position:relative;height:380px}
+.svgc svg{display:block;overflow:visible}
+.rmap text.corner{font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;fill:var(--muted);opacity:.8}
+.svgc [tabindex]{cursor:pointer;outline:none}
+.svgc text{fill:var(--muted);font-size:var(--fs-xs);font-family:var(--font)}
+.svgc text.ink{fill:var(--ink);font-weight:600}
+.svgc .halo{paint-order:stroke;stroke:var(--tile);stroke-width:4px;stroke-linejoin:round}
+.lanes text.fig{font-family:WeePeople;font-size:30px}
+.lanes .lane-name:hover{text-decoration:underline}
 .tip{position:absolute;pointer-events:none;background:var(--tile);color:var(--ink);border-radius:8px;padding:4px 8px;font-size:var(--fs-xs);line-height:1.35;
   white-space:nowrap;transform:translate(-50%,calc(-100% - 8px));box-shadow:0 0 0 1px var(--line),0 6px 18px -6px rgba(0,0,0,.25);z-index:2}
 .tip b{font-variant-numeric:tabular-nums}
@@ -501,8 +516,6 @@ button.lrow:hover{background:var(--line)}
   .story{grid-template-columns:auto auto;gap:16px 28px}
   .story .say-col{grid-column:1/-1;grid-row:2}
   .story .now{justify-self:end}
-  .flow{grid-template-columns:120px minmax(0,1fr) 120px}
-  .node{max-width:120px}
 }
 @media (max-width:760px){
   body{padding-block:12px}
@@ -515,6 +528,7 @@ button.lrow:hover{background:var(--line)}
   .grid{flex:none;grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:minmax(240px,auto)}
   .t-days,.t-flow,.t-stay,.t-pages{grid-column:1;grid-row:auto}
   .t-flow{min-height:440px}
+  .rmap{height:340px}
   .flow{grid-template-columns:minmax(0,1fr) minmax(80px,1fr) minmax(0,1fr)}
   .node{font-size:var(--fs-xs);max-width:none}
   .node>span:first-child,.kw .name{white-space:normal;overflow-wrap:anywhere}
@@ -547,7 +561,7 @@ button.lrow:hover{background:var(--line)}
   .say{font-size:var(--fs-m)}
   .mix{grid-template-columns:1fr}.mix p{grid-column:1}
 }
-@media (prefers-reduced-motion:reduce){.blk,.shot,.shot img,.home-more .chev,.now .chev{transition:none}}
+@media (prefers-reduced-motion:reduce){.blk,.shot,.shot img,.now .chev{transition:none}}
 </style>
 </head>
 <body>
@@ -571,7 +585,8 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel } from '/story.js';
+  dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  ICONS, iconFor, iconSVG, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
 
@@ -617,13 +632,16 @@ const FILTER_OF={path:'path',entry:'path',exit:'path',referrer:'referrer',channe
 /* ---------- goals ---------- */
 // Pages that count as a visitor doing something, saved by the Worker for everyone who opens the dashboard.
 // The same answer carries the owner's notes on days ("Posted on Hacker News") and the funnels.
-let GOALS=[],NOTES=[],FUNNELS=[],goalsReady=Promise.resolve();
+let GOALS=[],NOTES=[],FUNNELS=[],ICON=null,goalsReady=Promise.resolve();
 // Runs alongside the stats; whatever needs the goals or notes waits on goalsReady. A reply for a site that is no
 // longer showing is dropped, so one site's goals are never saved over another's.
 function loadGoals(){
   const site=SITE;
-  return goalsReady=api('goals',{},true).catch(()=>({})).then(b=>{if(site===SITE){GOALS=SHARED?[]:b.goals||[];NOTES=b.notes||[];FUNNELS=b.funnels||[]}});
+  return goalsReady=api('goals',{},true).catch(()=>({})).then(b=>{if(site===SITE){GOALS=SHARED?[]:b.goals||[];NOTES=b.notes||[];FUNNELS=b.funnels||[];ICON=Number.isInteger(b.icon)?b.icon:null;setIcon()}});
 }
+// The tab's icon in the site's colourway (iconFor), so tabs for different sites tell apart at a glance.
+const iconURL=i=>'data:image/svg+xml,'+encodeURIComponent(iconSVG(i));
+function setIcon(){if(SITE)$('link[rel="icon"]').href=iconURL(iconFor(SITE,SITES,ICON))}
 async function saveGoals(list){
   const before=GOALS;GOALS=list;
   let ok=false;
@@ -813,7 +831,7 @@ function treemap(el,items,{gap=4}={}){
 
 // Bars per day in a subject's colour (time unless `subj` says otherwise), with the previous period as a dashed step line over them.
 // With `hot` days, those stay solid and the rest turn transparent; without, every bar is solid.
-// o: {cur, prev?, start, aria, subj?, seg?:{day,top,subj}, hot?:Set, label?:{i,title,sub,swatch}, prevDot?, axis?}
+// o: {cur, prev?, start, aria, subj?, seg?:{day,top,subj}, hot?:Set, label?:{i,title,sub,swatch}, prevDot?, axis?, scale?, note?}
 function dayBars(el,o){
   const {cur,start}=o,n=cur.length,prev=o.prev,day=i=>fmtDay(dayDate(start,i)),subj=o.subj||'time';
   observe(el,()=>{
@@ -1223,7 +1241,6 @@ const openOverview=src=>openView({v:'overview'},src);
 const openBounce=src=>openView({v:'bounce'},src);
 const openOnline=src=>openView({v:'online'},src);
 
-// A card listing pages or sources for filter f; the full view adds a switch between ways of counting.
 // A card's switch between lists: names, the one on at first; pick(i) runs on a press.
 const segHTML=(label,names,on=0)=>`<div class="seg" role="group" aria-label="${label}">${names.map((l,i)=>`<button type="button" data-i="${i}" aria-pressed="${i===on}">${l}</button>`).join('')}</div>`;
 function onSeg(sec,pick){
@@ -1231,6 +1248,7 @@ function onSeg(sec,pick){
   bs.forEach(bt=>bt.onclick=()=>{bs.forEach(x=>x.setAttribute('aria-pressed',x===bt));pick(+bt.dataset.i)});
 }
 
+// A card listing pages or sources for filter f; the full view adds a switch between ways of counting.
 // boldKeys: the keys the page's sentence names (channels as ch:key, like the home sentence's).
 // engagement: the pages' reading times (/api/engagement), for a list of pages viewed to say how long each is read.
 function dimSection(sec,group,f,compact,boldKeys=null,engagement=null){
@@ -1359,7 +1377,7 @@ async function renderFilter(body,f){
     },()=>{});
   }
   body.querySelectorAll('[data-group]').forEach(sec=>dimSection(sec,sec.dataset.group,f,true));
-  // Neither is needed to read the rest, so they come in after it and are left out if they fail.
+  // None of these is needed to read the rest, so they come in after it and are left out if they fail.
   if(f.path!=null)api('engagement',p).then(e=>{
     const r=e.rows.find(x=>x.key===f.path);
     if(stale(body,gen)||!r?.views)return;
@@ -1520,12 +1538,19 @@ async function renderDim(body,group){
   if(stale(body,gen))return;
   // The steps are the biggest movers, not only what home's sentence named, so "everyone else" is never the biggest.
   const H=home(),W=group==='sources'&&H?waterfallMovers(H.S):null;
-  body.innerHTML=`<div><p class="say"></p><p class="say-sub" hidden></p></div>${W?`<section class="card"><div class="card-title">Change in ${H.S.unit}, against the ${DAYS} days before</div><div class="steps"></div></section>`:''}<section></section>`;
+  body.innerHTML=`<div><p class="say"></p><p class="say-sub" hidden></p></div>${W?`<section class="card"><div class="card-title">Change in ${H.S.unit}, against the ${DAYS} days before</div><div class="steps"></div></section>`:''}${speed?'<section class="card read-card" hidden><div class="card-title">Read or skimmed</div><p class="card-say"></p><div class="rmap svgc"></div><p class="say-sub read-key"></p></section>':''}<section></section>`;
   const say=body.querySelector('.say');
   const cap=W?waterfallCaption(W,H.S):group==='pages'&&H?pagesFinding(H.pageRows)??pagesCaption(H.pageRows.slice(0,6)):null;
   if(cap?.html)say.innerHTML=cap.html+'.';else say.remove();
   if(W)drawGrowth(body.querySelector('.steps'),W);
   // Speed is one query more, so it comes in after the rest, and only here.
+  if(speed)speed.then(e=>{
+    if(!e||stale(body,gen))return;
+    const card=body.querySelector('.read-card'),M=readingMap(e.rows);
+    card.querySelector('.card-say').innerHTML=M.html;card.hidden=false;
+    card.querySelector('.read-key').innerHTML=`Of views read for a second or more. Dashed lines are the site’s middle; a dot is as big as its views${M.points.some(p=>p.few)?'; a hollow one has under 20':''}${M.points.some(p=>p.slow)?'; <i class="sw" style="background:var(--bnc);border-radius:50%"></i>a red ring is slow to load, over 4 s for 1 in 4 views':''}.`;
+    drawReadMap(card.querySelector('.rmap'),M);
+  });
   if(speed&&H)speed.then(e=>{
     const V=e&&!stale(body,gen)&&vitalsFinding(e.rows,H.pageRows,H.S.c.visitors),el=body.querySelector('.say-sub');
     if(!V)return;
@@ -1587,9 +1612,9 @@ function drawFunnel(el,f,drop){
   // Each step opens its page, as the steps in the other waterfalls open what they name.
   el.querySelectorAll('.step-n').forEach(b=>{const i=+b.dataset.i;b.title=stepHint(f,i);b.setAttribute('aria-label',`${b.title}. Open`);b.onclick=e=>{e.stopPropagation();openFilter({path:steps[i]},steps[i],b)}});
 }
-// The link to the bounce page says what bounce did overall, not what it did for this slice.
-// A rate's change in percentage points: +2 pts.
+// A rate's change in percentage points: +2 points, or "same".
 const pts=(c,p)=>{const d=Math.round((c-p)*100);return d?`${d>0?'+':'−'}${Math.abs(d)} ${Math.abs(d)===1?'point':'points'}`:'same'};
+// The link to the bounce page says what bounce did overall, not what it did for this slice.
 const bounceLink=()=>{const H=home(),d=H?Math.round((H.S.c.bounce-H.S.p.bounce)*100):0;return `<span>${d>0?'Why bounce rose':d<0?'Why bounce fell':'Bounce by source'}</span>${CHEV}`};
 const numsHTML=(c,pr,{story=false}={})=>{
   const n=(k,v,sub,told)=>`<div class="num"><span class="k">${k}</span><span class="v${told?' told':''}">${v}</span><span class="delta">${sub}</span></div>`;
@@ -1734,6 +1759,154 @@ function drawCrossing(el,left,right,{edge=false,shares=false,bar='page'}={}){
   });
 }
 
+// Columns of nodes joined by ribbons, one scale for all, each column centred: a visit is as tall everywhere.
+// cols: node ids per column, left to right; links: {s,t,v}. Ribbons leave and arrive in the order of the node at
+// their other end, so they cross as little as they can. Returns each node's y and h, and each link's path.
+function columns(cols,links,xs,H,gap,barW){
+  const node={};
+  cols.forEach((c,ci)=>c.forEach(id=>node[id]={id,col:ci,in:0,out:0}));
+  for(const l of links){node[l.s].out+=l.v;node[l.t].in+=l.v}
+  const val=n=>Math.max(n.in,n.out);
+  const k=Math.min(...cols.map(c=>(H-gap*(c.length-1))/(sum(c.map(id=>val(node[id])))||1)));
+  cols.forEach((c,ci)=>{
+    let y=(H-sum(c.map(id=>val(node[id])*k))-gap*(c.length-1))/2;
+    for(const id of c){const n=node[id];n.x=xs[ci];n.y=y;n.h=Math.max(1,val(n)*k);y+=n.h+gap}
+  });
+  const outs={},ins={};
+  for(const l of links){(outs[l.s]??=[]).push(l);(ins[l.t]??=[]).push(l)}
+  for(const ls of Object.values(outs)){ls.sort((a,b)=>node[a.t].y-node[b.t].y);let y=node[ls[0].s].y;for(const l of ls){l.y0=y;y+=l.v*k}}
+  for(const ls of Object.values(ins)){ls.sort((a,b)=>node[a.s].y-node[b.s].y);let y=node[ls[0].t].y;for(const l of ls){l.y1=y;y+=l.v*k}}
+  for(const l of links){
+    const x0=node[l.s].x+barW,x1=node[l.t].x,m=(x0+x1)/2,h=l.v*k;
+    l.d=`M${x0},${l.y0} C${m},${l.y0} ${m},${l.y1} ${x1},${l.y1} L${x1},${l.y1+h} C${m},${l.y1+h} ${m},${l.y0+h} ${x0},${l.y0+h} Z`;
+  }
+  return node;
+}
+
+// Where visits came from, the page they landed on, and whether they read on or left after it, all in visits, so
+// the third column adds up to the first. The five busiest sources and pages, and the pair the sentence names; the
+// rest go under "other". That pair's ribbons and its page's way out are solid.
+function drawOutcome(el,flows,pair){
+  if(!sum(flows.map(f=>f.visits))){el.innerHTML='<div class="empty">No visits yet</div>';return}
+  const OTHER='\u0000';
+  const busiest=key=>{
+    const m=new Map();for(const f of flows)m.set(f[key],(m.get(f[key])||0)+f.visits);
+    let r=[...m].sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
+    const some=r.slice(0,5);if(pair&&!some.includes(pair[key]))some.splice(4,1,pair[key]);
+    return r.length>some.length?[...some,OTHER]:some;
+  };
+  const srcs=busiest('source'),pages=busiest('page'),of=(list,k)=>list.includes(k)?k:OTHER;
+  const pairs=new Map(),stay=new Map(pages.map(p=>[p,{visits:0,bounces:0}]));
+  for(const f of flows){
+    const s=of(srcs,f.source),p=of(pages,f.page),key=s+'\t'+p;
+    pairs.set(key,(pairs.get(key)||0)+f.visits);
+    const st=stay.get(p);st.visits+=f.visits;st.bounces+=f.bounces;
+  }
+  const label=(dim,k)=>k===OTHER?`other ${dim==='referrer'?'sources':'pages'}`:labelOf(dim,k);
+  observe(el,()=>{
+    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+    const narrow=W<520,barW=6,xs=[Math.round(W*(narrow?.3:.22)),Math.round(W*.55),W-Math.round(W*(narrow?.27:.2))-barW];
+    const links=[...[...pairs].map(([key,v])=>{const [s,p]=key.split('\t');return {s:'s'+s,t:'p'+p,v,src:s,page:p}}),
+      ...pages.flatMap(p=>{const st=stay.get(p);return [{s:'p'+p,t:'oread',v:st.visits-st.bounces,page:p},{s:'p'+p,t:'oleft',v:st.bounces,page:p,left:true}]})].filter(l=>l.v>0);
+    const node=columns([srcs.map(s=>'s'+s),pages.map(p=>'p'+p),['oread','oleft']],links,xs,H,narrow?6:8,barW);
+    const layers=[[],[],[]];
+    for(const l of links){
+      let ink,hot=false;
+      if(l.src!=null){const mine=pair&&l.src===pair.source;hot=mine&&l.page===pair.page;ink=hot?'--src':mine?'--src-t':'--src-p'}
+      else if(l.left){hot=pair&&l.page===pair.page;ink=hot?'--bnc':'--bnc-p'}
+      else ink='--lost-p';
+      const hint=l.src!=null?`${label('referrer',l.src)} → ${label('path',l.page)}: ${fmtInt(l.v)} ${l.v===1?'visit':'visits'}`
+        :`${label('path',l.page)}: ${fmtInt(l.v)} ${l.v===1?'visit':'visits'} ${l.left?'left after this page':'read on'}`;
+      layers[hot?2:l.src!=null&&pair&&l.src===pair.source?1:0].push(`<path d="${l.d}" fill="var(${ink})" data-hint="${esc(hint)}"/>`);
+    }
+    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(`Visits from ${srcs.length} sources to the pages they landed on, then whether they read on or left after one page`)}">${layers.flat().join('')}`;
+    for(const n of Object.values(node)){
+      const k=n.id.slice(1),c=n.id[0]==='s'?(pair&&k===pair.source?'--src':'--src-ts'):n.id[0]==='p'?(pair&&k===pair.page?'--page':'--page-ts'):k==='left'?'--bnc':'--lost';
+      s+=`<rect x="${n.x}" y="${n.y}" width="${barW}" height="${n.h}" rx="1" fill="var(${c})"/>`;
+    }
+    el.innerHTML=s+'</svg>';
+    const place=(ids,make)=>{
+      const ns=ids.map(id=>node[id]).filter(Boolean),ys=spread(ns.map(n=>n.y+n.h/2),narrow?30:18,H);
+      ns.forEach((n,i)=>{const b=make(n);b.style.top=ys[i]+'px';el.appendChild(b)});
+    };
+    const button=(cls,html,open,hint)=>{const b=document.createElement(open?'button':'span');if(open){b.type='button';b.onclick=()=>open(b)}b.className='lbl '+cls;b.innerHTML=html;if(hint)b.title=hint;return b};
+    const strong=(on,t)=>on?`<b>${t}</b>`:t;
+    place(srcs.map(s=>'s'+s),n=>{const k=n.id.slice(1),v=n.out,b=button('l',`${strong(pair&&k===pair.source,esc(label('referrer',k)))}${narrow?'<br>':' '}<span>${fmtInt(v)}</span>`,
+      k===OTHER?el=>openView({v:'sources'},el):el=>openFilter({referrer:k},label('referrer',k),el));b.style.left=(n.x-8)+'px';return b});
+    place(pages.map(p=>'p'+p),n=>{const k=n.id.slice(1),st=stay.get(k),b=button('m',`${strong(pair&&k===pair.page,esc(label('path',k)))}${narrow?'':` <span>${leftWord(st.bounces,st.visits)}</span>`}`,
+      k===OTHER?el=>openView({v:'pages'},el):el=>openFilter({path:k},label('path',k),el),`${label('path',k)}: ${fmtInt(st.visits)} visits landed here, ${leftWord(st.bounces,st.visits)} after one page`);b.style.left=(n.x+barW+6)+'px';return b});
+    place(['oread','oleft'],n=>{const left=n.id==='oleft',b=button('',`${strong(left,left?`Left after${narrow?'<br>':' '}one page`:'Read on')}<br><span>${fmtInt(n.in)}</span>`);b.style.maxWidth='none';b.style.left=(n.x+barW+8)+'px';return b});
+  });
+}
+
+// Read or skimmed: each page by how long half its readers stay and how far down they get, on average, its dot as big
+// as its read views; dashed lines are the site's medians, which cut the four corners. The pages the sentence names
+// are solid, a page slow to load has a red ring, and one with under 20 read views is hollow.
+function drawReadMap(el,M){
+  const pts=M.points;if(!M.mid){el.remove();return}
+  observe(el,()=>{
+    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+    const narrow=W<520,pl=40,pr=12,pt=12,pb=narrow?58:38,maxV=maxOf(pts.map(p=>p.views)),R=v=>3+Math.sqrt(v/maxV)*(narrow?18:28);
+    const lo=Math.max(1,Math.min(...pts.map(p=>p.read))/1.4),hi=Math.max(...pts.map(p=>p.read))*1.4;
+    const X=s=>pl+(Math.log(s)-Math.log(lo))/(Math.log(hi)-Math.log(lo))*(W-pl-pr);
+    const d0=Math.max(0,Math.floor(Math.min(...pts.map(p=>p.depth))*10-.5)/10),d1=Math.min(1,Math.ceil(Math.max(...pts.map(p=>p.depth))*10+.5)/10);
+    const Y=d=>pt+(1-(d-d0)/(d1-d0))*(H-pt-pb);
+    const told=new Set(M.told);
+    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(`Pages by how long half their readers stay and how far down they read: ${pts.map(p=>`${p.key} ${fmtDur(p.read)}, ${fmtPct(p.depth)}`).join('; ')}`)}">`;
+    const ticks=[2,5,10,20,30,60,120,300,600,1200].filter(v=>v>=lo&&v<=hi).filter((v,i,a)=>!narrow||i%2===0||i===a.length-1);
+    for(const v of ticks)s+=`<line x1="${X(v)}" x2="${X(v)}" y1="${pt}" y2="${H-pb}" stroke="var(--line)"/><text x="${X(v)}" y="${H-pb+16}" text-anchor="middle" class="axis">${v<60?v+'s':v/60+'m'}</text>`;
+    for(let d=d0;d<=d1+1e-9;d+=.1)s+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(d)}" y2="${Y(d)}" stroke="var(--line)"/><text x="${pl-6}" y="${Y(d)+4}" text-anchor="end" class="axis">${Math.round(d*100)}%</text>`;
+    s+=`<line x1="${X(M.mid.read)}" x2="${X(M.mid.read)}" y1="${pt}" y2="${H-pb}" stroke="var(--rule)" stroke-dasharray="3 4"/><line x1="${pl}" x2="${W-pr}" y1="${Y(M.mid.depth)}" y2="${Y(M.mid.depth)}" stroke="var(--rule)" stroke-dasharray="3 4"/>`;
+    // A phone has room for the corners' first words only.
+    const C=narrow?{end:'Read',skimmed:'Skimmed',top:'Near the top',early:'Left early'}:M.corners;
+    s+=`<text class="corner" x="${W-pr-4}" y="${pt+12}" text-anchor="end">${C.end}</text><text class="corner" x="${pl+4}" y="${pt+12}">${C.skimmed}</text>`
+      +`<text class="corner" x="${W-pr-4}" y="${H-pb-6}" text-anchor="end">${C.top}</text><text class="corner" x="${pl+4}" y="${H-pb-6}">${C.early}</text>`;
+    s+=`<text x="${W-pr}" y="${H-4}" text-anchor="end" class="axis">half of readers stay at least →</text>`
+      +`<text x="${pl}" y="${H-(narrow?22:4)}" class="axis">↑ how far down, on average</text>`;
+    const order=[...pts].sort((a,b)=>b.views-a.views);
+    for(const p of order){
+      const on=told.has(p.key),hint=`${p.key==='/'?'The home page':p.key}: ${fmtInt(p.views)} read views; half stay ${fmtDur(p.read)} or more, ${fmtPct(p.depth)} of the way down on average${p.slow?`; slow to load, LCP ${(p.lcp/1000).toFixed(1)} s`:''}${p.few?'; too few views to place surely':''}. ${M.corners[p.corner]}.`;
+      s+=`<circle cx="${X(p.read)}" cy="${Y(p.depth)}" r="${R(p.views)}" fill="${p.few?'none':`var(${on?'--page':'--page-p'})`}" stroke="var(${p.slow?'--bnc':on?'--page':'--page-t'})" stroke-width="${p.slow?3:1.2}"${p.few?' stroke-dasharray="2 2"':''} tabindex="0" role="button" data-path="${esc(p.key)}" aria-label="${esc(hint)} Open" data-hint="${esc(hint)}"/>`;
+    }
+    for(const p of order)if(told.has(p.key)||(!narrow&&!p.few))s+=`<text x="${X(p.read)+R(p.views)+4}" y="${Y(p.depth)+4}" class="${told.has(p.key)?'ink ':''}halo">${esc(p.key)}</text>`;
+    el.innerHTML=s+'</svg>';
+  });
+  opensPages(el);
+}
+
+// A mark in a drawn chart with a data-path opens that page, on a click or on Enter or Space.
+function opensPages(el){
+  const go=e=>{const t=e.target.closest('[data-path]');if(t)openFilter({path:t.dataset.path},t.dataset.path,t)};
+  el.onclick=go;el.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();go(e)}};
+}
+
+// Here now as lanes: one per page, each person standing as far along it as they've been on that page; those who
+// left are pale. The people the sentence counts, past 2 minutes, carry their source.
+function drawLanes(el,L){
+  observe(el,()=>{
+    const W=el.clientWidth;if(!W)return;
+    const lane=44,pl=W<520?88:120,pr=16,H=L.rows.length*lane+28,X=s=>pl+laneX(s)*(W-pl-pr);
+    el.style.height=H+'px';
+    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(L.rows.map(r=>`${r.path??`${r.pages} other pages`}: ${r.here} here now, ${r.people.length-r.here} left`).join('; '))}">`;
+    for(const [v,t] of W<520?[[0,'0'],[60,'1 min'],[300,'5 min'],[1800,'30 min']]:[[0,'just came'],[60,'1 min'],[300,'5 min'],[900,'15 min'],[1800,'30 min']])
+      s+=`<line x1="${X(v)}" x2="${X(v)}" y1="0" y2="${H-24}" stroke="var(--line)"/><text x="${X(v)}" y="${H-6}" text-anchor="${v?v===1800?'end':'middle':'start'}" class="axis">${t}</text>`;
+    L.rows.forEach((r,i)=>{
+      const y=i*lane+lane/2+4;
+      s+=`<line x1="${pl}" x2="${W-pr}" y1="${y+8}" y2="${y+8}" stroke="var(--line)"/>`
+        +(r.path==null?`<text x="${pl-10}" y="${y-2}" text-anchor="end" class="${r.here?'ink':''}">${r.pages} other pages</text>`
+          :`<text x="${pl-10}" y="${y-2}" text-anchor="end" class="${r.here?'ink ':''}lane-name" tabindex="0" role="button" data-path="${esc(r.path)}" aria-label="${esc(`${r.path}: ${r.here} here now. Open`)}">${esc(r.path.length>18?r.path.slice(0,8)+'…'+r.path.slice(-8):r.path)}</text>`)
+        +`<text x="${pl-10}" y="${y+12}" text-anchor="end" class="axis">${r.here?`${r.here} here`:'left'}</text>`;
+      for(const p of r.people){
+        const src=labelOf('referrer',p.v.referrer),hint=`${p.here?'Here now':'Left'}: from ${src}${p.v.country?`, ${labelOf('country',p.v.country)}`:''}, ${fmtDur(p.v.seconds)} on ${pageName(p.v.path)}`;
+        s+=`<text class="fig" x="${X(p.v.seconds)}" y="${y+8}" text-anchor="middle" style="fill:var(${p.named?'--src':p.here?'--live':'--live-ps'})" data-hint="${esc(hint)}">${p.letter}</text>`;
+        if(p.here&&p.v.seconds>=120)s+=`<text x="${X(p.v.seconds)+9}" y="${y-12}" class="halo" style="font-size:11px;fill:var(--ink)">${esc(src)}</text>`;
+      }
+    });
+    el.innerHTML=s+'</svg>';
+  });
+  opensPages(el);
+}
+
 // Bounce: who visited vs how they behaved, per day, and by source and entry page.
 async function renderBounce(body){
   const gen=body._gen;
@@ -1759,6 +1932,7 @@ async function renderBounce(body){
     <div class="nums"><div class="hero"><span class="big">${totals.cur.visits?fmtPct(c):'–'}</span><span>bounce${totals.prev.visits&&totals.cur.visits?` · <b>${pts(c,p)}</b>`:''}</span><span class="hero-sq">${squaresSVG(c,22,5,'var(--bnc)')}</span></div></div>
     ${B&&B.cause!=='same'?`<section class="card"><div class="card-title">Why it ${B.total>0?'rose':'fell'} · in percentage points</div><div class="steps"></div>
       <div class="legend"><span>${fmtPct(c)} now</span><span>${fmtPct(p)} before</span></div></section>`:''}
+    <section class="card"><div class="card-title">Where visits came from, the page they landed on, and who left after it</div><p class="card-say oc-say"></p><div class="landed outcome"></div></section>
     <section class="card"><div class="card-title">Bounce per day${totals.prev.visits?`, against the ${DAYS} days before`:''}</div><div class="chart"></div></section>
     <section class="card"><div class="card-title">Sources</div><div data-dim="referrer"></div></section>
     <section class="card"><div class="card-title">Pages they landed on</div><div data-dim="entry"></div></section>`;
@@ -1771,6 +1945,9 @@ async function renderBounce(body){
       aria:`Bounce ${B.total>0?'rose':'fell'} ${pts(Math.abs(B.total),true)}: ${steps.slice(0,-1).map(s=>`${s.label} ${pts(s.value)}`).join(', ')}.`,
       openOf:s=>s.key!=null?b=>openFilter({referrer:s.key},labelOf('referrer',s.key),b):null});
   }
+  const O=outcomeStory(flows.flows,c);
+  body.querySelector('.oc-say').innerHTML=O.html;
+  drawOutcome(body.querySelector('.outcome'),flows.flows,O.pair);
   // A day with no visits has no bounce rate, so the line leaves a gap there rather than dropping to 0%.
   const rates=side=>side.bounce.map((b,i)=>side.visits&&!side.visits[i]?null:b);
   // The highest day is labelled only when it stands out: 5 points or more above a usual day.
@@ -1803,19 +1980,21 @@ async function renderOnline(body){
   const gen=body._gen,[live]=await Promise.all([liveNow(),homeDrawn]);
   if(stale(body,gen))return;
   const H=home(),told=H?.T.told||new Set(),page=H?.T.page;
-  // The crowd runs the width in one row (two on a phone), here now first; the rest are counted at its end.
-  const w=(body.clientWidth||900)-32,per=Math.max(10,Math.floor(w/12.4)),C=crowdLine(live,told,per*(w<600?2:1)-3),earlier=live.recent-live.now;
+  // Amber figures came from a source home's sentence talks about; the key names it.
+  const earlier=live.recent-live.now,named=[...new Set(crowd(live,told,Infinity).filter(p=>p.named).map(p=>labelOf('referrer',p.v.referrer)))];
   // One row per page, its people grouped as figures; each person here now gets a line, with their source, country
   // and time on site; those who left are one muted line per page, by source.
   const people=crowdLine(live,told,Infinity).people,groups=new Map();
   for(const p of people){if(!groups.has(p.v.path))groups.set(p.v.path,[]);groups.get(p.v.path).push(p)}
   const here=g=>g.filter(p=>p.here).length;
   const rows=[...groups].sort((a,b)=>here(b[1])-here(a[1])||b[1].length-a[1].length);
-  const pace=onlinePace(live,H?.hourly,Date.now()/1000);
+  const pace=onlinePace(live,H?.hourly,Date.now()/1000),LN=lanes(live,told);
   body.innerHTML=`<p class="say">${onlineStory(live,told,page)}${pace?` ${pace.html}`:''}</p>
-    <div class="here-crowd">${lineHTML(C,'big wide',C.more)}<p class="crowd-key"><span><i class="sw here"></i><b>${live.now}</b> here now</span>${earlier>0?`<span><i class="sw gone"></i><b>${earlier}</b> earlier, latest first</span>`:''}</p></div>
+    ${rows.length?`<section class="card"><div class="card-title">Where they are, and how long they’ve been there</div>${LN.html?`<p class="card-say">${LN.html}</p>`:''}<div class="lanes svgc"></div>
+      <p class="crowd-key"><span><i class="sw here"></i><b>${live.now}</b> here now</span>${earlier>0?`<span><i class="sw gone"></i><b>${earlier}</b> left in the last 30 minutes</span>`:''}${named.length?`<span><i class="sw here" style="background:var(--src)"></i>from ${named.map(esc).join(' or ')}</span>`:''}</p></section>`:''}
     <section class="card">${rows.length?`<div class="people list"><div class="lrow lhead online"><span>Page</span><span>People</span><span>Source</span><span class="cty">Country</span><span>Time on site</span><span></span></div></div>`:'<div class="muted">No one in the last 30 minutes.</div>'}</section>
     <p class="credit">Figures: Wee People, ProPublica</p>`;
+  if(rows.length)drawLanes(body.querySelector('.lanes'),LN);
   const list=body.querySelector('.people');
   for(const [path,g] of rows){
     g.sort((a,b)=>b.here-a.here);
@@ -1922,8 +2101,11 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
   const right=top.map(([key,value])=>({key,label:key,value,prev:before.get(key),isNew:!pageRows.find(x=>x.key===key)?.prev}));
   const restP=ranked.filter(r=>!top.includes(r));
   if(restP.length)right.push({key:null,label:'other pages',value:sum(restP.map(r=>r[1]))});
+  // The story's own source and page get a line under the page when their visits left far more or less than the site's.
+  const stay=S.lead&&T.page!=null?pairStay(flows,S.lead.key,T.page,S.c.bounce):null,toldPage=right.find(r=>stay&&r.key===T.page);
+  if(toldPage)Object.assign(toldPage,{left:stay.word,leftHint:stay.hint.replace(/<[^>]+>/g,'')});
 
-  // Anything not shown on its own goes to the "more" row.
+  // Anything not shown on its own goes to the "other" row.
   const at=(list,k)=>{const i=list.findIndex(s=>s.key===k);return i>=0?i:list.findIndex(s=>s.key==null)};
   const m=left.map(()=>right.map(()=>0));
   for(const f of flows){const i=at(left,f.source),j=at(right,f.page);if(i>=0&&j>=0)m[i][j]+=f.visitors}
@@ -1955,13 +2137,13 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
     const told=n.key!=null&&(side==='left'?T.told.has(n.key):n.key===T.page);
     b.className='node'+(told?' told':'');
     const name=told?n.label:shorten(n.label);
-    if(side==='left')b.innerHTML=`<span>${told?`<b>${esc(name)}</b>`:esc(name)} <span class="chg">${n.prev?fmtSigned(n.change):'new'}</span></span>`;
+    if(side==='left')b.innerHTML=`<span>${told?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${n.prev?fmtSigned(n.change):'new'}</span>`;
     else if(n.key==null)b.innerHTML=`<span class="muted">${esc(name)}</span>`;
-    else b.innerHTML=told?`<span><b>${pathHTML(name)}</b></span>${n.isNew?'<span class="chg">new</span>':''}`:`<span>${esc(name)}</span>`;
-    b.title=side==='left'?sourceHint(n.label,n.value,n.prev,S.unit):pageHint(n.label,n.value);
+    else b.innerHTML=told?`<span><b>${pathHTML(name)}</b></span>${n.isNew?'<span class="chg">new</span>':''}${n.left?`<span class="left"><i class="sw" style="background:var(--bnc)"></i>${n.left}</span>`:''}`:`<span>${esc(name)}</span>`;
+    b.title=side==='left'?sourceHint(n.label,n.value,n.prev,S.unit):n.leftHint||pageHint(n.label,n.value);
     b.setAttribute('aria-label',side==='left'
       ?`${n.label}, ${n.change>=0?'up':'down'} ${fmtInt(Math.abs(n.change))}, ${fmtInt(n.value)} ${S.unit}. Open`
-      :`${n.label}, ${fmtInt(n.value)} first visits landed here. Open`);
+      :`${n.label}, ${fmtInt(n.value)} first visits landed here${n.leftHint?`. ${n.leftHint}`:''}. Open`);
     b.onclick=e=>{e.stopPropagation();n.key==null?openView({v:side==='left'?'sources':'pages'},b)
       :openFilter({[side==='left'?'referrer':'path']:n.key},n.label,b)};
     return b;
@@ -2254,7 +2436,7 @@ function renderTopbar(){
   const site=$('#site');
   if(SITES.length>1){
     site.innerHTML=`<label class="pick"><select aria-label="Site">${SITES.map(s=>`<option value="${esc(s)}"${s===SITE?' selected':''}>${esc(displayHost(s))}</option>`).join('')}</select><svg width="9" height="6" viewBox="0 0 9 6" aria-hidden="true"><path d="M1 1l3.5 3.5L8 1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></label>`;
-    site.querySelector('select').onchange=e=>{SITE=e.target.value;store.set('lede_site',SITE);document.title=`${displayHost(SITE)} · Lede`;history.replaceState({depth:0},'',urlFor(null));showShare(false);loadGoals();renderHome(`Showing ${displayHost(SITE)}`)};
+    site.querySelector('select').onchange=e=>{SITE=e.target.value;store.set('lede_site',SITE);document.title=`${displayHost(SITE)} · Lede`;ICON=null;setIcon();history.replaceState({depth:0},'',urlFor(null));showShare(false);loadGoals();renderHome(`Showing ${displayHost(SITE)}`)};
   }else site.innerHTML=`<b>${esc(displayHost(SITE))}</b>`;
   $('#hint').textContent=SHARED?'Shared with you by the owner. You can look around but not change anything.':DEMO?'Sample site':'';
   const share=$('#share'),setup=$('#setup');
@@ -2317,6 +2499,9 @@ function drawSetup(msg=''){
   const well=(text,k)=>`<div class="code"><code>${esc(text)}</code><button type="button" class="share-b" data-copy="${k}">Copy</button></div>`;
   panel.innerHTML=`<div><div class="sh"><b>Lede’s line</b></div><p class="muted">On every page of ${esc(displayHost(SITE))}, so each visit is counted.</p>${well(tag,'line')}</div>
     <div><div class="sh"><b>Another site</b></div>${DEMO?'<p class="muted">The sample can’t count another site; your own Lede can.</p>':`<form novalidate><div class="add"><input name="site" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="example.org" aria-label="Another site’s address"><button class="retry">Add</button></div></form>`}</div>
+    <div><div class="sh"><b>Tab icon</b>${ICON!=null?'<button type="button" class="share-b" data-icon="">Automatic</button>':''}</div>
+      <p class="muted">${ICON==null?'Picked from the site’s name, so its tabs stand apart from other sites’. Pick one to keep it.':'Your pick, for everyone who opens this site’s stats.'}</p>
+      <div class="icons" role="group" aria-label="Tab icon">${ICONS.map((_,i)=>`<button type="button" data-icon="${i}" aria-pressed="${i===iconFor(SITE,SITES,ICON)}" aria-label="Colourway ${i+1}"><img src="${iconURL(i)}" alt="" width="28" height="28"></button>`).join('')}</div></div>
     <div><div class="sh"><b>Messages</b><span class="onoff${MESSAGES?' on':''}">${MESSAGES?'On':'Off'}</span></div>
       <p class="muted">${MESSAGES?'The week’s story every Monday, and a line when far more people than usual are here at once.':'The week’s story every Monday in Slack, Discord or ntfy. Run this, then paste the channel’s webhook address.'}</p>${MESSAGES?'':well(cmd,'cmd')}</div>
     ${PASSWORD?'<div class="out"><span class="muted">Signed in with the password</span><button type="button" class="share-b" data-a="out">Sign out</button></div>':''}
@@ -2333,6 +2518,13 @@ function drawSetup(msg=''){
       SITES=b.sites;renderTopbar();showSetup(true);drawSetup(`Added ${displayHost(b.sites.at(-1))}. Pick it from the list at the top, and put Lede’s line on its pages.`);
     }catch{drawSetup('Couldn’t add the site. Check your connection, then try again.')}
   };
+  panel.querySelectorAll('[data-icon]').forEach(b=>b.onclick=async()=>{
+    const icon=b.dataset.icon===''?null:+b.dataset.icon;
+    try{
+      const r=await fetch(`/api/icon?site=${encodeURIComponent(SITE)}`,{method:'PUT',body:JSON.stringify({icon})});if(!r.ok)throw new Error(r.status);
+      ICON=icon;setIcon();drawSetup();panel.querySelector('.icons [aria-pressed="true"]')?.focus();
+    }catch{drawSetup('Couldn’t save the tab icon. Check your connection, then try again.')}
+  });
   const out=panel.querySelector('[data-a="out"]');
   if(out)out.onclick=async()=>{
     try{await fetch('/api/signout',{method:'POST'});memo.clear();showSignIn()}catch{drawSetup('Couldn’t sign out. Check your connection, then try again.')}
@@ -2343,7 +2535,7 @@ function drawSetup(msg=''){
 function showOnboarding(){
   const tag=`<script defer src="${location.origin}/t.js"><\/script>`;
   $('#period').hidden=true;
-  $('#story').innerHTML='';$('#home .home-more')?.remove();
+  $('#story').innerHTML='';
   $('#grid').innerHTML=`<section class="card onboard"><img class="logo" src="/icon.svg" alt=""><b>No visits yet</b>
     <span>Add this line to every page of ${esc(displayHost(SITE))}. The first visit shows up here within a couple of minutes.</span>
     <code>${esc(tag)}</code><button type="button" class="retry">Copy</button><span class="err" role="alert"></span></section>`;
@@ -2362,7 +2554,7 @@ function showSignIn(){
   $('#site').textContent='';$('#hint').textContent='';
   $('#share').hidden=true;$('#share-panel').hidden=true;$('#setup').hidden=true;$('#setup-panel').hidden=true;
   $('#period').hidden=true;
-  $('#story').innerHTML='';$('#home .home-more')?.remove();
+  $('#story').innerHTML='';
   $('#grid').innerHTML=`<form class="card onboard signin" novalidate><img class="logo" src="/icon.svg" alt=""><b>Enter your password</b>
     <div class="add"><input name="password" type="password" autocomplete="current-password" aria-label="Password"><button class="retry">Sign in</button></div>
     <span class="err" role="alert"></span><span class="muted">Forgot it? Run npx wrangler secret put DASHBOARD_PASSWORD.</span></form>`;
@@ -2384,7 +2576,7 @@ function showSignIn(){
 // First run: the only setting is which site to count. Events from other hosts are dropped.
 function askForSite(){
   $('#period').hidden=true;
-  $('#story').innerHTML='';$('#home .home-more')?.remove();
+  $('#story').innerHTML='';
   $('#grid').innerHTML=`<form class="card onboard" novalidate><img class="logo" src="/icon.svg" alt=""><b>What’s your site’s address?</b>
     <span>Lede counts visits to this site and ignores the rest.</span>
     <div class="add"><input name="site" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="example.com" aria-label="Your site’s address"><button class="retry">Add</button></div>
@@ -2458,10 +2650,6 @@ async function drawHome(message){
   const stay=tile('t-stay','Did they stay',stayCaption(S,B),openBounce);
   const pg=tile('t-pages','Pages by visitors','',openDim('pages'));
   grid.replaceChildren(days,flow,stay,pg);
-  // The overview's other cards have no tile of their own, so home names them on a way in.
-  $('#home .home-more')?.remove();
-  grid.insertAdjacentHTML('afterend',`<button type="button" class="home-more"><span><b>More about these ${DAYS} days</b> · what happened, search words, where readers are, hours, funnels</span>${CHEV}</button>`);
-  $('#home .home-more').onclick=e=>openOverview(e.currentTarget);
 
   drawDays(days.querySelector('.viz'),S,ser,{note:!SHARED});
   noteDays(days.querySelector('.viz'),ser,0);
@@ -2504,7 +2692,7 @@ async function refreshOnline(){
 // /api/live answers whenever someone comes, goes or is still reading, and that's drawn as the minute's
 // refresh draws it. The socket is closed while the tab is hidden, so a dashboard nobody looks at costs
 // nothing, and opened again on the next refresh. Without the object (the sample data, a deploy without it)
-// it never opens, isn't tried again, and the minute's refresh asks as before.
+// it never opens, isn't tried again, and the minute's refresh asks /api/live instead.
 let socket=null,pushed=null,noSocket=false;
 function listen(){
   if(DEMO||noSocket||document.hidden||(socket&&socket.site===SITE))return;
@@ -2534,7 +2722,7 @@ async function boot(){
   store.set('lede_site',SITE);
   // The period is in the address too (?days=7), so a shared link shows the same numbers to everyone.
   DAYS=route.days||30;
-  document.title=`${displayHost(SITE)} · Lede`;
+  document.title=`${displayHost(SITE)} · Lede`;setIcon();
   renderTopbar();
   loadGoals();
   const drawn=renderHome();

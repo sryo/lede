@@ -145,6 +145,20 @@ test('goals are saved for everyone who opens the dashboard', async () => {
   assert.equal(bad.status, 400);
 });
 
+test('the tab icon the owner picks is saved for the site, and null goes back to the automatic one', async () => {
+  const env = { STORE: memoryKV({ sites: '["example.com"]' }), DEMO: 'true' };
+  assert.equal((await (await call('goals?site=example.com', env)).json()).icon, null);
+  const saved = await call('icon?site=example.com', env, { method: 'PUT', body: JSON.stringify({ icon: 3 }) });
+  assert.deepEqual(await saved.json(), { icon: 3 });
+  assert.equal((await (await call('goals?site=example.com', env)).json()).icon, 3, 'it comes with the goals the dashboard loads at the start');
+  await call('icon?site=example.com', env, { method: 'PUT', body: JSON.stringify({ icon: null }) });
+  assert.equal((await (await call('goals?site=example.com', env)).json()).icon, null);
+  for (const icon of [9, -1, 1.5, '2']) {
+    const bad = await call('icon?site=example.com', env, { method: 'PUT', body: JSON.stringify({ icon }) });
+    assert.equal(bad.status, 400, String(icon));
+  }
+});
+
 test('goals are read as the pages Lede stores: no trailing slash, encoded as browsers send them', async () => {
   const env = { STORE: memoryKV({ sites: '["example.com"]' }) };
   const saved = await call('goals?site=example.com', env, { method: 'PUT', body: JSON.stringify({ goals: ['/Pricing/', '/café', '/caf%C3%A9', '/thanks?from=mail'] }) });
@@ -176,12 +190,12 @@ test('goals, funnels and notes share one key per site; the old keys move there t
   const get = STORE.get;
   STORE.get = k => (reads++, get(k));
   const env = { STORE };
-  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/signup'], funnels: [], notes: [{ day: '2026-10-16', text: 'Hi' }] });
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/signup'], funnels: [], notes: [{ day: '2026-10-16', text: 'Hi' }], icon: null });
   assert.deepEqual(JSON.parse(STORE.m.get('settings:example.com')), { goals: ['/signup'], notes: [{ day: '2026-10-16', text: 'Hi' }] }, 'so the weekly message reads one key');
   await call('funnels?site=example.com', env, { method: 'PUT', body: JSON.stringify({ funnels: [['/', '/signup']] }) });
   assert.deepEqual(JSON.parse(STORE.m.get('settings:example.com')), { goals: ['/signup'], notes: [{ day: '2026-10-16', text: 'Hi' }], funnels: [['/', '/signup']] });
   reads = 0;
-  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/signup'], funnels: [['/', '/signup']], notes: [{ day: '2026-10-16', text: 'Hi' }] });
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/signup'], funnels: [['/', '/signup']], notes: [{ day: '2026-10-16', text: 'Hi' }], icon: null });
   assert.equal(reads, 1, 'the sites come from the isolate\'s copy, and the settings are one read');
 });
 
@@ -226,7 +240,7 @@ test('notes on days are saved for everyone, one per day, and each change is one 
   assert.equal(writes, 4, 'removing a note that is not there writes nothing');
   assert.deepEqual(await notes(), { notes: [{ day: '2026-10-16', text: 'Posted on Hacker News again' }] });
   // The dashboard reads goals, notes and funnels with one request.
-  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: [], notes: [{ day: '2026-10-16', text: 'Posted on Hacker News again' }], funnels: [] });
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: [], notes: [{ day: '2026-10-16', text: 'Posted on Hacker News again' }], funnels: [], icon: null });
 });
 
 test('a note is a real day and a few words, at most 80 characters', async () => {

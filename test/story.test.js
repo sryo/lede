@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readStory, tellStory, bounceSplit, bounceCaption, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
   scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
-  unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel } from '../public/story.js';
+  unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  ICONS, iconFor, iconSVG, leftWord, pairStay, bounciestPair, outcomeStory, readingMap, lanes, laneX } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -822,7 +823,7 @@ test('no visitors now after a period with some: how many there were, and what to
   assert.equal(T.page, null);
 });
 
-test('no visitors in either period is said as before, for the weekly message too', () => {
+test('no visitors in either period is said in one plain line, for the weekly message too', () => {
   const { T } = story({ rows: [], ser: series(0) });
   assert.equal(T.html, 'No visitors in the last 28 days.');
 });
@@ -1133,4 +1134,168 @@ test('a short name shown whole is always labelled, and a word with no syllable t
   assert.deepEqual(fitLabel('/', 84, 161, mono, 4).lines, ['/']);
   const L = fitLabel('/buddhism-in-korea-a-short-history', 54, 71, mono, 4);
   assert.deepEqual(L.lines.slice(0, 2), ['/bud\u2010', 'dhism-'], 'broken between the doubled letters, not after "/buddhis"');
+});
+
+/* ---------- the Sankey: who stayed ---------- */
+
+const flow = (source, page, visitors, visits, bounces) => ({ source, page, visitors, visits, bounces });
+
+test('how many left after one page reads in tenths, and as counts on fewer than 20 visits', () => {
+  assert.equal(leftWord(57, 100), '6 in 10 left');
+  assert.equal(leftWord(3, 7), '3 of 7 left', 'a rate on 7 visits would be a guess');
+  assert.equal(leftWord(0, 50), 'none left');
+  assert.equal(leftWord(2, 50), 'under 1 in 10 left');
+  assert.equal(leftWord(49, 50), 'nearly all left');
+  assert.equal(leftWord(0, 0), '');
+});
+
+test('the story’s source and page are said to leave only when they stand out from the site', () => {
+  const flows = [flow('google.com', '/migration', 2000, 2400, 1400), flow('', '/migration', 500, 600, 200), flow('bing.com', '/', 40, 45, 40)];
+  const S = pairStay(flows, 'google.com', '/migration', .37);
+  assert.equal(S.word, '6 in 10 of them left');
+  assert.equal(strip(S.hint), 'Of the 2,400 visits google.com sent to /migration, 6 in 10 left after that page, against 4 in 10 across the site.');
+  assert.equal(pairStay([flow('google.com', '/x', 200, 200, 30)], 'google.com', '/x', .37).word, '2 in 10 of them left', 'fewer is news too');
+  assert.equal(pairStay([flow('google.com', '/x', 200, 200, 90)], 'google.com', '/x', .37), null, '45% is within 10 points');
+  assert.equal(pairStay(flows, 'bing.com', '/', .37), null, '45 visits are too few');
+  assert.equal(pairStay(flows, 'reddit.com', '/', .37), null, 'no such pair');
+});
+
+test('the pair whose visits bounce most beyond the site is named, with 50 visits and 10 points or more', () => {
+  const flows = [flow('google.com', '/migration', 2000, 2400, 1400), flow('', '/robin', 3000, 4600, 900),
+    flow('reddit.com', '/owls', 30, 40, 38), flow('bing.com', '/', 400, 480, 220)];
+  const site = .37;
+  const p = bounciestPair(flows, site);
+  assert.equal(p.source, 'google.com');
+  assert.equal(p.page, '/migration');
+  close(p.bounce, 1400 / 2400);
+  assert.equal(bounciestPair([flow('bing.com', '/', 400, 480, 200)], site), null, '42% is less than 10 points above');
+  assert.equal(bounciestPair([flow('reddit.com', '/owls', 30, 40, 38)], site), null, '40 visits are too few');
+});
+
+test('the outcome sentence names the pair against the site, or says nothing stands out, or that there are too few', () => {
+  const flows = [flow('google.com', '/migration', 2000, 2400, 1400), flow('', '/robin', 3000, 4600, 900)];
+  const S = outcomeStory(flows, .33);
+  assert.equal(strip(S.html), 'Of the 2,400 visits google.com sent to /migration, 6 in 10 left after that page, against 3 in 10 across the site.');
+  assert.equal(S.pair.page, '/migration');
+  const even = outcomeStory([flow('', '/robin', 3000, 4600, 1500)], .33);
+  assert.equal(strip(even.html), 'No source and landing page stand out: visits leave after one page at about the site’s rate, 3 in 10.');
+  assert.equal(even.pair, null);
+  assert.equal(strip(outcomeStory([flow('', '/', 10, 12, 5)], .4).html), 'Too few visits yet to say who leaves after one page.');
+});
+
+test('demo: the Bounce screen’s Sankey names the pair with the most visits beyond the site’s rate, the home page by name', async () => {
+  const q = parseQuery(new URL('https://w.test/api/flows?days=30'), ['example.com']);
+  const { flows } = await demoStore.flows(q);
+  const s = await demoStore.summary(q);
+  const S = outcomeStory(flows, s.cur.bounce);
+  assert.equal(S.pair.source, 'google.com');
+  assert.equal(S.pair.page, '/', 'google.com’s 15,000 visits to the home page leave more beyond the site than its 2,700 to /migration');
+  assert.match(strip(S.html), /sent to the home page, 5 in 10 left/);
+});
+
+/* ---------- read or skimmed ---------- */
+
+const eng = (key, views, medianS, scroll, lcp = null, lcpN = 0) => ({ key, views, time: medianS, scroll, median: medianS * 1000, lcp, lcpN });
+
+test('the reading map places pages by median read time and depth, cut at the site’s own medians', () => {
+  const rows = [eng('/', 6000, 22, .52, 1800, 4000), eng('/owls', 1200, 97, .59, 4700, 900), eng('/robin', 2700, 51, .71), eng('/about', 80, 25, .81), eng('/new', 12, 300, .9)];
+  const M = readingMap(rows);
+  assert.equal(M.points.length, 5);
+  assert.equal(M.mid.read, 51, 'Lede’s median: the middle value, the upper one of an even count');
+  assert.equal(M.mid.depth, .71);
+  const by = Object.fromEntries(M.points.map(p => [p.key, p]));
+  assert.equal(by['/new'].few, true, 'under 20 read views is drawn hollow and left out of the medians');
+  assert.equal(by['/owls'].slow, true, 'poor LCP on enough views');
+  assert.equal(by['/'].slow, false);
+  assert.equal(by['/owls'].corner, 'top');
+  assert.equal(by['/robin'].corner, 'end');
+  assert.equal(by['/'].corner, 'early');
+  assert.equal(by['/about'].corner, 'skimmed');
+  assert.equal(strip(M.html), '/owls is read longest: half its readers stay past 1m 37s, and it is slow to load, 4.7 s. The home page is opened most and left soonest, at 22s.');
+  assert.deepEqual(M.told, ['/owls', '/']);
+});
+
+test('the reading map says when there are too few pages to compare', () => {
+  const M = readingMap([eng('/', 600, 22, .5), eng('/a', 10, 40, .7)]);
+  assert.equal(M.mid, null);
+  assert.equal(strip(M.html), 'Too few pages read yet to compare how each is read.');
+});
+
+test('the busiest page is only said to be left soonest when it is', () => {
+  const M = readingMap([eng('/', 6000, 30, .52), eng('/a', 900, 20, .6), eng('/b', 300, 90, .7), eng('/c', 200, 60, .7)]);
+  assert.equal(strip(M.html), '/b is read longest: half its readers stay past 1m 30s. The home page is opened most but read for less than most pages, 30s.');
+  const N = readingMap([eng('/', 6000, 50, .52), eng('/a', 900, 20, .6), eng('/b', 300, 90, .7)]);
+  assert.equal(strip(N.html), '/b is read longest: half its readers stay past 1m 30s.', 'the busiest page read as long as most says nothing more');
+});
+
+/* ---------- here now, as lanes ---------- */
+
+test('lanes put each person on their page, at how long they have been there, pages with most here first', () => {
+  const live = { now: 3, recent: 5, visitors: [
+    { path: '/a', referrer: 'google.com', country: 'US', seconds: 241, ago: 20, active: true },
+    { path: '/b', referrer: 'ebird.org', country: 'CA', seconds: 305, ago: 70, active: true },
+    { path: '/b', referrer: '', country: 'AR', seconds: 19, ago: 160, active: true },
+    { path: '/c', referrer: 'google.com', country: 'US', seconds: 30, ago: 600, active: false },
+    { path: '/a', referrer: '', country: 'US', seconds: 8, ago: 900, active: false },
+  ] };
+  const L = lanes(live, new Set(['google.com']));
+  assert.deepEqual(L.rows.map(r => [r.path, r.here]), [['/b', 2], ['/a', 1], ['/c', 0]]);
+  assert.deepEqual(L.rows[0].people.map(p => p.v.seconds), [19, 305], 'in order along the lane');
+  assert.equal(L.rows[1].people.find(p => p.here).named, true);
+  assert.equal(strip(L.html), '2 of the 3 here have been on their page past 2 minutes, from google.com and ebird.org.');
+  assert.equal(lanes({ now: 1, recent: 1, visitors: [live.visitors[2]] }, new Set()).html, null, 'nobody past 2 minutes, nothing to say');
+});
+
+test('a lane’s distance grows fast at first and stops at 30 minutes', () => {
+  assert.equal(laneX(0), 0);
+  assert.equal(laneX(1800), 1);
+  assert.equal(laneX(7200), 1);
+  close(laneX(450), .5);
+});
+
+test('a busy site gets 8 lanes at most: the busiest 7 pages, then the rest together', () => {
+  const v = (path, active, seconds) => ({ path, referrer: '', country: 'US', seconds, ago: 10, active });
+  const visitors = Array.from({ length: 10 }, (_, i) => v(`/p${i}`, i < 5, 60 * i));
+  visitors.push(v('/p0', true, 5));
+  const L = lanes({ now: 6, recent: 11, visitors }, new Set());
+  assert.equal(L.rows.length, 8);
+  assert.deepEqual(L.rows.slice(0, 7).map(r => r.path), ['/p0', '/p1', '/p2', '/p3', '/p4', '/p5', '/p6']);
+  const rest = L.rows[7];
+  assert.equal(rest.path, null);
+  assert.equal(rest.pages, 3);
+  assert.equal(rest.here, 0);
+  assert.deepEqual(rest.people.map(p => p.v.seconds), [420, 480, 540], 'still in order along the lane');
+  assert.equal(lanes({ now: 1, recent: 8, visitors: visitors.slice(0, 8) }, new Set()).rows.length, 8, 'eight pages fit as they are');
+});
+
+/* ---------- the tab icon ---------- */
+
+test('there are nine colourways of the mark, Lede’s own warm one first', () => {
+  assert.equal(ICONS.length, 9);
+  assert.deepEqual(ICONS[0], ['#E10602', '#FF7300', '#FCD000']);
+  assert.ok(ICONS.every(c => c.length === 3 && c.every(x => /^#[0-9A-F]{6}$/.test(x))));
+});
+
+test('a site’s tab icon comes from its name, so the same site looks the same in any Lede', () => {
+  const alone = iconFor('birds.example', ['birds.example']);
+  assert.ok(alone >= 0 && alone < 9);
+  assert.equal(iconFor('birds.example', ['birds.example']), alone);
+  assert.equal(iconFor('birds.example', ['birds.example', 'other.org']), alone, 'the first site in the list keeps its own');
+});
+
+test('sites in one Lede never share a tab icon while there are colourways left', () => {
+  const sites = ['a.com', 'b.com', 'c.com', 'd.com', 'e.com', 'f.com', 'g.com', 'h.com', 'i.com'];
+  assert.equal(new Set(sites.map(s => iconFor(s, sites))).size, 9);
+});
+
+test('a tab icon the owner picked wins, and anything else falls back to the name’s', () => {
+  assert.equal(iconFor('a.com', ['a.com'], 4), 4);
+  assert.equal(iconFor('a.com', ['a.com'], 12), iconFor('a.com', ['a.com']));
+  assert.equal(iconFor('a.com', ['a.com'], null), iconFor('a.com', ['a.com']));
+});
+
+test('the icon is the mark in that colourway, ready for a data address', () => {
+  const svg = iconSVG(2);
+  assert.match(svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
+  for (const c of ICONS[2]) assert.ok(svg.includes(c), c);
 });

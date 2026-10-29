@@ -62,7 +62,7 @@
 
   // keepalive lets the request finish even as the page unloads, so a click on a link or closing
   // the tab never waits for it. Not sendBeacon: tracker blockers drop its "ping" requests to other
-  // sites while sendBeacon still reports success, so those visits vanished without a trace. Every
+  // sites while sendBeacon still reports success, so those visits would vanish without a trace. Every
   // browser Lede counts has fetch (see OLDEST in src/bots.js). data can be several events, sent as one
   // request.
   function post(data) {

@@ -184,7 +184,7 @@ test('the build clears only an empty folder or an earlier build, inside the repo
   assert.equal(clearable(join(tmp, 'new')), join(tmp, 'new'), 'an earlier build is cleared again');
 });
 
-test('the build stops when the page no longer imports its routes the way it did', () => {
+test('the build stops unless the page imports from /routes.js exactly once', () => {
   assert.throws(() => rewrite('<script type="module">import { x } from \'/story.js\';</script>', '/lede/'), /routes\.js/);
   assert.throws(() => rewrite("import a from '/routes.js'; import b from '/routes.js';", '/lede/'), /routes\.js/);
   const html = rewrite('<link href="/icon.svg"><a href="//cdn.example/x"></a><script>fetch(\'/api/sites\')</script>import { v } from \'/routes.js\';', '/lede/');

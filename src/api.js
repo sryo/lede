@@ -210,7 +210,19 @@ function settingsOf(saved, q, demo) {
     goals: storedGoals(saved.goals),
     funnels: saved.funnels ? storedFunnels(saved.funnels) : demo ? [DEMO_FUNNEL] : [],
     notes: saved.notes || (demo ? demoNotes(q) : []),
+    icon: Number.isInteger(saved.icon) ? saved.icon : null,
   };
+}
+
+// The tab icon the owner picked for the site, one of the nine colourways (ICONS in public/story.js), or null for
+// the one its name gets.
+async function icon(req, q, env) {
+  if (req.method !== 'PUT') throw new HttpError(405, 'The tab icon is read with the goals and saved with PUT.');
+  const want = (await req.json().catch(() => ({}))).icon;
+  if (want !== null && !(Number.isInteger(want) && want >= 0 && want < 9)) throw new HttpError(400, 'Pick a tab icon from 0 to 8, or null for the automatic one.');
+  const saved = await getSettings(env, q.site);
+  if (saved.icon !== want) await saveSettings(env, q.site, { ...saved, icon: want });
+  return { icon: want };
 }
 
 async function goals(req, q, env, demo) {
@@ -344,6 +356,7 @@ async function route(name, url, env, store, req, ask, shared) {
     return text ? { text } : null;
   }
   if (name === 'goals') return goals(req, q, env, demo);
+  if (name === 'icon') return icon(req, q, env);
   if (name === 'notes') return notes(req, url, q, env, demo);
   if (name === 'funnels') return funnels(req, q, env, demo);
   switch (name) {

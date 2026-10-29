@@ -1,4 +1,4 @@
-// Sample data for local development (DEMO="true"). It answers the same questions as the SQL
+// Sample data for DEMO="true": `npm run dev` and the static sample the demo build makes. It answers the same questions as the SQL
 // store, returning the same raw row fields, so the dashboard can't tell the difference.
 import { metrics, toSeries, toFlows, toFirsts, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience } from './shape.js';
 import { hourlyStart, BANDS } from './queries.js';
@@ -249,12 +249,14 @@ function demoFlows(f, [d0, d1]) {
       return v;
     });
     const maxEn = Math.max(...PATHS.map(P => P.en));
+    // Visits and bounces as agg counts them, so a pair's bounce agrees with the breakdowns'.
+    const row = (P, v) => ({ src: S.key, landing: P.key, visitors: Math.round(v), visits: Math.round(v * S.vf), bounces: Math.round(v * S.vf * Math.min(.95, P.br * S.bm)) });
     if (f.path != null) {
       const pi = PATHS.findIndex(P => P.key === f.path);
-      if (pi >= 0) rows.push({ src: S.key, landing: f.path, visitors: Math.round(by[pi]) });
+      if (pi >= 0) rows.push(row(PATHS[pi], by[pi]));
       return;
     }
-    PATHS.forEach((P, pi) => rows.push({ src: S.key, landing: P.key, visitors: Math.round(by[pi] * (.7 + .2 * P.en / maxEn)) }));
+    PATHS.forEach((P, pi) => rows.push(row(P, by[pi] * (.7 + .2 * P.en / maxEn))));
   });
   return toFlows(rows.filter(r => r.visitors > 0).sort((a, b) => b.visitors - a.visitors));
 }

@@ -120,10 +120,10 @@ test('the sample site comes with a funnel until one is saved, and a saved empty 
 
 test('the goals the dashboard loads at the start carry the funnels, so the Overview asks for funnel numbers only when there is one', async () => {
   const env = { STORE: memoryKV({ sites: '["example.com"]' }) };
-  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: [], notes: [], funnels: [] });
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: [], notes: [], funnels: [], icon: null });
   await call('funnels?site=example.com', env, { method: 'PUT', body: JSON.stringify({ funnels: [STEPS] }) });
   await call('goals?site=example.com', env, { method: 'PUT', body: JSON.stringify({ goals: ['/thanks'] }) });
-  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/thanks'], notes: [], funnels: [STEPS] });
+  assert.deepEqual(await (await call('goals?site=example.com', env)).json(), { goals: ['/thanks'], notes: [], funnels: [STEPS], icon: null });
   const demo = { STORE: memoryKV({ sites: '["example.com"]' }), DEMO: 'true' };
   assert.deepEqual((await (await call('goals?site=example.com', demo)).json()).funnels, [DEMO_FUNNEL]);
 });
