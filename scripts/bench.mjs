@@ -229,6 +229,28 @@ async function countsOf(root, chrome) {
     out['visit: writes'] = c.writes;
     out['visit: kv reads'] = c.kvReads;
     out['visit: kv writes'] = c.kvWrites;
+    out['visit: live requests'] = c.live;
+    // Two more visits, each the way many are read: one goes to another tab for a moment and comes back to
+    // read on, and one moves through a single-page app. Headless Chrome never hides a tab, so the page is
+    // told it was hidden and shown, as the browser would tell it.
+    const shown = v => tab.evaluate(`Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => '${v}' }); document.dispatchEvent(new Event('visibilitychange'))`);
+    const visits = {
+      'tab switch': async () => { await sleep(1500); await shown('hidden'); await sleep(500); await shown('visible'); await sleep(3500); },
+      'app': async () => { for (const path of ['/__bench/site.html?b', '/__bench/site.html?c']) { await sleep(1500); await tab.evaluate(`history.pushState({}, '', '${path}')`); } await sleep(1500); },
+    };
+    for (const [name, read] of Object.entries(visits)) {
+      await getJSON(server.base + '/__bench/reset');
+      await tab.go(server.base + '/__bench/site.html');
+      await until(() => tab.evaluate('document.readyState === "complete"'));
+      await read();
+      // The browser's own visibility again, so leaving reads as hidden, as it does for a person.
+      await tab.evaluate('delete document.visibilityState');
+      await tab.go('about:blank');
+      await sleep(1500);
+      const v = await getJSON(server.base + '/__bench/counts');
+      out[`visit, ${name}: requests`] = v.beacons;
+      out[`visit, ${name}: writes`] = v.writes;
+    }
   } finally { await tab.close(); server.proc.kill(); }
   return { ...out, ...cronCounts(root) };
 }

@@ -18,9 +18,10 @@ const test = (name, fn) => {
 // sent holds the page views; events holds everything else (engagement, outbound links, downloads).
 // marked gives the elements an endless page marks with data-lede-page: path → [top, height] in the document.
 // storage is the tab's sessionStorage, shared to load another page in the same tab. vitals gives the page
-// a PerformanceObserver, whose entries perf() hands to the tracker.
-function page(href, { referrer = '', prerendering = false, hidden = false, ignore = false, engagement, height = 2000, marked = {}, now = Date.parse('2026-10-05T10:50:00Z'), storage = new Map(), vitals = false } = {}) {
-  const sent = [], events = [], beacons = [], requests = [], listeners = {}, docListeners = {}, timers = [], observers = {};
+// a PerformanceObserver, whose entries perf() hands to the tracker, and queue() leaves for it to take.
+// activation is when a prerendered page was opened.
+function page(href, { referrer = '', prerendering = false, hidden = false, ignore = false, engagement, height = 2000, marked = {}, now = Date.parse('2026-10-05T10:50:00Z'), storage = new Map(), vitals = false, activation = 0 } = {}) {
+  const sent = [], events = [], beacons = [], requests = [], listeners = {}, docListeners = {}, timers = [], observers = {}, queued = {};
   let focused = true;
   const clock = { now };
   let location = new URL(href);
@@ -49,10 +50,16 @@ function page(href, { referrer = '', prerendering = false, hidden = false, ignor
     sessionStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v) },
     addEventListener: on(listeners),
     URL,
-    PerformanceObserver: vitals ? class { constructor(cb) { this.cb = cb; } observe(o) { observers[o.type] = this.cb; } } : undefined,
+    PerformanceObserver: vitals ? class {
+      constructor(cb) { this.cb = cb; }
+      observe(o) { this.type = o.type; observers[o.type] = this.cb; }
+      takeRecords() { return (queued[this.type] || []).splice(0); }
+    } : undefined,
+    performance: { getEntriesByType: type => (type === 'navigation' ? [{ activationStart: activation }] : []) },
   };
   if (!vitals) delete window.PerformanceObserver;
-  const record = (url, body) => { const b = { to: url, ...JSON.parse(body) }; (b.t ? events : sent).push(b); };
+  // A request can carry several events.
+  const record = (url, body) => { for (const e of [].concat(JSON.parse(body))) { const b = { to: url, ...e }; (b.t ? events : sent).push(b); } };
   Object.defineProperty(window, 'location', { get: () => location });
   window.window = window;
   vm.runInNewContext(SOURCE, window);
@@ -88,6 +95,7 @@ function page(href, { referrer = '', prerendering = false, hidden = false, ignor
     resize: height => { window.document.documentElement.scrollHeight = height; },
     key: () => fire(listeners, 'keydown'),
     perf: (type, entries) => observers[type]?.({ getEntries: () => entries }),
+    queue: (type, entries) => { (queued[type] ||= []).push(...entries); },
     observed: () => Object.keys(observers).sort(),
     storage,
   };
@@ -215,14 +223,26 @@ test('tracker: localStorage.lede_ignore leaves your own visits out', () => {
   assert.equal(page('https://example.com/', { ignore: true }).sent.length, 0);
 });
 
-test('tracker: one engagement event per page view, with the time it was read and how far down', () => {
+test('tracker: a page view sends its totals each time its tab is hidden, so reading after coming back counts', () => {
   const p = page('https://example.com/docs');
   p.wait(4000); p.scroll(700); p.scroll(200);
   p.hide();
   p.show(); p.wait(5000); p.hide(); p.leave();
-  assert.equal(p.events.length, 1);
-  assert.deepEqual([p.events[0].t, p.events[0].u, p.events[0].e, p.events[0].s], ['engagement', 'https://example.com/docs', 4000, 75]);
-  assert.equal(p.events[0].h, p.sent[0].h, 'the visit is the page view\'s');
+  assert.deepEqual(engaged(p).map(e => [e.u, e.e, e.s, e.x]), [['https://example.com/docs', 4000, 75, 1], ['https://example.com/docs', 9000, 75, 1]],
+    'closing the tab right after hiding it has nothing new to say');
+  assert.equal(engaged(p)[0].h, p.sent[0].h, 'the visit is the page view\'s');
+  assert.ok(engaged(p).every(e => e.v === p.sent[0].v), 'and so is the view, which the server keeps the largest of');
+  assert.equal(p.sent[0].v, Date.parse('2026-10-05T10:50:00Z'));
+});
+
+test('tracker: flicking between tabs sends no more totals until there is something new to say', () => {
+  const p = page('https://example.com/docs');
+  p.wait(4000); p.hide();
+  for (let i = 0; i < 3; i++) { p.show(); p.wait(900); p.hide(); }
+  assert.equal(engaged(p).length, 1, '3 seconds more, a deeper scroll or a new Web Vital');
+  p.show(); p.scroll(500); p.hide();
+  assert.equal(engaged(p).length, 2);
+  assert.equal(engaged(p)[1].s, 65);
 });
 
 test('tracker: engaged time stops while the window is in the background', () => {
@@ -321,13 +341,15 @@ test('tracker: a window in the background is still here while its tab shows; a h
   assert.equal(pings(p).length, 3);
 });
 
-test('tracker: flicking away and back doesn\'t ping again, and each ping names the page now showing', () => {
+test('tracker: a tab whose hiding was sent pings as it shows again; flicking away and back doesn\'t, and each ping names the page now showing', () => {
   const p = page('https://example.com/a');
   p.wait(60e3); p.hide(); p.wait(10e3); p.show();
-  assert.equal(pings(p).length, 0, 'seen less than 3 minutes ago');
+  assert.equal(pings(p).length, 1, 'it left "here now" as it was hidden, so it says it is back');
+  p.wait(500); p.hide(); p.wait(1000); p.show();
+  assert.equal(pings(p).length, 1, 'nothing was sent as it was hidden, and it was seen less than 3 minutes ago');
   p.push('/b');
   p.wait(3 * 60e3);
-  assert.deepEqual(pings(p).map(e => e.u), ['https://example.com/b'], 'the clock starts again with each page view');
+  assert.deepEqual(pings(p).map(e => e.u), ['https://example.com/a', 'https://example.com/b'], 'the clock starts again with each page view');
   p.replace('/c');
   p.wait(5000 + 3 * 60e3);
   assert.equal(pings(p).at(-1).u, 'https://example.com/c');
@@ -444,8 +466,69 @@ test('tracker: a page that never shifts sends a CLS of 0 where the browser watch
 test('tracker: no Web Vitals without engagement, and no LCP for a page that loaded out of sight', () => {
   assert.deepEqual(page('https://example.com/', { vitals: true, engagement: 'false' }).observed(), []);
   assert.deepEqual(page('https://example.com/', { vitals: true, hidden: true }).observed(), ['event', 'layout-shift']);
-  assert.deepEqual(page('https://example.com/', { vitals: true, prerendering: true }).observed(), ['event', 'layout-shift']);
+  assert.deepEqual(page('https://example.com/', { vitals: true, prerendering: true }).observed(), ['event', 'largest-contentful-paint', 'layout-shift'], 'a prerendered page counts from when it was opened');
   const old = page('https://example.com/');
   old.wait(2000); old.leave();
-  assert.deepEqual(Object.keys(old.events[0]).sort(), ['e', 'h', 'l', 'r', 's', 't', 'to', 'u'], 'a browser without PerformanceObserver sends what it always did');
+  assert.deepEqual(Object.keys(old.events[0]).sort(), ['e', 'h', 'l', 'r', 's', 't', 'to', 'u', 'v', 'x'], 'a browser without PerformanceObserver sends no Web Vitals');
+});
+
+test('tracker: a prerendered page\'s LCP counts from when it was opened', () => {
+  const p = page('https://example.com/', { vitals: true, prerendering: true, activation: 1500 });
+  p.perf('largest-contentful-paint', [{ startTime: 400 }]);
+  p.open(); p.wait(2000); p.leave();
+  assert.equal(engaged(p)[0].lcp, 0, 'drawn before it was opened: there at once');
+  const q = page('https://example.com/', { vitals: true, prerendering: true, activation: 1500 });
+  q.perf('largest-contentful-paint', [{ startTime: 2100 }]);
+  q.open(); q.wait(2000); q.leave();
+  assert.equal(engaged(q)[0].lcp, 600);
+});
+
+test('tracker: a tap the browser hasn\'t handed over yet still counts toward INP', () => {
+  const p = page('https://example.com/', { vitals: true });
+  p.perf('event', [{ interactionId: 1, duration: 120 }]);
+  p.wait(2000);
+  p.queue('event', [{ interactionId: 2, duration: 340 }]);
+  p.hide();
+  assert.equal(engaged(p)[0].inp, 340);
+});
+
+test('tracker: a burst of layout shifts doesn\'t carry into the next page of a single-page app', () => {
+  const p = page('https://example.com/a', { vitals: true });
+  p.perf('layout-shift', [{ startTime: 100, value: 0.05 }]);
+  p.wait(2000); p.push('/b');
+  p.perf('layout-shift', [{ startTime: 600, value: 0.05 }]);
+  p.wait(2000); p.leave();
+  assert.deepEqual(engaged(p).map(e => e.cls), [50, 50]);
+});
+
+test('tracker: a single-page app sends the page left behind and the next page view in one request', () => {
+  const p = page('https://example.com/a');
+  p.wait(2000);
+  const before = p.requests.length;
+  p.push('/b');
+  assert.equal(p.requests.length, before + 1);
+  const both = JSON.parse(p.requests.at(-1).body);
+  assert.deepEqual(both.map(e => [e.t, e.u]), [['engagement', 'https://example.com/a'], [undefined, 'https://example.com/b']]);
+  assert.equal(both[0].x, 1, 'the page left behind leaves "here now", and the next one comes in with it');
+  p.wait(500); p.push('/c');
+  assert.ok(!Array.isArray(JSON.parse(p.requests.at(-1).body)), 'a glance has nothing to send with it');
+  p.wait(4000); p.hide(); p.show(); p.wait(500); p.push('/d');
+  assert.deepEqual(JSON.parse(p.requests.at(-1).body).map(e => [e.t, e.e, e.x]), [['engagement', 4500, 1], [undefined, undefined, undefined]],
+    'moving on says the page was left, even with little new since the tab was hidden');
+});
+
+test('tracker: a visit that just passed a Cloudflare challenge is a visit starting, not a page within one', () => {
+  const p = page('https://example.com/a', { referrer: 'https://example.com/a?__cf_chl_tk=abc123' });
+  assert.deepEqual([p.sent[0].r, p.sent[0].k], ['', 1]);
+  assert.equal(page('https://example.com/b', { referrer: 'https://example.com/a?page=2' }).sent[0].k, 3, 'a link on the site still is');
+});
+
+test('tracker: pings carry the page view and its totals so far', () => {
+  const p = page('https://example.com/a');
+  p.wait(60e3); p.scroll(400);
+  p.wait(2 * 60e3);
+  assert.deepEqual([pings(p)[0].v, pings(p)[0].e, pings(p)[0].s], [p.sent[0].v, 3 * 60e3, 60]);
+  const off = page('https://example.com/a', { engagement: 'false' });
+  off.wait(3 * 60e3);
+  assert.ok(!('e' in pings(off)[0]) && !('s' in pings(off)[0]));
 });

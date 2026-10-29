@@ -227,8 +227,12 @@ export const hourlySql = (ds, q, from, to) =>
   `SELECT intDiv(toUnixTimestamp(timestamp) - ${from}, 3600) AS hr, count(DISTINCT ${COL.visitor}) AS visitors `
   + `FROM ${ds} WHERE ${where(q, from, to)} GROUP BY hr ORDER BY hr LIMIT 2000`;
 
-// Per page: page views that sent an engagement event (n), and their engaged milliseconds and scroll
+// Per page: page views that were read for a second or more (n), and their engaged milliseconds and scroll
 // percentages summed, each weighted by the views a sampled row stands for. Averages are taken in shape.js.
+// A page view sends its totals so far each time its tab is hidden, and with its pings, so the inner query
+// keeps each view's largest, by its visit and start (view); rows from before views were sent (view 0) are
+// one view each, told apart by their second. Pings count, so a tab closed without hiding first still
+// says how long it was read.
 // For one page it also counts the views that got at least 10%, 20%... 100% of the way down (r10...r100),
 // so the page's view can show where readers stop without a query of its own (see engagementSql).
 // It also takes the median engaged time, and the 75th percentile of each Web Vital (what Google's
@@ -237,17 +241,21 @@ export const hourlySql = (ds, q, from, to) =>
 // shifts counts with 0 and Firefox and Safari, which don't report shifts, are left out.
 // lcp_n, inp_n, cls_n: the views each one comes from.
 export const BANDS = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100];
-const VITALS = [['lcp', COL.lcp], ['inp', COL.inp], ['cls', `(${COL.cls} - 1)`]]
-  .map(([k, v]) => `, quantileExactWeighted(0.75)(${v}, if(${COL[k]} > 0, _sample_interval, 0)) AS ${k}, sumIf(_sample_interval, ${COL[k]} > 0) AS ${k}_n`).join('');
+// Per view (see engagementSql), the largest of each, as vl, vi and vc.
+const VITALS = [['lcp', 'vl', 'vl'], ['inp', 'vi', 'vi'], ['cls', 'vc', '(vc - 1)']]
+  .map(([k, c, v]) => `, quantileExactWeighted(0.75)(${v}, if(${c} > 0, w, 0)) AS ${k}, sumIf(w, ${c} > 0) AS ${k}_n`).join('');
 // A page's own view asks for every page too, so its sentence can say how the page compares: the reach bands
 // count that page's views alone, and its row comes first, so the LIMIT never leaves it out.
 export const engagementSql = (ds, q, only) => {
   const path = q.filters.path, page = path == null ? null : `hex(${COL.path}) = '${hexOf(path)}'`;
   const all = page ? { ...q, filters: { ...q.filters, path: null } } : q;
-  return `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, sum(_sample_interval) AS n, sum(_sample_interval * ${COL.engaged}) AS ms, sum(_sample_interval * ${COL.scroll}) AS depth`
-    + `, quantileExactWeighted(0.5)(${COL.engaged}, _sample_interval) AS median_ms${VITALS}${page ? `, max(${page}) AS asked` : ''}`
-    + (page ? BANDS.map(d => `, sumIf(_sample_interval, ${page} AND ${COL.scroll} >= ${d}) AS r${d}`).join('') : '')
-    + ` FROM ${ds} WHERE ${within(all, only, ['engagement'])} GROUP BY p, key ORDER BY ${page ? 'asked DESC, ' : ''}n DESC ${limit(LISTS.pages, only)}`;
+  const views = `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, ${COL.visit} AS vis, ${COL.view} AS vw, if(${COL.view} = 0, toUnixTimestamp(timestamp), 0) AS t`
+    + `, max(_sample_interval) AS w, max(${COL.engaged}) AS e, max(${COL.scroll}) AS s, max(${COL.lcp}) AS vl, max(${COL.inp}) AS vi, max(${COL.cls}) AS vc`
+    + `${page ? `, max(${page}) AS pg` : ''} FROM ${ds} WHERE ${within(all, only, ['engagement', 'ping'])} GROUP BY p, key, vis, vw, t`;
+  return `SELECT p, key, sum(w) AS n, sum(w * e) AS ms, sum(w * s) AS depth`
+    + `, quantileExactWeighted(0.5)(e, w) AS median_ms${VITALS}${page ? ', max(pg) AS asked' : ''}`
+    + (page ? BANDS.map(d => `, sumIf(w, pg = 1 AND s >= ${d}) AS r${d}`).join('') : '')
+    + ` FROM (${views}) WHERE e >= 1000 GROUP BY p, key ORDER BY ${page ? 'asked DESC, ' : ''}n DESC ${limit(LISTS.pages, only)}`;
 };
 
 // Links to other sites and files, by the visitors who clicked them.
@@ -255,10 +263,22 @@ export const linksSql = (ds, q, only) =>
   `SELECT ${PERIOD(q)} AS p, ${COL.type} AS kind, ${COL.target} AS key, count(DISTINCT ${COL.visitor}) AS visitors, sum(_sample_interval) AS clicks `
   + `FROM ${ds} WHERE ${within(q, only, ['outbound', 'download'])} GROUP BY p, kind, key ORDER BY visitors DESC ${limit(LISTS.pages, only)}`;
 
-export const liveSql = (ds, site) =>
-  `SELECT ${COL.visitor} AS visitor, argMax(${COL.path}, timestamp) AS path, argMin(${COL.referrer}, timestamp) AS referrer, `
-  + `argMin(${COL.country}, timestamp) AS country, toUnixTimestamp(min(timestamp)) AS first, toUnixTimestamp(max(timestamp)) AS last `
-  + `FROM ${ds} WHERE index1 = '${site}' AND (${COL.type} = 'pageview' OR ${COL.type} = 'ping') AND timestamp > now() - INTERVAL '30' MINUTE GROUP BY visitor ORDER BY last DESC LIMIT 200`;
+// Who was here in the last 30 minutes, one row per visitor. Each page view (by its start, view) is gone once
+// it was left after it was last seen (an engagement event marked left: its tab hidden or closed, or a
+// single-page app moving on), so a reader leaves "here now" as they go instead of 5 minutes later; a tab
+// shown again pings. here is when the visitor was last seen on a page view not gone, 0 with none, and path
+// the page that was (with none, the page they left last); a tie (hidden and back within the second) is still here. Rows from before views were
+// sent (view 0) are never gone, as before.
+export const liveSql = (ds, site) => {
+  const ts = 'toUnixTimestamp(timestamp)';
+  const views = `SELECT ${COL.visitor} AS visitor, ${COL.view} AS vw, argMax(${COL.path}, timestamp) AS path, argMin(${COL.referrer}, timestamp) AS referrer, `
+    + `argMin(${COL.country}, timestamp) AS country, min(${ts}) AS first, max(${ts}) AS last, `
+    + `if(max(if(${COL.left} = 1, ${ts}, 0)) > max(if(${COL.left} = 1, 0, ${ts})), 1, 0) AS out `
+    + `FROM ${ds} WHERE index1 = '${site}' AND (${COL.type} = 'pageview' OR ${COL.type} = 'ping' OR (${COL.type} = 'engagement' AND ${COL.left} = 1)) `
+    + `AND timestamp > now() - INTERVAL '30' MINUTE GROUP BY visitor, vw`;
+  return `SELECT visitor, argMax(path, last + if(out = 0, 4294967296, 0)) AS path, argMin(referrer, first) AS referrer, argMin(country, first) AS country, `
+    + `min(first) AS first, max(last) AS last, max(if(out = 0, last, 0)) AS here FROM (${views}) GROUP BY visitor ORDER BY last DESC LIMIT 200`;
+};
 
 // How many people are usually here at this time of day: visitors seen in the same 5 minutes (the span
 // "here now" counts) on each of the days days before now, one row per day that had any.

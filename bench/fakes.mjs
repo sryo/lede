@@ -2,7 +2,7 @@
 // bench can measure what a change costs against the free limits without touching Cloudflare.
 
 export function counters() {
-  return { sql: 0, writes: 0, kvReads: 0, kvWrites: 0, kvLists: 0, api: 0, beacons: 0, screenshots: 0, browserMs: 0, ai: 0, aiTokens: 0, webhooks: 0, sheet: 0 };
+  return { sql: 0, writes: 0, kvReads: 0, kvWrites: 0, kvLists: 0, api: 0, beacons: 0, screenshots: 0, browserMs: 0, ai: 0, aiTokens: 0, webhooks: 0, sheet: 0, live: 0 };
 }
 
 // KV as Workers has it, for what Lede uses: text or bytes, metadata, and listing by prefix. Expiry isn't
@@ -126,12 +126,20 @@ export function fakeFetch(count, profile = {}) {
 
 export const SITES = ['example.com', '127.0.0.1'];
 
+// The Durable Object behind "here now" as it happens (src/live.js), with no dashboard watching: what a visit
+// costs it then is what every site nobody is looking at pays.
+export const fakeLive = count => ({
+  idFromName: name => name,
+  get: () => ({ fetch: async () => { count.live++; return Response.json({ watching: 0 }); } }),
+});
+
 export function benchEnv(count, { demo = false, assets } = {}) {
   return {
     ...(demo ? { DEMO: 'true' } : { ANALYTICS_TOKEN: 'tok', ACCOUNT_ID: 'acc' }),
     STORE: memoryKV(count, { sites: JSON.stringify(SITES) }),
     EVENTS: events(count),
     AI: fakeAI(count),
+    LIVE: fakeLive(count),
     ASSETS: assets,
   };
 }

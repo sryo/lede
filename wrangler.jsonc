@@ -16,6 +16,10 @@
   "analytics_engine_datasets": [{ "binding": "EVENTS", "dataset": "lede" }],
   // Created on deploy. Keeps the sites, the visitor salt, the account ID and goals.
   "kv_namespaces": [{ "binding": "STORE" }],
+  // "Here now" as it happens (src/live.js): one Durable Object per site, which pushes who is here to an open
+  // dashboard. SQLite-backed, which the Free plan includes; it's only asked anything while a dashboard watches.
+  "durable_objects": { "bindings": [{ "name": "LIVE", "class_name": "Live" }] },
+  "migrations": [{ "tag": "live", "new_sqlite_classes": ["Live"] }],
   // Alerts (src/alerts.js): the week's story on Monday at 08:00 UTC, and a check for spikes every 15 minutes.
   // Both do nothing until ALERT_WEBHOOK is set.
   "triggers": { "crons": ["0 8 * * 1", "*/15 * * * *"] },

@@ -4,6 +4,9 @@ import { handleShot } from './shot.js';
 import { runAlerts } from './alerts.js';
 import { rememberOrigin, sharedSite } from './settings.js';
 
+// The Durable Object behind "here now" as it happens (see src/live.js).
+export { Live } from './live.js';
+
 async function sameSecret(a, b) {
   const enc = s => crypto.subtle.digest('SHA-256', new TextEncoder().encode(s));
   const [x, y] = await Promise.all([enc(a), enc(b)]);
@@ -122,7 +125,7 @@ export default {
     const { pathname } = url;
     // Blocklists match /api/event on workers.dev (it's Plausible's path), so the tracker posts to /lede.
     // The old path still works for trackers browsers cached before the move.
-    if (pathname === '/lede' || pathname === '/api/event') return collect(req, env);
+    if (pathname === '/lede' || pathname === '/api/event') return collect(req, env, ctx);
     if (pathname.startsWith('/s/') && req.method === 'GET') return openShare(env, pathname.slice(3));
     // Everything else but /api/* is served straight from the assets (see wrangler.jsonc); this is for local dev.
     if (!pathname.startsWith('/api/')) return env.ASSETS.fetch(req);

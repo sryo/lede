@@ -176,6 +176,12 @@ test('live visitors say how long ago they were last seen, and none are dropped',
   assert.equal(live.now, 10, 'seen in the last 5 minutes');
 });
 
+test('a live visitor is here while a page view they haven\'t left was seen in the last 5 minutes', () => {
+  const live = shapeLive([{ path: '/a', first: 900, last: 990, here: '0' }, { path: '/b', first: 900, last: 980, here: '980' }, { path: '/c', first: 900, last: 970 }], 1000);
+  assert.deepEqual([live.now, live.recent], [2, 3]);
+  assert.equal(live.visitors[0].active, false);
+});
+
 /* ---------- goals ---------- */
 
 const call = (path, env, init) => handleApi(new Request(`https://worker.test/api/${path}`, init), env, { waitUntil() {} });
@@ -400,10 +406,16 @@ test('stats count page views only; engagement and link queries ask for their own
   }
   const live = liveSql('lede', 'example.com');
   assert.ok(live.includes(`blob8 = 'pageview'`) && live.includes(`blob8 = 'ping'`), 'someone still reading a page is here now');
-  assert.ok(!live.includes(`'engagement'`), 'someone leaving a page is not someone here now');
+  assert.ok(live.includes(`(blob8 = 'engagement' AND double8 = 1)`), 'and a page view left since is someone gone; no other engagement is read');
+  assert.ok(live.includes('max(if(out = 0, last, 0)) AS here'));
+  assert.ok(live.includes('argMax(path, last + if(out = 0, 4294967296, 0)) AS path'), 'the page they\'re on, or else the one they left last');
+  assert.match(live, /GROUP BY visitor, vw\) GROUP BY visitor/, 'each page view on its own, as one visitor can have several tabs');
   const eng = engagementSql('lede', q);
-  assert.ok(eng.includes(`blob8 = 'engagement'`) && !eng.includes(`'pageview'`));
-  assert.match(eng, /sum\(_sample_interval \* double1\) AS ms, sum\(_sample_interval \* double2\) AS depth/);
+  assert.ok(eng.includes(`(blob8 = 'engagement' OR blob8 = 'ping')`) && !eng.includes(`'pageview'`), 'pings carry how long a view was read so far');
+  assert.match(eng, /max\(double1\) AS e, max\(double2\) AS s, .* GROUP BY p, key, vis, vw, t\)/, 'each view\'s largest totals');
+  assert.match(eng, /sum\(w \* e\) AS ms, sum\(w \* s\) AS depth/);
+  assert.match(eng, /\) WHERE e >= 1000 GROUP BY p, key/, 'a glance isn\'t a read');
+  assert.ok(eng.includes('if(double7 = 0, toUnixTimestamp(timestamp), 0) AS t'), 'rows from before views were sent are a view each');
   assert.ok(eng.includes(`hex(blob2) = '${hexOf('/docs')}'`), 'filters still apply');
   const links = linksSql('lede', q);
   assert.ok(links.includes(`(blob8 = 'outbound' OR blob8 = 'download')`));
@@ -434,11 +446,12 @@ test('engagement rows say how many views measured each speed, so INP is told onc
 
 test('the engagement query for one page also counts how many got 10%, 20%... 100% of the way down, in the same query', () => {
   const page = engagementSql('lede', parseQuery(url('engagement?days=7&path=%2Fdocs'), SITES));
-  for (let d = 10; d <= 100; d += 10) assert.ok(page.includes(`sumIf(_sample_interval, hex(blob2) = '2F646F6373' AND double2 >= ${d}) AS r${d}`), `band ${d}`);
-  assert.match(page, /max\(hex\(blob2\) = '2F646F6373'\) AS asked,/);
+  for (let d = 10; d <= 100; d += 10) assert.ok(page.includes(`sumIf(w, pg = 1 AND s >= ${d}) AS r${d}`), `band ${d}`);
+  assert.match(page, /max\(hex\(blob2\) = '2F646F6373'\) AS pg /);
+  assert.match(page, /max\(pg\) AS asked,/);
   assert.match(page, /ORDER BY asked DESC, n DESC/, 'the page asked for first, so the LIMIT keeps it');
-  assert.equal(page.split("hex(blob2) = '2F646F6373'").length - 1, 11, 'not in WHERE: every page comes back, so the view can compare');
-  assert.match(page, /^SELECT if\(timestamp >= toDateTime\(\d+\), 1, 0\) AS p, /, 'both periods at once');
+  assert.equal(page.split("hex(blob2) = '2F646F6373'").length - 1, 1, 'not in WHERE: every page comes back, so the view can compare');
+  assert.match(page, /FROM \(SELECT if\(timestamp >= toDateTime\(\d+\), 1, 0\) AS p, /, 'both periods at once');
   const all = engagementSql('lede', parseQuery(url('engagement?days=7'), SITES));
   assert.ok(!all.includes('AS r10'), 'the list of every page has no use for them');
 });

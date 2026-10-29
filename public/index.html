@@ -1794,7 +1794,7 @@ const crowdAria=(live,told)=>{
 
 // Who is here now, grouped by the page they are on.
 async function renderOnline(body){
-  const gen=body._gen,[live]=await Promise.all([api('live',{},true),homeDrawn]);
+  const gen=body._gen,[live]=await Promise.all([liveNow(),homeDrawn]);
   if(stale(body,gen))return;
   const H=home(),told=H?.T.told||new Set(),page=H?.T.page;
   // The crowd runs the width in one row (two on a phone), here now first; the rest are counted at its end.
@@ -2418,7 +2418,7 @@ async function drawHome(message){
   let sumR,ser,pages,refs,flows,live,hourly;
   try{
     [sumR,ser,pages,refs,flows,live,hourly]=await Promise.all([api('summary'),api('series'),api('breakdown',{dim:'path'}),
-      api('breakdown',{dim:'referrer'}),api('flows'),api('live',{},true).catch(()=>null),api('hourly',HOURS).catch(()=>null)]);
+      api('breakdown',{dim:'referrer'}),api('flows'),liveNow().catch(()=>null),api('hourly',HOURS).catch(()=>null)]);
   }catch(e){if(gen===homeRender){done();release(grid);$('#story').innerHTML='';HOME=null;showError(grid,e,()=>renderHome(message));announce('Couldn’t load the stats')}return false}
   // The sentence ties a change to the owner's notes; they come with the goals, which load alongside.
   await goalsReady;
@@ -2487,11 +2487,29 @@ async function refreshOnline(){
     return;
   }
   try{
-    const [live,hourly]=await Promise.all([api('live',{},true),api('hourly',HOURS).catch(()=>null)]);
+    listen();
+    const [live,hourly]=await Promise.all([liveNow(),api('hourly',HOURS).catch(()=>null)]);
     HOME.hourly=hourly;HOME.pace=todayPace(hourly,Date.now()/1000);
     drawNow(live,HOME.T.told,HOME.pace);
   }catch{}
 }
+
+// Who is here now as it happens, when the Worker has its Durable Object (src/live.js): it pushes what
+// /api/live answers whenever someone comes, goes or is still reading, and that's drawn as the minute's
+// refresh draws it. The socket is closed while the tab is hidden, so a dashboard nobody looks at costs
+// nothing, and opened again on the next refresh. Without the object (the sample data, a deploy without it)
+// it never opens, isn't tried again, and the minute's refresh asks as before.
+let socket=null,pushed=null,noSocket=false;
+function listen(){
+  if(DEMO||noSocket||document.hidden||(socket&&socket.site===SITE))return;
+  if(socket)socket.close();
+  const site=SITE,ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/api/live/ws?${new URLSearchParams({site})}`);
+  socket=Object.assign(ws,{site});
+  ws.onopen=()=>{ws.opened=true};
+  ws.onmessage=e=>{if(ws!==socket)return;try{pushed={site,live:JSON.parse(e.data)}}catch{return}refreshOnline()};
+  ws.onclose=()=>{if(!ws.opened)noSocket=true;if(ws===socket){socket=null;pushed=null}};
+}
+const liveNow=()=>pushed&&pushed.site===SITE&&socket?.readyState===1?Promise.resolve(pushed.live):api('live',{},true);
 
 // The home's stats for the site seen last start loading with the site list instead of after it.
 // renderHome asks for the same addresses, so it picks these up from the memo.
@@ -2533,7 +2551,7 @@ function startPolling(){
   polling=true;
   setInterval(refreshOnline,60000);
   // Back on the tab: who is here now, without waiting for the next minute.
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshOnline()});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden)refreshOnline();else if(socket){socket.close();socket=null;pushed=null}});
 }
 // Hints: anything with a title shows it in the charts' tooltip, on hover and on keyboard focus, instead of the
 // browser's own tooltip, which comes late and not at all in some browsers. The title moves to data-hint so the

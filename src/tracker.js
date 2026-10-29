@@ -2,9 +2,10 @@
 //   <script defer src="https://YOUR-LEDE/t.js"></script>
 // No cookies. The site a visit came from and its landing page's tags are kept in sessionStorage so
 // every page of the visit is credited to where the visitor came from.
-// It also sends, once per page view, how long the page was read, how far down it was scrolled and the
-// page's Web Vitals (add data-engagement="false" to the script tag to turn that off), clicks on links
-// to other sites and on files to download, and every 3 minutes that a tab still showing is still there.
+// It also sends, as each page view ends and each time its tab is hidden, how long the page was read, how
+// far down it was scrolled and the page's Web Vitals (add data-engagement="false" to the script tag to turn
+// that off), clicks on links to other sites and on files to download, and every 3 minutes that a tab still
+// showing is still there.
 // To leave your own visits out, run localStorage.lede_ignore = 1 in the browser console on your site.
 (function () {
   var script = document.currentScript;
@@ -14,7 +15,7 @@
   var KEY = 'lede_source', VISIT = 'lede_visit', MINUTE = 60e3, HOUR = 3600e3, IDLE = 30 * 60e3, PING = 3 * 60e3, SETTLE = 5000;
   var FILE = /\.(pdf|csv|txt|rtf|docx?|xlsx?|pptx?|od[tsp]|epub|zip|rar|7z|gz|tgz|bz2|dmg|pkg|exe|msi|deb|rpm|apk|iso|mp[34]|wav|flac|m4a|mov|avi|mkv|webm|wmv)$/i;
   var engage = script.getAttribute('data-engagement') !== 'false';
-  var last, view, record, inside, seen = 0, beat = 0, input = 0;
+  var last, view, record, inside, gone, seen = 0, beat = 0, input = 0;
 
   var bare = function (host) { return host.replace(/^www\./, ''); };
 
@@ -23,10 +24,13 @@
   function source() {
     var from = '', saved = null, ref;
     inside = false;
+    // A page behind a Cloudflare challenge loads again once the challenge is passed, with the challenge's
+    // own address (its __cf_chl_ token) as the referrer: that's a visit starting, not a page within one.
     try {
       ref = new URL(document.referrer);
-      inside = bare(ref.hostname) === bare(location.hostname);
-      if (!inside) from = ref.protocol + '//' + ref.host;
+      var same = bare(ref.hostname) === bare(location.hostname);
+      inside = same && !/[?&]__cf_/.test(ref.search);
+      if (!same) from = ref.protocol + '//' + ref.host;
     } catch (e) {}
     // The parts of the landing page's query that say where the visit came from; the rest stays on the page.
     var tags = (location.search.match(/[?&](utm_\w+|ref|source|[gd]clid|[gw]braid|msclkid|t[tw]clid|li_fat_id)=[^&]*/g) || []).join('');
@@ -59,7 +63,8 @@
   // keepalive lets the request finish even as the page unloads, so a click on a link or closing
   // the tab never waits for it. Not sendBeacon: tracker blockers drop its "ping" requests to other
   // sites while sendBeacon still reports success, so those visits vanished without a trace. Every
-  // browser Lede counts has fetch (see OLDEST in src/bots.js).
+  // browser Lede counts has fetch (see OLDEST in src/bots.js). data can be several events, sent as one
+  // request.
   function post(data) {
     fetch(endpoint, { method: 'POST', body: JSON.stringify(data), keepalive: true }).catch(function () {});
   }
@@ -71,15 +76,20 @@
   // left out until the browser has measured it, except CLS, which is 0 until the layout moves wherever
   // the browser watches for it, so a page that never shifts says so. CLS goes times 1000, and the
   // server rounds them all.
-  var vitals = {}, shifts, burst = 0, burstStart = 0, lastShift = 0;
+  // A prerendered page's LCP counts from when it was opened (activationStart), as Google counts it; a
+  // page opened in a background tab has none. The browser hands entries over a little later, so the
+  // ones still waiting (often the tap that left the page) are taken (flush) before each send.
+  var vitals = {}, flush = [], paint, shifts, burst = 0, burstStart = 0, lastShift = 0;
   function watch(type, fn) {
     try {
-      new PerformanceObserver(function (list) { list.getEntries().forEach(fn); }).observe({ type: type, buffered: true, durationThreshold: 16 });
+      var o = new PerformanceObserver(function (list) { list.getEntries().forEach(fn); });
+      o.observe({ type: type, buffered: true, durationThreshold: 16 });
+      flush.push(function () { o.takeRecords().forEach(fn); });
       return true;
     } catch (e) {}
   }
   if (engage) {
-    if (!document.prerendering && document.visibilityState === 'visible') watch('largest-contentful-paint', function (e) { vitals.lcp = e.startTime; });
+    if (document.prerendering || document.visibilityState === 'visible') watch('largest-contentful-paint', function (e) { paint = e.startTime; });
     watch('event', function (e) { if (e.interactionId && !(e.duration <= vitals.inp)) vitals.inp = e.duration; });
     shifts = watch('layout-shift', function (e) {
       if (e.hadRecentInput) return;
@@ -94,7 +104,7 @@
   // Engaged time only runs while the tab is visible and its window has focus.
   function pause() { if (view && view.since) { view.ms += Date.now() - view.since; view.since = 0; } }
   function resume() {
-    if (view && !view.since && !view.done && document.visibilityState === 'visible' && document.hasFocus()) view.since = Date.now();
+    if (view && !view.since && document.visibilityState === 'visible' && document.hasFocus()) view.since = Date.now();
   }
   // How far down the page the bottom of the window has been, in percent. It's measured on scroll, a
   // second after the view starts and when the tab is hidden or closed, not at the very start, so a
@@ -106,26 +116,49 @@
     var box = view && (view.box ? view.box.getBoundingClientRect() : { top: -scrollY, height: document.documentElement.scrollHeight });
     if (box && box.height) view.depth = Math.max(view.depth, Math.min(100, Math.round((innerHeight - box.top) / box.height * 100)));
   }
-  // Sent once per page view, when it ends: the tab is hidden or closed, or a single-page app moves on.
-  // Less than a second is a glance, so the view stays open in case they come back to it.
+  // The page view's totals so far, sent each time its tab is hidden or closed and once more when a
+  // single-page app moves on, so time read after coming back to a tab counts too. Each carries the view's
+  // start (v), and the server keeps each view's largest. Less than a second is a glance, so nothing goes
+  // until then; after the first, hiding the tab sends only with 3 seconds more, a deeper scroll or a new Web
+  // Vital, so flicking between tabs sends nothing. Each says the page view was left (x), hidden, closed or
+  // moved on from, so it leaves "here now" at once. Moving on always returns the event, to go with the next
+  // page view in the same request.
   // A single-page app has usually drawn the next page by the time it changes the address, so moving
   // on doesn't measure: the next page's height would be taken for the one being left.
   function end(moving) {
     pause();
-    if (!view || view.done || view.ms < 1000) return;
+    if (!view || view.ms < 1000) return;
     if (!moving) scrolled();
-    view.done = true;
-    post(Object.assign({ t: 'engagement', u: view.u, r: view.r, l: view.l, h: view.h, e: view.ms, s: view.depth }, vitals));
+    flush.forEach(function (f) { f(); });
+    if (paint != null) {
+      var nav = performance.getEntriesByType('navigation')[0];
+      vitals.lcp = Math.max(0, paint - (nav && nav.activationStart || 0));
+    }
+    var said = JSON.stringify(vitals);
+    if (!moving && view.sent && view.ms - view.sent < 3000 && view.depth <= view.deep && said === view.said) return;
+    view.sent = view.ms;
+    view.deep = view.depth;
+    view.said = said;
+    var e = Object.assign({ t: 'engagement', u: view.u, r: view.r, l: view.l, h: view.h, v: view.v, e: view.ms, s: view.depth, x: 1 }, vitals);
+    if (moving) return e;
+    gone = 1;
+    post(e);
   }
 
   // "Here now" is anyone seen in the last 5 minutes, so someone reading one page for longer would
   // drop out of it. A tab that shows says it is still there every 3 minutes, from its last page view
   // or ping, and that keeps its visit going. A window in the background counts while its tab shows; a
   // hidden tab doesn't. Half an hour without a page view, a scroll, a click, a key or showing the tab
-  // is someone who has walked away, so the pings stop until they're back, and then come at once.
+  // is someone who has walked away, so the pings stop until they're back, and then come at once. A tab
+  // whose hiding was sent (gone) pings as soon as it shows again, so the reader is back in "here now".
+  // A ping carries the view's totals so far, so a tab the phone closes without hiding it first, which
+  // sends nothing more, still leaves how long it was read.
   function ping() {
     seen = Date.now();
-    post({ t: 'ping', u: view.u, r: view.r, l: view.l, h: visit(0).h });
+    gone = 0;
+    var p = { t: 'ping', u: view.u, r: view.r, l: view.l, h: visit(0).h, v: view.v };
+    if (engage) { pause(); resume(); p.e = view.ms; p.s = view.depth; }
+    post(p);
   }
   function keep() {
     var mine = ++beat;
@@ -137,22 +170,25 @@
   }
   function active() {
     input = Date.now();
-    if (view && document.visibilityState === 'visible' && input - seen >= PING) { ping(); keep(); }
+    if (view && document.visibilityState === 'visible' && (gone || input - seen >= PING)) { ping(); keep(); }
   }
   // visibilitychange reaches the window from the document, so showing the tab counts as input.
   'scroll pointerdown pointermove keydown visibilitychange'.split(' ').forEach(function (type) { addEventListener(type, active, true); });
 
-  // The hash is left out, so jumping to an anchor on the same page isn't another view.
+  // The hash is left out, so jumping to an anchor on the same page isn't another view. The page view
+  // left behind sends its last totals in the same request as the next one.
   function send() {
     var page = location.pathname + location.search;
     if (page === last) return;
     last = page;
-    if (engage) end(true);
-    if (view) vitals = shifts ? { cls: 0 } : {};
-    var src = source(), v = visit(1), shown;
-    shown = view = { u: location.href, r: src.r, l: src.l, h: v.h, ms: 0, since: 0, depth: 0, box: document.querySelector('[data-lede-page="' + location.pathname + '"]') };
-    post({ u: view.u, r: view.r, l: view.l, h: view.h, k: Math.min(v.n, 3) });
-    seen = input = Date.now();
+    var left = engage && end(true);
+    if (view) { vitals = shifts ? { cls: 0 } : {}; paint = null; burst = burstStart = lastShift = 0; }
+    var src = source(), v = visit(1), now = Date.now(), shown;
+    shown = view = { u: location.href, r: src.r, l: src.l, h: v.h, v: now, ms: 0, since: 0, depth: 0, box: document.querySelector('[data-lede-page="' + location.pathname + '"]') };
+    var hit = { u: view.u, r: view.r, l: view.l, h: view.h, v: now, k: Math.min(v.n, 3) };
+    post(left ? [left, hit] : hit);
+    seen = input = now;
+    gone = 0;
     keep();
     if (engage) { resume(); setTimeout(function () { if (view === shown) scrolled(); }, 1000); }
   }

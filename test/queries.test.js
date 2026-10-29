@@ -252,11 +252,12 @@ test('the top source per day is picked in SQL: one row per day, so busy days kee
 
 test('engagement takes the median read and each Web Vital at the 75th percentile, over the views that measured it', () => {
   const sql = engagementSql('lede', parseQuery(url('engagement?days=7'), SITES));
-  assert.ok(sql.includes('quantileExactWeighted(0.5)(double1, _sample_interval) AS median_ms'));
-  assert.ok(sql.includes('quantileExactWeighted(0.75)(double4, if(double4 > 0, _sample_interval, 0)) AS lcp, sumIf(_sample_interval, double4 > 0) AS lcp_n'));
-  assert.ok(sql.includes('quantileExactWeighted(0.75)(double5, if(double5 > 0, _sample_interval, 0)) AS inp'));
+  assert.ok(sql.includes('quantileExactWeighted(0.5)(e, w) AS median_ms'));
+  assert.ok(sql.includes('max(double4) AS vl, max(double5) AS vi, max(double6) AS vc'), 'a view\'s worst, over the totals it sent');
+  assert.ok(sql.includes('quantileExactWeighted(0.75)(vl, if(vl > 0, w, 0)) AS lcp, sumIf(w, vl > 0) AS lcp_n'));
+  assert.ok(sql.includes('quantileExactWeighted(0.75)(vi, if(vi > 0, w, 0)) AS inp'));
   // A browser that can't measure CLS sends none, stored as 0, so 0 is no measure at all.
-  assert.ok(sql.includes('quantileExactWeighted(0.75)((double6 - 1), if(double6 > 0, _sample_interval, 0)) AS cls, sumIf(_sample_interval, double6 > 0) AS cls_n'));
+  assert.ok(sql.includes('quantileExactWeighted(0.75)((vc - 1), if(vc > 0, w, 0)) AS cls, sumIf(w, vc > 0) AS cls_n'));
 });
 
 // A fake SQL API for breakdowns: answers the query over both periods with rows, and a single-period

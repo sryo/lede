@@ -6,6 +6,7 @@ import { demoStore, demoNotes, DEMO_FUNNEL, DEMO_INSIGHT } from './demo.js';
 import { channelFor } from './channels.js';
 import { factSheet, lineFor, MIN_VISITORS } from './insight.js';
 import { readStory, tellStory } from '../public/story.js';
+import { watch } from './live.js';
 
 export { HttpError };
 
@@ -132,8 +133,9 @@ export function sqlStore(env, fetchImpl = fetch) {
       return { path, sampled: picked.sampled.cur, prevSampled: picked.sampled.prev, ...pairNext(rows, path, goals) };
     },
     async live(q, nowSec = Math.floor(Date.now() / 1000)) {
-      return shapeLive(await run(Q.liveSql(ds, q.site)), nowSec);
+      return shapeLive(await this.liveRows(q.site), nowSec);
     },
+    liveRows: site => run(Q.liveSql(ds, site)),
     // Rows per day; days with nobody have none.
     async usual(site, nowSec, days) {
       return (await run(Q.usualSql(ds, site, nowSec, days))).map(r => Number(r.visitors) || 0);
@@ -407,6 +409,19 @@ export async function handleApi(req, env, ctx, shared = null) {
   const demo = env.DEMO === 'true';
   const settings = name === 'goals' || name === 'notes' || name === 'funnels' || name === 'sites' || name === 'shares';
   const maxAge = settings ? 0 : CACHE_SECONDS[name] || CACHE_SECONDS.default;
+  // The dashboard's socket for "here now" (src/live.js), started from one live query. Without the Durable
+  // Object (the sample data, or a deploy without it) there's none, and the dashboard asks every minute.
+  if (name === 'live/ws') {
+    if (demo || !env.LIVE || req.headers.get('Upgrade') !== 'websocket') return json({ error: 'No live connection here; ask /api/live instead.' }, 404, 0);
+    try {
+      const q = parseQuery(url, shared ? [shared] : await sitesFor(url, env));
+      // A seed that can't be read (the stats say why, elsewhere) leaves the object to start from what it hears.
+      return await watch(env, q.site, await sqlStore(env).liveRows(q.site).catch(() => []));
+    } catch (e) {
+      if (!(e instanceof HttpError)) console.error(e);
+      return json({ error: e instanceof HttpError ? e.message : 'The live connection didn’t open. The dashboard asks every minute instead.' }, e.status || 500, 0);
+    }
+  }
   // Each stats request runs several SQL queries, so successful answers are cached briefly at the edge.
   const cache = !demo && !settings && typeof caches !== 'undefined' ? caches.default : null;
   // The edge keeps its copy for s-maxage; the viewer's browser gets the private header either way.

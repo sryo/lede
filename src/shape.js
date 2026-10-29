@@ -137,6 +137,8 @@ export function toSeriesBoth(rows, days) {
   return { cur: toSeries(cur, days, days), prev: toSeries(prev, days) };
 }
 
+// Here now: seen in the last 5 minutes on a page view they haven't left (here, see liveSql; rows without it
+// count when the visitor was last seen at all).
 export function shapeLive(rows, nowSec) {
   const visitors = rows.map(r => ({
     path: r.path,
@@ -144,7 +146,7 @@ export function shapeLive(rows, nowSec) {
     country: r.country ?? '',
     seconds: num(r.last) - num(r.first),
     ago: nowSec - num(r.last),
-    active: nowSec - num(r.last) < 300,
+    active: nowSec - num(r.here ?? r.last) < 300,
   }));
   return { now: visitors.filter(v => v.active).length, recent: visitors.length, visitors };
 }

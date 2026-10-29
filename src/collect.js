@@ -5,10 +5,14 @@ import { toDataPoint } from './schema.js';
 import { SEARCH_PARAMS } from './queries.js';
 import { keyword, searchWord } from './shape.js';
 import { getSites, getSalt } from './settings.js';
+import { forward } from './live.js';
 
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 const MAX = 512;
-const MAX_BODY = 8192; // a page URL, a referrer and a landing query
+// A page URL, a referrer and a landing query, for each of the events a request can carry: a single-page
+// app sends the page view it leaves behind with the next one.
+const MAX_BODY = 16384;
+const MAX_EVENTS = 4;
 
 const stripWww = h => h.toLowerCase().replace(/^www\./, '');
 const clip = s => s.slice(0, MAX);
@@ -46,16 +50,24 @@ export function scrubPath(path) {
 
 // The type-specific part of an event, or null if it doesn't make sense. Engagement carries e (engaged ms)
 // and s (scroll depth, %), and the page view's Web Vitals when the browser measured them: lcp and inp in
-// ms, cls times 1000 (stored one higher, see shift). Outbound links and downloads carry o, the link's address without its query, of
-// which only the host and path are kept (see scrubPath). A ping only says the page is still showing.
+// ms, cls times 1000 (stored one higher, see shift), and x when it was sent as the tab was hidden. Outbound
+// links and downloads carry o, the link's address without its query, of which only the host and path are
+// kept (see scrubPath). A ping says the page is still showing, with the view's e and s so far when the
+// tracker measures them (any amount: a view under a second is left out when it's read). Page views,
+// engagement and pings carry v, when the view started (see viewOf).
+const reading = (e, s) => ({ engaged: Math.min(MAX_ENGAGED, Math.round(e)), scroll: Math.min(100, Math.max(0, Math.round(s))) });
+const measured = (e, s) => typeof e === 'number' && typeof s === 'number' && Number.isFinite(e) && Number.isFinite(s) && e >= 0;
+// Any whole number of ms since 2001 and before 2286 will do: it only tells a view's events from another's.
+const viewOf = v => Number.isInteger(v) && v > 1e12 && v < 1e13 ? v : 0;
 function details(type, body, site) {
-  if (type === 'pageview' || type === 'ping') return {};
+  if (type === 'pageview') return { view: viewOf(body.v) };
+  if (type === 'ping') return { view: viewOf(body.v), ...(measured(body.e, body.s) ? reading(body.e, body.s) : {}) };
   if (type === 'engagement') {
     const { e, s } = body;
-    if (typeof e !== 'number' || typeof s !== 'number' || !Number.isFinite(e) || !Number.isFinite(s) || e < 1000) return null;
+    if (!measured(e, s) || e < 1000) return null;
     return {
-      engaged: Math.min(MAX_ENGAGED, Math.round(e)), scroll: Math.min(100, Math.max(0, Math.round(s))),
-      lcp: vital(body.lcp, 60e3), inp: vital(body.inp, 60e3), cls: shift(body.cls),
+      ...reading(e, s), lcp: vital(body.lcp, 60e3), inp: vital(body.inp, 60e3), cls: shift(body.cls),
+      view: viewOf(body.v), left: body.x === 1 ? 1 : 0,
     };
   }
   if (typeof body.o !== 'string' || body.o.length > 2048) return null;
@@ -70,7 +82,8 @@ function details(type, body, site) {
 // Turns the tracker's payload into the fields we store, or null if the event should be dropped.
 // body: { t: type (pageview when left out), u: page URL, r: referrer of the page the visit landed on,
 //         l: the tags in that landing page's query, h: when the visit started, in ms (see visitHour),
-//         k: a page view's place in its visit, 3 for any after the second, and the type's own fields (see details) }
+//         k: a page view's place in its visit, 3 for any after the second, v: when the page view started,
+//         and the type's own fields (see details) }
 export function parseEvent(body, sites) {
   if (!body || typeof body.u !== 'string') return null;
   const type = body.t ?? 'pageview';
@@ -218,7 +231,8 @@ function fromSite(origin, site) {
   try { return stripWww(new URL(origin).hostname) === site; } catch { return false; }
 }
 
-export async function collect(req, env) {
+// ctx: the request's, so the event can go on to a watching dashboard (see forward in src/live.js).
+export async function collect(req, env, ctx) {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: { ...CORS, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type' } });
   }
@@ -231,24 +245,28 @@ export async function collect(req, env) {
   const text = await req.text();
   if (text.length > MAX_BODY) return new Response('The event is too large.', { status: 413, headers: CORS });
   try { body = JSON.parse(text); } catch { return new Response('The event isn’t valid JSON.', { status: 400, headers: CORS }); }
-  const ev = parseEvent(body, await getSites(env));
-  if (!ev || !fromSite(req.headers.get('Origin'), ev.site)) return new Response(null, { status: 204, headers: CORS });
+  // One event, or a few sent together. Each is checked, capped and written on its own.
+  const bodies = Array.isArray(body) ? body : [body];
+  if (bodies.length > MAX_EVENTS) return new Response(null, { status: 204, headers: CORS });
+  const sites = await getSites(env), origin = req.headers.get('Origin');
+  const events = bodies.map(b => [b, parseEvent(b, sites)]).filter(([, ev]) => ev && fromSite(origin, ev.site));
+  if (!events.length) return new Response(null, { status: 204, headers: CORS });
 
   const now = new Date();
   const salt = await getSalt(env, now);
   const ip = req.headers.get('CF-Connecting-IP') || '';
   // Senders are hashes, so no address is kept in memory. BEACON_LIMIT is Cloudflare's rate limiter,
   // used when it's bound in wrangler.jsonc (see docs/how-it-works.md, Limits); it counts across this
-  // location's Worker instances, which the in-memory caps can't.
+  // location's Worker instances, which the in-memory caps can't. It's asked once per request.
   const address = senderKey(`${salt}|${ip}`);
-  if (!underCap(senderKey(`${salt}|${ip}|${ua}|${ev.site}`), now.getTime()) || !underAddressCap(address, now.getTime())
-    || (env.BEACON_LIMIT && !(await env.BEACON_LIMIT.limit({ key: address })).success)) {
-    return new Response(null, { status: 204, headers: CORS });
+  if (env.BEACON_LIMIT && !(await env.BEACON_LIMIT.limit({ key: address })).success) return new Response(null, { status: 204, headers: CORS });
+  const device = deviceOf(ua, req.headers.get('Sec-CH-UA-Mobile')), browser = browserOf(ua), country = req.cf?.country || '';
+  for (const [b, ev] of events) {
+    if (!underCap(senderKey(`${salt}|${ip}|${ua}|${ev.site}`), now.getTime()) || !underAddressCap(address, now.getTime())) continue;
+    const started = visitHour(b.h, now);
+    const ids = await identify(await visitSalt(env, started, now, salt), ev.site, ip, ua, now, started);
+    env.EVENTS.writeDataPoint(toDataPoint({ ...ev, ...ids, country, device, browser }));
+    forward(env, ctx, { ...ev, ...ids, country });
   }
-  const started = visitHour(body.h, now);
-  const ids = await identify(await visitSalt(env, started, now, salt), ev.site, ip, ua, now, started);
-  env.EVENTS.writeDataPoint(toDataPoint({
-    ...ev, ...ids, country: req.cf?.country || '', device: deviceOf(ua, req.headers.get('Sec-CH-UA-Mobile')), browser: browserOf(ua),
-  }));
   return new Response(null, { status: 204, headers: CORS });
 }

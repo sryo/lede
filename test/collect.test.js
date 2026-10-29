@@ -220,7 +220,7 @@ test('collect drops oversized bodies and headless browsers', async () => {
   const req = (ua, body) => new Request('https://worker.test/api/event', { method: 'POST', headers: { ...BEACON, 'User-Agent': ua }, body });
   const ok = JSON.stringify({ u: 'https://example.com/' });
   const browser = SAFARI;
-  assert.equal((await collect(req(browser, JSON.stringify({ u: 'https://example.com/?' + 'a'.repeat(9000) })), env)).status, 413);
+  assert.equal((await collect(req(browser, JSON.stringify({ u: 'https://example.com/?' + 'a'.repeat(17000) })), env)).status, 413);
   await collect(req('Mozilla/5.0', ok), env);
   await collect(new Request('https://worker.test/lede', { method: 'POST', headers: { ...BEACON, 'User-Agent': browser, Origin: 'https://copy.test' }, body: ok }), env);
   assert.equal(points.length, 0);
@@ -267,9 +267,31 @@ test('Web Vitals ride on the engagement event, and a broken measurement is unkno
   assert.equal(parseEvent({ u: 'https://example.com/', lcp: 2400 }, SITES).lcp, undefined, 'a page view carries none');
 });
 
-test('a ping says someone is still on a page, and carries nothing else', () => {
+test('a ping says someone is still on a page, with its view and the view\'s totals so far, and nothing else', () => {
   const ev = parseEvent({ u: 'https://example.com/docs/?ref=x', t: 'ping', r: 'https://news.ycombinator.com/', e: 9000, o: 'https://a.test/' }, SITES);
-  assert.deepEqual([ev.type, ev.path, ev.referrer, ev.engaged, ev.target], ['ping', '/docs', 'news.ycombinator.com', undefined, undefined]);
+  assert.deepEqual([ev.type, ev.path, ev.referrer, ev.engaged, ev.target], ['ping', '/docs', 'news.ycombinator.com', undefined, undefined], 'time without depth is no measure');
+  const v = Date.parse('2026-10-05T10:50:00Z');
+  const read = parseEvent({ u: 'https://example.com/docs', t: 'ping', v, e: 400.4, s: 130, x: 1 }, SITES);
+  assert.deepEqual([read.view, read.engaged, read.scroll, read.left], [v, 400, 100, undefined], 'under a second is kept, for the server to leave out');
+  assert.equal(parseEvent({ u: 'https://example.com/', t: 'ping', v: 'soon' }, SITES).view, 0);
+  assert.equal(parseEvent({ u: 'https://example.com/', t: 'ping', v: 42 }, SITES).view, 0);
+});
+
+test('collect takes a few events in one request, each checked and capped on its own', async () => {
+  const points = [];
+  const kv = new Map([['sites', '["example.com"]'], ['salt', 's']]);
+  const env = { STORE: { get: async k => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v), delete: async k => kv.delete(k) }, EVENTS: { writeDataPoint: p => points.push(p) } };
+  const send = body => collect(new Request('https://worker.test/lede', {
+    method: 'POST', headers: { ...BEACON, 'User-Agent': SAFARI, 'CF-Connecting-IP': '5.6.7.8' }, body: JSON.stringify(body),
+  }), env);
+  await send([{ t: 'engagement', u: 'https://example.com/a', e: 4000, s: 50 }, { u: 'https://example.com/b', k: 2 }]);
+  assert.deepEqual(points.map(p => p.blobs[1]), ['/a', '/b']);
+  points.length = 0;
+  await send([{ u: 'https://evil.test/' }, { u: 'https://example.com/c' }, { t: 'engagement', u: 'https://example.com/c', e: 10 }]);
+  assert.deepEqual(points.map(p => p.blobs[1]), ['/c'], 'one that doesn\'t make sense doesn\'t take the rest with it');
+  points.length = 0;
+  await send(Array.from({ length: 5 }, () => ({ u: 'https://example.com/' })));
+  assert.equal(points.length, 0, 'more than a tracker ever sends at once');
 });
 
 test('link clicks keep only the host and path of the link', () => {
@@ -310,15 +332,16 @@ test('collect writes engagement as doubles and the link in its own blob, hashed 
   const send = body => collect(new Request('https://worker.test/lede', {
     method: 'POST', headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh) Safari/605', 'CF-Connecting-IP': '1.2.3.4' }, body: JSON.stringify({ u: 'https://example.com/docs', ...body }),
   }), env);
-  await send({ k: 2 });
-  await send({ t: 'engagement', e: 12000, s: 80, lcp: 1840.6, inp: 96, cls: 42 });
+  const v = Date.parse('2026-10-05T10:50:00Z');
+  await send({ k: 2, v });
+  await send({ t: 'engagement', e: 12000, s: 80, lcp: 1840.6, inp: 96, cls: 42, v, x: 1 });
   await send({ t: 'download', o: 'https://example.com/files/guide.pdf' });
   assert.equal(points.length, 3);
   const rows = points.map(p => Object.fromEntries(FIELDS.map((f, i) => [f, p.blobs[i]])));
   assert.deepEqual(FIELDS.slice(12), ['target', 'device', 'browser', 'utmTerm'], 'new fields go at the end, so stored rows keep their layout');
-  assert.deepEqual(NUMBERS, ['engaged', 'scroll', 'step', 'lcp', 'inp', 'cls'], 'and new numbers too');
+  assert.deepEqual(NUMBERS, ['engaged', 'scroll', 'step', 'lcp', 'inp', 'cls', 'view', 'left'], 'and new numbers too');
   assert.deepEqual(rows.map(r => r.type), ['pageview', 'engagement', 'download']);
-  assert.deepEqual(points.map(p => p.doubles), [[0, 0, 2, 0, 0, 0], [12000, 80, 0, 1841, 96, 43], [0, 0, 0, 0, 0, 0]]);
+  assert.deepEqual(points.map(p => p.doubles), [[0, 0, 2, 0, 0, 0, v, 0], [12000, 80, 0, 1841, 96, 43, v, 1], [0, 0, 0, 0, 0, 0, 0, 0]]);
   assert.deepEqual(rows.map(r => r.target), ['', '', 'example.com/files/guide.pdf']);
   assert.ok(rows.every(r => r.visitor === rows[0].visitor && r.visit === rows[0].visit && r.path === '/docs'));
 });
