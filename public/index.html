@@ -2604,14 +2604,14 @@ function drawSetup(msg=''){
   const panel=$('#setup-panel'),tag=`<script defer src="${location.origin}/t.js"><\/script>`,cmd='npx wrangler secret put ALERT_WEBHOOK';
   // Each part split by a hairline; every command sits in a well with its own Copy, and a state is a chip by its heading.
   const well=(text,k)=>`<div class="code"><code>${esc(text)}</code><button type="button" class="share-b" data-copy="${k}">Copy</button></div>`;
-  panel.innerHTML=`<div><div class="sh"><b>Lede’s line</b></div><p class="muted">On every page of ${esc(displayHost(SITE))}, so each visit is counted.</p>${well(tag,'line')}</div>
+  panel.innerHTML=`<div><div class="sh"><b>Lede’s line</b></div><p class="muted">Paste it into every page of ${esc(displayHost(SITE))}.</p>${well(tag,'line')}</div>
     <div><div class="sh"><b>Another site</b></div>${DEMO?'<p class="muted">The sample can’t count another site; your own Lede can.</p>':`<form novalidate><div class="add"><input name="site" type="text" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="example.org" aria-label="Another site’s address"><button class="retry">Add</button></div></form>`}</div>
     <div><div class="sh"><b>Tab icon</b>${ICON!=null?'<button type="button" class="share-b" data-icon="">Automatic</button>':''}</div>
       <p class="muted">${ICON==null?'Picked from the site’s name, so its tabs stand apart from other sites’. Pick one to keep it.':'Your pick, for everyone who opens this site’s stats.'}</p>
       <div class="icons" role="group" aria-label="Tab icon">${ICONS.map((_,i)=>`<button type="button" data-icon="${i}" aria-pressed="${i===iconFor(SITE,SITES,ICON)}" aria-label="Colourway ${i+1}"><img src="${iconURL(i)}" alt="" width="28" height="28"></button>`).join('')}</div></div>
     <div><div class="sh"><b>Messages</b><span class="onoff${MESSAGES?' on':''}">${MESSAGES?'On':'Off'}</span></div>
       <p class="muted">${MESSAGES?'The week’s story every Monday, and a line when far more people than usual are here at once.':'The week’s story every Monday in Slack, Discord or ntfy. Run this, then paste the channel’s webhook address.'}</p>${MESSAGES?'':well(cmd,'cmd')}</div>
-    ${PASSWORD?'<div class="out"><span class="muted">Signed in with the password</span><button type="button" class="share-b" data-a="out">Sign out</button></div>':''}
+    ${PASSWORD?'<div class="out"><span class="muted">Signed in on this browser</span><button type="button" class="share-b" data-a="out">Sign out</button></div>':''}
     <p class="muted msg" role="status">${esc(msg)}</p>`;
   panel.querySelectorAll('[data-copy]').forEach(b=>b.onclick=()=>navigator.clipboard.writeText(b.dataset.copy==='line'?tag:cmd)
     .then(()=>{b.textContent='Copied';announce('Copied')},()=>{panel.querySelector('.msg').textContent='Couldn’t copy it. Select it and press Ctrl+C or ⌘C.'}));
