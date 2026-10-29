@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readStory, tellStory, bounceSplit, bounceCaption, waterfallCaption, spikeSegment,
+import { findSpike, readStory, tellStory, bounceSplit, bounceCaption, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
   scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
   unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
@@ -1385,4 +1385,13 @@ test('the list under the lanes names each person on a page while there are few, 
   assert.equal(b.more, 2, 'two more sources');
   assert.deepEqual(b.earlier, [['Direct', 33]]);
   assert.equal(b.here, 240);
+});
+
+test('a small site’s big day counts once it is clear of the day-to-day noise, 5 visitors at least', () => {
+  const days = (peak, base) => Array.from({ length: 14 }, (_, i) => i === 9 ? peak : base);
+  assert.equal(findSpike(days(14, 3), START), 9, '14 against a usual 3');
+  assert.equal(findSpike(days(6, 3), START), -1, '3 more is within the noise');
+  assert.equal(findSpike(days(3, 1), START), -1, 'and 2 more is no day at all');
+  assert.equal(findSpike(days(130, 100), START), -1, '30 more on a 100 day is only 1.3 times');
+  assert.equal(findSpike(days(180, 100), START), 9);
 });

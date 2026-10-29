@@ -59,12 +59,15 @@ export const readers = label => label === 'Direct' ? 'direct visitors' : `${labe
 
 // A day is a spike when it stands well clear of a normal day (the same weekday, once there are
 // two weeks to compare) and of the next-busiest day, so busy weekends don't count.
+// A day well above its usual: past the usual's day-to-day spread (twice its square root) and by 5 visitors at least.
+const clearOf = (v, usual) => v - usual >= Math.max(5, 2 * Math.sqrt(usual));
+
 export function findSpike(vals, start) {
   const n = vals.length; if (n < 7) return -1;
   const i = vals.indexOf(maxOf(vals)), peak = vals[i], others = vals.filter((_, j) => j !== i);
   const wd = j => dayDate(start, j).getDay();
   const base = n >= 14 ? median(others.filter((_, j) => wd(j < i ? j : j + 1) === wd(i))) : median(others);
-  return base > 0 && peak > base * 1.6 && peak >= maxOf(others) * 1.3 && peak - base >= 30 ? i : -1;
+  return base > 0 && peak > base * 1.6 && peak >= maxOf(others) * 1.3 && clearOf(peak, base) ? i : -1;
 }
 
 // Works out the facts behind the summary sentence: which sources moved the total, whether a spike
@@ -218,7 +221,7 @@ export function noteChange(S, ser, notes) {
       if (!note) continue;
       const wd = dayDate(ser.start, i).getDay(), others = days.filter(x => x.i !== i), same = others.filter(x => x.d.getDay() === wd);
       const like = same.length >= 2, usual = median((like ? same : others).map(x => x.v));
-      if (usual > 0 && cur[i] >= usual * 1.5 && cur[i] - usual >= 30) return { kind: 'day', day: i, lag, ratio: cur[i] / usual, weekday: like ? fmtWeekday(dayDate(ser.start, i), 'long') : null, note };
+      if (usual > 0 && cur[i] >= usual * 1.5 && clearOf(cur[i], usual)) return { kind: 'day', day: i, lag, ratio: cur[i] / usual, weekday: like ? fmtWeekday(dayDate(ser.start, i), 'long') : null, note };
     }
   }
   return null;

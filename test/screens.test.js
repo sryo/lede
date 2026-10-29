@@ -291,3 +291,13 @@ test('the tab shows the site’s icon, and Setup offers the nine colourways with
 test('the Online view credits the figures only when it draws some', () => {
   assert.match(fn('renderOnline'), /\$\{rows\.length\?'<p class="credit">Figures: Wee People, ProPublica<\/p>':''\}/);
 });
+
+test('a read-only link shows goal results, with no way to change the goals', () => {
+  assert.doesNotMatch(fn('loadGoals'), /GOALS=SHARED\?\[\]/, 'the goals load for everyone');
+  const line = fn('drawGoalLine');
+  assert.match(line, /if\(SHARED&&!GOALS\.length\)\{el\.hidden=true;return\}/, 'no goal is offered on a shared link');
+  assert.match(line, /one&&!SHARED\?`<button type="button" class="goal-t"/, 'and the flag is only a toggle for the owner');
+  const card = fn('drawGoalCard');
+  assert.match(card, /if\(SHARED&&!GOALS\.includes\(path\)\)return/);
+  assert.match(card, /SHARED\?'':goalSeg\(/);
+});

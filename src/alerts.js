@@ -7,7 +7,6 @@ import { factSheet, insight, plain, MIN_VISITORS } from './insight.js';
 import { getSites } from './settings.js';
 import { DAY, hexOf } from './queries.js';
 import { COL } from './schema.js';
-import { channelFor } from './channels.js';
 import { readStory, tellStory, pagesFinding, labelOf, fmtInt, fmtDay, dayDate, pageName, sum } from '../public/story.js';
 import { viewToUrl } from '../public/routes.js';
 import { displayHost } from '../public/hosts.js';
@@ -215,15 +214,14 @@ function crowdOf(here) {
   return { page, onPage, focus, crowd, src, fromSrc };
 }
 
-// named: false keeps the source's host out of the message (see known below).
-export function spikeText(here, full, usual, site, named = true) {
+export function spikeText(here, full, usual, site) {
   const { page, onPage, focus, crowd, src, fromSrc } = crowdOf(here);
   const n = `${full ? 'At least ' : ''}${fmtInt(size(here))}`;
   const all = onPage === size(here), where = all ? `${n} people are on ${pageName(page)} of ${displayHost(site)} right now`
     : `${n} people are on ${displayHost(site)} right now${focus ? `, ${fmtInt(onPage)} of them on ${pageName(page)}` : ''}`;
   // After "12 of them on /x", "most of those" says the count is of the people on that page.
   const mostOf = focus && !all ? 'most of those' : 'most';
-  const name = named ? labelOf('referrer', src) : 'a site that sent nobody in the 2 weeks before';
+  const name = labelOf('referrer', src);
   const from = fromSrc * 2 > size(crowd)
     ? (src ? `${mostOf} from ${name}` : `${focus && !all ? 'most of those' : 'most of them'} direct visitors`)
     : (src ? `more from ${name} than from anywhere else` : 'more direct visitors than from any one source');
@@ -231,9 +229,6 @@ export function spikeText(here, full, usual, site, named = true) {
   return `${where}, ${from}. Usually ${r ? `about ${fmtInt(r)}` : 'hardly anyone'} at this time of day.`;
 }
 
-// A message names a source people know (a search engine, a social site, an AI assistant…) or one that sent
-// visitors before; a host never seen could be spam, or a page its owner meant to keep to themselves.
-const known = src => !src || channelFor(src, new URLSearchParams()) !== 'referral';
 
 // How many of the USUAL_DAYS days before had the site's data in them, from its first event. That is asked
 // once and kept in KV (added:<site>), so a new site's empty first days aren't averaged in as quiet ones.
@@ -260,9 +255,8 @@ async function spike(env, store, site, live, nowSec, many, fetchImpl) {
   const usual = sum(await store.usual(site, nowSec, days)) / days;
   if (live.now < Math.max(2 * usual, usual + MIN_PEOPLE)) return;
   const full = live.atLeast;
-  const { src } = crowdOf(here), named = known(src) || await store.sentBefore(site, src, nowSec);
   const origin = await dashboard(env);
-  const text = spikeText(here, full, usual, site, named) + (origin ? `\n${origin}${viewToUrl({ v: 'online' }, { site: many ? site : null })}` : '');
+  const text = spikeText(here, full, usual, site) + (origin ? `\n${origin}${viewToUrl({ v: 'online' }, { site: many ? site : null })}` : '');
   if (await send(env, text, fetchImpl)) await env.STORE.put(key, JSON.stringify({ day, sent: sent + 1, at: nowSec }), { expirationTtl: 2 * DAY });
 }
 
@@ -292,20 +286,16 @@ async function spikes(env, store, nowMs, fetchImpl, budget) {
 const since = nowSec => `timestamp >= toDateTime(${nowSec - (USUAL_DAYS + 1) * DAY})`;
 export const firstSeenSql = (ds, site, nowSec) =>
   `SELECT toUnixTimestamp(min(timestamp)) AS first FROM ${ds} WHERE index1 = '${site}' AND ${COL.type} = 'pageview' AND ${since(nowSec)}`;
-export const sentBeforeSql = (ds, site, src, nowSec) =>
-  `SELECT count() AS n FROM ${ds} WHERE index1 = '${site}' AND ${COL.type} = 'pageview' AND hex(${COL.referrer}) = '${hexOf(src)}' `
-  + `AND ${since(nowSec)} AND timestamp < toDateTime(${nowSec - DAY})`;
 
 function alertStore(env, fetchImpl) {
   const store = sqlStore(env, fetchImpl), ds = env.DATASET || 'lede', run = sql => runSql(env, sql, fetchImpl);
   return {
     ...store,
     async firstSeen(site, nowSec) { return Number((await run(firstSeenSql(ds, site, nowSec)))[0]?.first) || 0; },
-    async sentBefore(site, src, nowSec) { return Number((await run(sentBeforeSql(ds, site, src, nowSec)))[0]?.n) > 0; },
   };
 }
 // The demo's crowd has come for weeks, from sources it knows.
-const demoStore = { ...demoAlertStore, firstSeen: async () => 0, sentBefore: async () => true };
+const demoStore = { ...demoAlertStore, firstSeen: async () => 0 };
 
 export async function runAlerts(cron, env, nowMs = Date.now(), fetchImpl = fetch) {
   const demo = env.DEMO === 'true';

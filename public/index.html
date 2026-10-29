@@ -638,7 +638,7 @@ let GOALS=[],NOTES=[],FUNNELS=[],ICON=null,goalsReady=Promise.resolve();
 // longer showing is dropped, so one site's goals are never saved over another's.
 function loadGoals(){
   const site=SITE;
-  return goalsReady=api('goals',{},true).catch(()=>({})).then(b=>{if(site===SITE){GOALS=SHARED?[]:b.goals||[];NOTES=b.notes||[];FUNNELS=b.funnels||[];ICON=Number.isInteger(b.icon)?b.icon:null;setIcon()}});
+  return goalsReady=api('goals',{},true).catch(()=>({})).then(b=>{if(site===SITE){GOALS=b.goals||[];NOTES=b.notes||[];FUNNELS=b.funnels||[];ICON=Number.isInteger(b.icon)?b.icon:null;setIcon()}});
 }
 // The tab's icon in the site's colourway (iconFor), so tabs for different sites tell apart at a glance.
 const iconURL=i=>'data:image/svg+xml,'+encodeURIComponent(iconSVG(i));
@@ -658,7 +658,8 @@ const FLAG=on=>`<svg class="flag${on?' on':''}" width="14" height="14" viewBox="
 // Under the home sentence: how many visits reached a goal, or, with none set, an offer to track a page that looks like one.
 async function drawGoalLine(){
   const el=$('#goal-line');if(!el||!HOME||HOME.empty)return;
-  if(SHARED){el.hidden=true;return}
+  // A read-only link shows the goals' results, but offers none and can't change them.
+  if(SHARED&&!GOALS.length){el.hidden=true;return}
   if(!GOALS.length){
     const g=suggestGoal(HOME.pageRows||[]);
     if(!g||store.get(`lede_goal_no:${SITE}`)===g){el.hidden=true;return}
@@ -672,7 +673,7 @@ async function drawGoalLine(){
     const html=goalStory(conv,GOALS,HOME.S.lead?.key);
     if(!html){el.hidden=true;return}
     const one=GOALS.length===1?GOALS[0]:null;
-    el.innerHTML=`${one?`<button type="button" class="goal-t" data-path="${esc(one)}"></button>`:FLAG(true)}<span>${html}</span>`;
+    el.innerHTML=`${one&&!SHARED?`<button type="button" class="goal-t" data-path="${esc(one)}"></button>`:FLAG(true)}<span>${html}</span>`;
     const t=el.querySelector('.goal-t');
     if(t){paintGoalToggle(t);t.onclick=()=>toggleGoal(one)}
     el.hidden=false;
@@ -698,15 +699,16 @@ function paintGoalToggle(b){
 
 // At the foot of a page's view: what the page would show as a goal, before deciding.
 async function drawGoalCard(card,path){
-  if(SHARED)return;
+  if(SHARED&&!GOALS.includes(path))return;
   const on=GOALS.includes(path),no=!on&&store.get(`lede_not_goal:${SITE}:${path}`)==='1';
   let text='';
   try{text=goalStory(await api('conversions',{goal:[path]}),[path],HOME?.S?.lead?.key)||''}catch{text='Couldn’t load this. Check your connection, then reopen the page.'}
-  card.innerHTML=`<div class="card-head"><div class="card-title">Is this page a goal?</div>${goalSeg(path,on?true:no?false:null)}</div>
+  card.innerHTML=`<div class="card-head"><div class="card-title">${SHARED?'Visits that reached this goal':'Is this page a goal?'}</div>${SHARED?'':goalSeg(path,on?true:no?false:null)}</div>
     <p class="goal-text">${text||`Too few visits yet to say how often they reach ${esc(pageName(path))}.`}</p><p class="goal-text muted">A goal is a page you want visits to reach, like a sign-up or thank-you page.</p>`;
+  card.hidden=false;
+  if(SHARED)return;
   card.querySelector('[data-a="yes"]').onclick=()=>{store.set(`lede_not_goal:${SITE}:${path}`,'');if(!on)toggleGoal(path)};
   card.querySelector('[data-a="no"]').onclick=()=>{store.set(`lede_not_goal:${SITE}:${path}`,'1');if(on)toggleGoal(path);else drawGoalCard(card,path)};
-  card.hidden=false;
 }
 
 // Goal or not, as one segmented control like the period switch. state: true, false, or null for not answered yet.

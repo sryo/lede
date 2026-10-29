@@ -60,8 +60,8 @@ function liveRows(nowSec, here, onPage = here, src = 'news.ycombinator.com') {
 }
 
 // The SQL API and the webhook, faked. `usual` is visitors per day in the same 5 minutes over the last 14 days,
-// `since` how long ago the site's first event was (in days), `seen` whether the crowd's source sent anyone before.
-function fakes({ rows = weekRows, here = 0, onPage, src, usual = [], since = 30, seen = false, hook = 200 } = {}) {
+// `since` how long ago the site's first event was (in days).
+function fakes({ rows = weekRows, here = 0, onPage, src, usual = [], since = 30, hook = 200 } = {}) {
   const sent = [], sql = [];
   const fetchImpl = async (url, init = {}) => {
     const u = String(url);
@@ -72,7 +72,6 @@ function fakes({ rows = weekRows, here = 0, onPage, src, usual = [], since = 30,
       const data = body.includes('argMax(blob2') ? liveRows(nowSec, here, onPage, src)
         : body.includes('* 86400 < 300') ? usual.map((v, d) => ({ d: String(d), visitors: String(v) }))
           : body.includes('min(timestamp)) AS first') ? [{ first: String(nowSec - since * DAY) }]
-            : body.includes('count() AS n FROM') ? [{ n: seen ? '3' : '0' }]
               : rows(body);
       return new Response(JSON.stringify({ meta: [], data, rows: data.length }), { status: 200 });
     }
@@ -352,18 +351,11 @@ test('a new site gets no spike message for its first 3 days, then a usual from t
   assert.match(later.sent[0].body, /Usually about 10 at this time of day\./, 'not 40 over 14 days');
 });
 
-test('a spike names a source people know, or one that sent visitors before; never an unknown host', async () => {
-  const unknown = fakes({ here: 40, src: 'secret-plans.example' });
+test('a spike names where the crowd came from, a site never seen before too, with no query of its own', async () => {
+  const unknown = fakes({ here: 40, src: 'owl-forum.example' });
   await run(SPIKES, env(), unknown, WED);
-  assert.match(unknown.sent[0].body, /^40 people are on \/blog\/x of example\.com right now, most from a site that sent nobody in the 2 weeks before\./);
-  assert.ok(!unknown.sent[0].body.includes('secret-plans'));
-  assert.ok(unknown.sql[2].includes("hex(blob4) = '"), 'asked whether it sent anyone before');
-  const seen = fakes({ here: 40, src: 'owl-forum.example', seen: true });
-  await run(SPIKES, env(), seen, WED);
-  assert.match(seen.sent[0].body, /most from owl-forum\.example\./);
-  const known = fakes({ here: 40 });
-  await run(SPIKES, env(), known, WED);
-  assert.equal(known.sql.length, 2, 'Hacker News is known, so nothing more is asked');
+  assert.match(unknown.sent[0].body, /^40 people are on \/blog\/x of example\.com right now, most from owl-forum\.example\./);
+  assert.equal(unknown.sql.length, 2, 'who is here and the usual, nothing more');
 });
 
 test('a crowd is counted whole past the list’s 200, and said as at least only when the live query was cut short', async () => {
