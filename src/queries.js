@@ -121,7 +121,10 @@ export function within(q, only, types) {
 // per period unless one period alone fills nearly all of both, as when traffic rose or fell tenfold
 // across a site with hundreds of pages; the other period's list can then come back short, and the
 // store asks for that period on its own.
-export const LISTS = { breakdown: { keep: 1000, both: 2000 }, flows: { keep: 10000, both: 20000 }, pages: { keep: 1000, both: 2000 }, audience: { keep: 2000, both: 4000 } };
+export const LISTS = { breakdown: { keep: 100, both: 1000 }, flows: { keep: 10000, both: 20000 }, pages: { keep: 200, both: 2000 }, audience: { keep: 2000, both: 4000 } };
+// With ?all, breakdowns, engagement and links keep each period's top 1,000: what a list cut short shows when pressed.
+export const FULL = { keep: 1000, both: 2000 };
+export const capsOf = (q, list) => q.all ? FULL : list;
 const limit = (list, only) => `LIMIT ${only ? list.keep : list.both}`;
 
 // One row per visit: n = events stored, w = page views they stand for (more than n once
@@ -180,10 +183,10 @@ export const topSourceSql = (ds, q) =>
 export function breakdownSql(ds, q, dim, only) {
   if (dim === 'path') {
     return `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, count(DISTINCT ${COL.visitor}) AS visitors, count(DISTINCT ${COL.visit}) AS visits, sum(_sample_interval) AS views, `
-      + `${dayOf('toUnixTimestamp(min(timestamp))', curDays(q))} AS d FROM ${ds} WHERE ${within(q, only)} GROUP BY p, key ORDER BY visitors DESC ${limit(LISTS.breakdown, only)}`;
+      + `${dayOf('toUnixTimestamp(min(timestamp))', curDays(q))} AS d FROM ${ds} WHERE ${within(q, only)} GROUP BY p, key ORDER BY visitors DESC ${limit(capsOf(q, LISTS.breakdown), only)}`;
   }
   return `SELECT p, key, ${METRICS}, ${dayOf('min(t0)', curDays(q))} AS d FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS[dim]} AS key, toUnixTimestamp(min(timestamp)) AS t0`, PERIOD(q))} `
-    + `GROUP BY p, key ORDER BY visitors DESC ${limit(LISTS.breakdown, only)}`;
+    + `GROUP BY p, key ORDER BY visitors DESC ${limit(capsOf(q, LISTS.breakdown), only)}`;
 }
 
 // Visits by country, device and browser together, so one query answers all three lists: a visitor's hash
@@ -279,13 +282,13 @@ export const engagementSql = (ds, q, only) => {
   return `SELECT p, key, sum(w) AS n, sum(w * e) AS ms, sum(w * s) AS depth`
     + `, quantileExactWeighted(0.5)(e, w) AS median_ms${VITALS}${page ? ', max(pg) AS asked' : ''}`
     + (page ? BANDS.map(d => `, sumIf(w, pg = 1 AND s >= ${d}) AS r${d}`).join('') : '')
-    + ` FROM (${views}) WHERE e >= 1000 GROUP BY p, key ORDER BY ${page ? 'asked DESC, ' : ''}n DESC ${limit(LISTS.pages, only)}`;
+    + ` FROM (${views}) WHERE e >= 1000 GROUP BY p, key ORDER BY ${page ? 'asked DESC, ' : ''}n DESC ${limit(capsOf(q, LISTS.pages), only)}`;
 };
 
 // Links to other sites and files, by the visitors who clicked them.
 export const linksSql = (ds, q, only) =>
   `SELECT ${PERIOD(q)} AS p, ${COL.type} AS kind, ${COL.target} AS key, count(DISTINCT ${COL.visitor}) AS visitors, sum(_sample_interval) AS clicks `
-  + `FROM ${ds} WHERE ${within(q, only, ['outbound', 'download'])} GROUP BY p, kind, key ORDER BY visitors DESC ${limit(LISTS.pages, only)}`;
+  + `FROM ${ds} WHERE ${within(q, only, ['outbound', 'download'])} GROUP BY p, kind, key ORDER BY visitors DESC ${limit(capsOf(q, LISTS.pages), only)}`;
 
 // Who was here in the last 30 minutes, one row per page view (by visitor and view, its start), which
 // byVisitor in shape.js makes one row per visitor. hid is when the page view was last left (an engagement

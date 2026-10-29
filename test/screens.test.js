@@ -303,11 +303,25 @@ test('a read-only link shows goal results, with no way to change the goals', () 
 });
 
 test('no list stops without a way to see the rest: links, a channel’s sources, bounce rows and audience parts', () => {
-  assert.match(fn('cutList'), /All \$\{fmtInt\(full\.length\)\} \$\{what\}/);
+  assert.match(fn('cutList'), /All \$\{more\?'':`\$\{fmtInt\(full\.length\)\} `\}\$\{what\}/);
   assert.match(fn('drawLinks'), /cutList\([\s\S]*?\),8,'links'/);
   assert.match(fn('renderSource'), /cutList\([\s\S]*?\),8,'sources'/);
-  assert.match(fn('renderBounce'), /cutList\([\s\S]*?,rows,12,/);
+  assert.match(fn('renderBounce'), /cutList\([\s\S]*?,toRows\(data\),12,/);
   assert.match(fn('drawAudience'), /class="mix-more"/);
+});
+
+test('a source’s bounce link is the one under its squares, not the first list button on the page', () => {
+  assert.match(fn('renderSource'), /querySelector\('#sq-note\+\.more-link'\)\.onclick=e=>openBounce/);
+});
+
+test('a list the server cut short asks for its top 1,000 only when its button is pressed', () => {
+  assert.match(fn('cutList'), /full=await more\(\)/);
+  assert.match(fn('drawLinks'), /L\.cut\?\(\)=>all\(\)/);
+  assert.match(fn('renderSource'), /members\.cut\?\(\)=>api\('breakdown',\{\.\.\.f,dim:'referrer',all:1\}\)/);
+  assert.match(fn('renderSource'), /d\.cut\?\(\)=>api\('breakdown',\{\.\.\.f,dim:'refUrl',all:1\}\)/);
+  assert.match(fn('renderBounce'), /data\.cut\?\(\)=>api\('breakdown',\{dim,all:1\}\)/);
+  assert.match(fn('dimSection'), /all:whole\?1:null/);
+  assert.match(fn('drawInOut'), /H\.cut\?\.\[group\]/);
 });
 
 test('the overview reads campaign tags and the readers’ OS, language, screen and place in three queries; a source shows the pages that linked', () => {

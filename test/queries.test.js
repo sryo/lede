@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseQuery, sqlStore } from '../src/api.js';
-import { ranges, dayOf, zoneOffset, summarySql, seriesSql, topSourceSql, breakdownSql, flowSql, engagementSql, everSql, monthSplit, LISTS, BREAKDOWNS, DAY } from '../src/queries.js';
+import { ranges, dayOf, zoneOffset, summarySql, seriesSql, topSourceSql, breakdownSql, flowSql, engagementSql, linksSql, everSql, monthSplit, LISTS, FULL, BREAKDOWNS, DAY } from '../src/queries.js';
 import { toSummary, toSeriesBoth, toSeries, byPeriod, topByDay } from '../src/shape.js';
 import { dayDate, todayPace } from '../public/story.js';
 
@@ -94,7 +94,7 @@ test('a name that is not a time zone falls back to the offset', () => {
   assert.equal(zoneOffset('Mars/Olympus_Mons'), null);
   assert.equal(zoneOffset('x'.repeat(65)), null);
   assert.equal(zoneOffset(''), null);
-  const { tz, filters, site, days, ...r } = parseQuery(url('summary?days=30&tz=300&tzName=Mars/Olympus_Mons'), SITES, now);
+  const { tz, filters, site, days, all, ...r } = parseQuery(url('summary?days=30&tz=300&tzName=Mars/Olympus_Mons'), SITES, now);
   assert.deepEqual(r, ranges(30, 300, now));
   assert.equal(parseQuery(url('summary?days=30&tz=300&tzName=America/New_York'), SITES, now).start, ranges(30, 300, now, 'America/New_York').start);
 });
@@ -271,9 +271,9 @@ function listSql(calls, both, single) {
 }
 const row = (p, key, visitors) => ({ p, key, visitors: String(visitors), visits: String(visitors), views: String(visitors), bounces: '0', total_time: '0' });
 
-test('breakdowns keep the top 1,000 of each period from one query', async () => {
+test('breakdowns keep the top 100 of each period from one query, and say the list was cut', async () => {
   const calls = [], K = LISTS.breakdown.keep;
-  assert.equal(K, 1000);
+  assert.equal(K, 100);
   // Ordered by visitors across both periods, as SQL returns them.
   const rows = [];
   for (let i = 0; i < K + 200; i++) rows.push(row(1, `/c${i}`, 10000 - i), row(0, `/p${i}`, 9999 - i));
@@ -285,6 +285,28 @@ test('breakdowns keep the top 1,000 of each period from one query', async () => 
   assert.equal(cur.at(-1).key, `/c${K - 1}`);
   assert.equal(gone.length, K, 'the previous period\'s own top rows, kept as losses');
   assert.equal(gone.at(-1).prev.visitors, 9999 - (K - 1));
+});
+
+test('with ?all, breakdowns, engagement and links ask for the top 1,000 of each period', async () => {
+  const q = parseQuery(url('breakdown?days=3&all=1'), SITES);
+  assert.ok(breakdownSql('lede', q, 'path').endsWith(`LIMIT ${FULL.both}`));
+  assert.ok(breakdownSql('lede', q, 'referrer', 'cur').endsWith(`LIMIT ${FULL.keep}`));
+  assert.ok(engagementSql('lede', q).endsWith(`LIMIT ${FULL.both}`));
+  assert.ok(linksSql('lede', q).endsWith(`LIMIT ${FULL.both}`));
+  assert.equal(FULL.keep, 1000);
+  const calls = [], rows = [];
+  for (let i = 0; i < 1200; i++) rows.push(row(1, `/c${i}`, 10000 - i), row(0, `/p${i}`, 9999 - i));
+  const store = sqlStore(ENV, async (e, init) => (calls.push(init.body), new Response(JSON.stringify({ data: rows.slice(0, 2000) }))));
+  const out = await store.breakdown(q, 'path');
+  assert.equal(out.rows.filter(r => r.visitors > 0).length, 1000);
+  assert.equal(out.cut, true);
+});
+
+test('a list that fits says nothing was cut', async () => {
+  const rows = Array.from({ length: 30 }, (_, i) => row(i % 2, `/k${i}`, 100 - i));
+  const store = sqlStore(ENV, async () => new Response(JSON.stringify({ data: rows })));
+  const out = await store.breakdown(parseQuery(url('breakdown?days=3'), SITES), 'path');
+  assert.equal(out.cut, undefined);
 });
 
 test('when one period fills the whole answer, the other is asked for on its own', async () => {

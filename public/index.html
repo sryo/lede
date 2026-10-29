@@ -1174,14 +1174,15 @@ async function view(body,fn){
 // goalable: rows are pages, and each gets a flag to track it as a goal.
 // named: keys this page's own sentence names; they are bold, as in every list.
 // share: how the share column is written (fmtShare, or a tenth of a point where every share is small).
-// A list that shows its first n rows (or pick's), with a button under it that shows all of full in place.
+// A list that shows its first n rows, with a button under it that shows all of full in place.
 // draw(box,rows) fills a box of its own, so the button stays under whatever it draws.
-function cutList(el,full,n,what,draw,pick=r=>r.slice(0,n)){
+// more: when the server's answer was cut short, asks for the whole list; until then the count isn't known.
+function cutList(el,full,n,what,draw,more=null){
   const show=all=>{
-    const box=document.createElement('div');el.replaceChildren(box);draw(box,all?full:pick(full));
-    if(all||full.length<=n)return;
-    const b=document.createElement('button');b.type='button';b.className='more-link';b.innerHTML=`<span>All ${fmtInt(full.length)} ${what}</span>${CHEV}`;
-    b.onclick=()=>{show(true);announce(`Showing all ${full.length} ${what}`)};
+    const box=document.createElement('div');el.replaceChildren(box);draw(box,all?full:full.slice(0,n));
+    if(all||(full.length<=n&&!more))return;
+    const b=document.createElement('button');b.type='button';b.className='more-link';b.innerHTML=`<span>All ${more?'':`${fmtInt(full.length)} `}${what}</span>${CHEV}`;
+    b.onclick=async()=>{if(more){b.disabled=true;full=await more().catch(()=>full);more=null}show(true);announce(`Showing all ${full.length} ${what}`)};
     el.append(b);
   };
   show(false);
@@ -1271,7 +1272,7 @@ function onSeg(sec,pick){
 // engagement: the pages' reading times (/api/engagement), for a list of pages viewed to say how long each is read.
 function dimSection(sec,group,f,compact,boldKeys=null,engagement=null){
   const modes=group==='pages'?[['Viewed','path'],['Landed on','entry'],['Left on','exit']]:[['Sites','referrer'],['Channels','channel']];
-  let mode=modes[0][1];
+  let mode=modes[0][1],whole=false;
   sec.className='card';
   sec.innerHTML=`<div class="card-head">${compact?`<div class="card-title">${group==='pages'?'Pages':'Sources'}</div>`:''}
     ${compact?'':segHTML('Breakdown',modes.map(m=>m[0]))}</div>
@@ -1279,7 +1280,7 @@ function dimSection(sec,group,f,compact,boldKeys=null,engagement=null){
   const body=sec.querySelector('.dim-body');
   let gen=0;
   const draw=()=>{const g=++gen;return view(body,async b=>{
-    const [data,eng]=await Promise.all([api('breakdown',{...filterParams(f),dim:mode}),mode==='path'&&engagement?engagement:null]);
+    const [data,eng]=await Promise.all([api('breakdown',{...filterParams(f),dim:mode,all:whole?1:null}),mode==='path'&&engagement?engagement:null]);
     if(g!==gen)return;
     const read=new Map((eng?.rows||[]).filter(e=>e.median!=null&&e.views>=20).map(e=>[e.key,`${fmtDur(e.median/1000)} read`]));
     // The full list of sites says which channel each is in, so search, social and AI readers can be told apart at a
@@ -1293,13 +1294,14 @@ function dimSection(sec,group,f,compact,boldKeys=null,engagement=null){
     const named=new Set(boldKeys?rows.filter(r=>boldKeys.has(r.dim==='channel'?'ch:'+r.key:r.key)).map(r=>r.key)
       :overview?rows.filter(r=>r.dim==='channel'?H.T.told.has('ch:'+r.key):r.dim==='referrer'?H.T.told.has(r.key):r.key===H.T.page).map(r=>r.key):[]);
     rowsInto(b.firstChild,compact?rows.slice(0,8):rows,{total,subj:group==='pages'?'page':'src',goalable:group==='pages',named,onClick:(r,el)=>go(r)(el)});
-    if(compact&&rows.length>8){
-      const more=document.createElement('button');more.type='button';more.className='more-link';more.innerHTML=`<span>All ${rows.length} ${group}</span>${CHEV}`;
-      more.onclick=()=>openView({v:group},more);
+    // A list the server cut short shows its top 1,000 when pressed; until then its length isn't known.
+    if(compact?rows.length>8||data.cut:data.cut&&!whole){
+      const more=document.createElement('button');more.type='button';more.className='more-link';more.innerHTML=`<span>All ${data.cut?'':`${rows.length} `}${group}</span>${CHEV}`;
+      more.onclick=()=>compact?openView({v:group},more):(whole=true,draw());
       b.appendChild(more);
     }
   })};
-  onSeg(sec,i=>{mode=modes[i][1];draw()});
+  onSeg(sec,i=>{mode=modes[i][1];whole=false;draw()});
   return draw();
 }
 
@@ -1417,7 +1419,7 @@ async function renderFilter(body,f){
   if(overview)api('audience').then(A=>{if(!stale(body,gen)){drawAudience(body.querySelector('.aud'),A);drawAudienceMore(body.querySelector('.aud'),gen,body)}},()=>{});
   if(overview)drawCampaigns(body.querySelector('.camp'),gen,body);
   if(overview)api('keywords').then(K=>{if(!stale(body,gen))drawKeywords(body.querySelector('.kw'),K)},()=>{});
-  if(overview||f.path!=null)api('links',p).then(L=>{if(!stale(body,gen))drawLinks(body,L,c.visitors)},()=>{});
+  if(overview||f.path!=null)api('links',p).then(L=>{if(!stale(body,gen))drawLinks(body,L,c.visitors,()=>api('links',{...p,all:1}))},()=>{});
 }
 
 // The overview's sources and pages, one strip each, from the rows home already has: led by what home's sentence left
@@ -1439,7 +1441,7 @@ function drawInOut(sec,H){
       b.innerHTML=r===on?`<span class="sw" style="background:var(--${subj})"></span><b>${esc(r.label)}</b> ${fmtShare(r.value,all)}<small>${change(r.value,r.prev)}</small>`:`${esc(r.label)} ${fmtShare(r.value,all)}`;
       b.setAttribute('aria-label',`${rowLabel(r.label,r.value,r.prev,all)}. Open`);b.onclick=()=>openFilter({[f]:r.key},r.label,b);p.append(b);
     }
-    const more=document.createElement('button');more.type='button';more.className='io-k io-more';more.textContent=`All ${rows.length} ${group} ›`;more.onclick=()=>openView({v:group},more);p.append(more);
+    const more=document.createElement('button');more.type='button';more.className='io-k io-more';more.textContent=`All ${H.cut?.[group]?'':`${rows.length} `}${group} ›`;more.onclick=()=>openView({v:group},more);p.append(more);
   });
 }
 // How far down the page is read, over a picture of the page: darker further down where fewer still read, a
@@ -1553,8 +1555,9 @@ async function drawAudienceMore(sec,gen,body){
 
 // Links to other sites and files people clicked, as a share of the visitors; a switch when there are both.
 // The sentence names the most clicked of the list showing.
-function drawLinks(body,L,visitors){
-  const modes=[['Other sites',L.outbound],['Downloads',L.downloads]].filter(m=>m[1].length);
+// all: asks for every link, for a list the server cut short.
+function drawLinks(body,L,visitors,all){
+  const modes=[['Other sites',L.outbound,'outbound'],['Downloads',L.downloads,'downloads']].filter(m=>m[1].length);
   if(!modes.length)return;
   const sec=document.createElement('section');sec.className='card';
   sec.innerHTML=`<div class="card-head"><div class="card-title">${modes.length>1?'Links people clicked':modes[0][0]==='Downloads'?'Downloads':'Links to other sites'}</div>
@@ -1564,8 +1567,9 @@ function drawLinks(body,L,visitors){
   const draw=i=>{
     const L=linksStory(modes[i][1],visitors,SITE);
     sec.querySelector('.card-say').innerHTML=L?.html||'';
-    cutList(sec.lastElementChild,modes[i][1].map(r=>({key:r.key,label:r.key.startsWith(SITE+'/')?r.key.slice(SITE.length):r.key,value:r.visitors,prev:r.prev})),8,'links',
-      (box,rows)=>rowsInto(box,rows,{total:visitors,subj:'muted',share:(v,t)=>fmtRate(v/t),named:L?.named}));
+    const toRows=list=>list.map(r=>({key:r.key,label:r.key.startsWith(SITE+'/')?r.key.slice(SITE.length):r.key,value:r.visitors,prev:r.prev}));
+    cutList(sec.lastElementChild,toRows(modes[i][1]),8,'links',
+      (box,rows)=>rowsInto(box,rows,{total:visitors,subj:'muted',share:(v,t)=>fmtRate(v/t),named:L?.named}),L.cut?()=>all().then(A=>toRows(A[modes[i][2]])):null);
   };
   onSeg(sec,draw);
   draw(0);
@@ -1725,9 +1729,10 @@ async function renderSource(body,f){
     ${channel||!f.referrer?'':`<section class="card linked" hidden><div class="card-title">Pages on ${esc(label)} that linked here</div><div></div></section>`}`;
   // Where on the source people followed a link from, when their browsers said: most send only the site.
   if(!channel&&f.referrer)api('breakdown',{...f,dim:'refUrl'}).then(d=>{
-    const rows=d.rows.filter(r=>r.key&&r.visitors),sec=body.querySelector('.linked');
+    const toRows=d=>d.rows.filter(r=>r.key&&r.visitors).map(r=>({key:r.key,label:r.key.replace(/^https?:\/\/(www\.)?/,''),value:r.visitors,prev:r.prev?.visitors}));
+    const rows=toRows(d),sec=body.querySelector('.linked');
     if(stale(body,gen)||!rows.length||!sec)return;
-    cutList(sec.lastElementChild,rows.map(r=>({key:r.key,label:r.key.replace(/^https?:\/\/(www\.)?/,''),value:r.visitors,prev:r.prev?.visitors})),8,'pages',(box,r)=>rowsInto(box,r,{total:c.visitors,subj:'src'}));
+    cutList(sec.lastElementChild,rows,8,'pages',(box,r)=>rowsInto(box,r,{total:c.visitors,subj:'src'}),d.cut?()=>api('breakdown',{...f,dim:'refUrl',all:1}).then(toRows):null);
     sec.hidden=false;
   }).catch(()=>{});
   const cur=ser.cur.visitors,spike=findSpike(cur,ser.start),usual=median(cur);
@@ -1740,8 +1745,10 @@ async function renderSource(body,f){
   dayBars(body.querySelector('.chart'),{cur,prev:pr.visitors?ser.prev.visitors:null,start:ser.start,axis:!evs.length,scale:true,label:label2,subj:'src',
     hot:spike>=0?new Set([spike]):null,aria:`Visitors per day from ${label}.${label2?` ${label2.title}.`:''}`});
   if(evs.length)drawMarks(body.querySelector('.marks'),evs,H.ser,pick);
-  if(channel)cutList(body.querySelector('.members'),members.rows.filter(r=>r.visitors).map(r=>({key:r.key,label:labelOf('referrer',r.key),value:r.visitors,prev:r.prev?.visitors})),8,'sources',
-    (box,rows)=>rowsInto(box,rows,{total:c.visitors,subj:'src',onClick:(r,el)=>openFilter({referrer:r.key},r.label,el)}));
+  const memberRows=d=>d.rows.filter(r=>r.visitors).map(r=>({key:r.key,label:labelOf('referrer',r.key),value:r.visitors,prev:r.prev?.visitors}));
+  if(channel)cutList(body.querySelector('.members'),memberRows(members),8,'sources',
+    (box,rows)=>rowsInto(box,rows,{total:c.visitors,subj:'src',onClick:(r,el)=>openFilter({referrer:r.key},r.label,el)}),
+    members.cut?()=>api('breakdown',{...f,dim:'referrer',all:1}).then(memberRows):null);
   drawLanded(body.querySelector('.landed'),flows.flows.filter(x=>inside(x.source)),null,pages.rows);
   drawSquares(body.querySelector('.sq-box'),[
     {pct:c.visits?c.bounce:null,label,story:bouncy,aria:`${label}: ${c.visits?`${fmtPct(c.bounce)} bounce`:'no visits'}`,open:openBounce},
@@ -1754,7 +1761,7 @@ async function renderSource(body,f){
   if(c.visits&&c.duration!=null){t.hidden=false;t.innerHTML=`<b>${fmtDur(c.duration)}</b>per visit${all.cur.duration!=null?` · ${fmtDur(all.cur.duration)} for all visits`:''}`}
   const landedBounce=topEntry&&topEntry.visits>=50&&topEntry.bounce>=c.bounce+.08?`${fmtPct(topEntry.bounce)} of visits from ${label} that landed on ${pageName(topEntry.key)} bounced.`:'';
   nt.textContent=landedBounce;nt.hidden=!landedBounce;
-  body.querySelector('.more-link').onclick=e=>openBounce(e.currentTarget);
+  body.querySelector('#sq-note+.more-link').onclick=e=>openBounce(e.currentTarget);
   rowsInto(body.querySelector('.pages-list'),pages.rows.map(r=>({key:r.key,label:r.key,value:r.visitors,prev:r.prev?.visitors})),
     {total:c.visitors,subj:'page',goalable:true,named:new Set([moved?.key]),onClick:(r,el)=>openFilter({path:r.key},r.label,el)});
 }
@@ -2042,12 +2049,13 @@ async function renderBounce(body){
       aria:`Bounce rate per day. Highest on ${fmtDate(dayDate(ser.start,peakI))} at ${fmtPct(cur[peakI])}.`}});
   for(const [dim,data] of [['referrer',refs],['entry',entry]]){
     // First the 12 busiest, so a page with two visits can't top the list; all of them a press away. Each row has its visits beside it.
-    const rows=data.rows.filter(r=>r.bounce!=null).sort((a,b)=>b.visits-a.visits)
+    const toRows=data=>data.rows.filter(r=>r.bounce!=null).sort((a,b)=>b.visits-a.visits)
       .map(r=>({key:r.key,label:labelOf(dim,r.key),value:r.bounce,visits:r.visits,prev:r.prev?.visits?r.prev.bounce:null,
         story:(dim==='referrer'&&B?.cause==='source'&&B.top?.key===r.key)||(standout?.dim===dim&&standout.key===r.key),
         open:el=>openFilter({[FILTER_OF[dim]]:r.key},labelOf(dim,r.key),el)}));
     const byRate=r=>r.slice().sort((a,b)=>b.value-a.value);
-    cutList(body.querySelector(`[data-dim="${dim}"]`),rows,12,dim==='referrer'?'sources':'pages',(box,r)=>rateRows(box,byRate(r)));
+    cutList(body.querySelector(`[data-dim="${dim}"]`),toRows(data),12,dim==='referrer'?'sources':'pages',(box,r)=>rateRows(box,byRate(r)),
+      data.cut?()=>api('breakdown',{dim,all:1}).then(toRows):null);
   }
 }
 
@@ -2726,7 +2734,7 @@ async function drawHome(message){
   // The day each page and source was first seen comes with the breakdowns.
   const firstsOf=rows=>rows.filter(r=>r.first!=null&&r.visitors>0).map(r=>({key:r.key,day:r.first,visitors:r.visitors}));
   const B=bounceSplit(S),events=findEvents(S,T,ser,{pages:firstsOf(pages.rows),sources:firstsOf(refs.rows)},pageRows);
-  HOME.events=events;HOME.pageRows=pageRows;
+  HOME.events=events;HOME.pageRows=pageRows;HOME.cut={pages:!!pages.cut,sources:!!refs.cut};
   goalsReady.then(()=>{if(gen===homeRender)drawGoalLine()});
 
   // Four tiles, one question each: when, from where to where, did they stay, what they read.

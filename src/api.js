@@ -33,7 +33,7 @@ export function parseQuery(url, sites, nowMs = Date.now()) {
     if (v.length > 512) throw new HttpError(400, `The ${name} filter is too long.`);
     filters[name] = v;
   }
-  return { site, days, tz, filters, ...Q.ranges(days, tz, nowMs, tzName) };
+  return { site, days, tz, filters, all: url.searchParams.has('all'), ...Q.ranges(days, tz, nowMs, tzName) };
 }
 
 // The SQL API answers 429 when queried too often and 503 when busy; one more try, after the wait it
@@ -81,15 +81,20 @@ export function sqlStore(env, fetchImpl = fetch) {
   if (!/^\w+$/.test(ds)) throw new HttpError(500, 'DATASET in wrangler.jsonc may only contain letters, digits and underscores. Change it, then deploy again.');
   const run = sql => runSql(env, sql, fetchImpl);
   // Each period's top keep rows from one query over both; see Q.LISTS for when a period needs a query of its own.
+  // cut: a period may have had more rows than were kept.
   const lists = async (build, { keep, both }) => {
     const rows = await run(build());
     const out = byPeriod(rows);
+    let cut = false;
     for (const only of ['cur', 'prev']) {
-      if (rows.length >= both && out[only].length < keep) out[only] = byPeriod(await run(build(only)))[only];
+      const short = rows.length >= both && out[only].length < keep;
+      if (short) out[only] = byPeriod(await run(build(only)))[only];
+      cut ||= out[only].length > keep || (out[only].length === keep && (short || rows.length >= both));
       out[only] = out[only].slice(0, keep);
     }
-    return out;
+    return { ...out, cut };
   };
+  const cutOf = cut => cut ? { cut } : {};
   return {
     // ever: with nothing in either period, whether the site has had any view at all, so a new site
     // can be told apart from one gone quiet. Asked only then.
@@ -103,8 +108,8 @@ export function sqlStore(env, fetchImpl = fetch) {
       return { start: q.start, days: q.days, ...toSeriesBoth(days, q.days), ...topByDay(top, q.days) };
     },
     async breakdown(q, dim) {
-      const { cur, prev } = await lists(only => Q.breakdownSql(ds, q, dim, only), Q.LISTS.breakdown);
-      return { dim, rows: mergeRows(cur, prev) };
+      const { cur, prev, cut } = await lists(only => Q.breakdownSql(ds, q, dim, only), Q.capsOf(q, Q.LISTS.breakdown));
+      return { dim, rows: mergeRows(cur, prev), ...cutOf(cut) };
     },
     async flows(q, landing) {
       const { cur, prev } = await lists(only => Q.flowSql(ds, q, only, landing), Q.LISTS.flows);
@@ -148,12 +153,12 @@ export function sqlStore(env, fetchImpl = fetch) {
       return toFunnel(await run(Q.funnelSql(ds, q, steps)), steps);
     },
     async engagement(q) {
-      const { cur, prev } = await lists(only => Q.engagementSql(ds, q, only), Q.LISTS.pages);
-      return toEngagement(cur, prev);
+      const { cur, prev, cut } = await lists(only => Q.engagementSql(ds, q, only), Q.capsOf(q, Q.LISTS.pages));
+      return { ...toEngagement(cur, prev), ...cutOf(cut) };
     },
     async links(q) {
-      const { cur, prev } = await lists(only => Q.linksSql(ds, q, only), Q.LISTS.pages);
-      return toLinks(cur, prev);
+      const { cur, prev, cut } = await lists(only => Q.linksSql(ds, q, only), Q.capsOf(q, Q.LISTS.pages));
+      return { ...toLinks(cur, prev), ...cutOf(cut) };
     },
     async keywords(q) {
       const { site, paid } = splitKeywords(await run(Q.keywordsSql(ds, q)));
