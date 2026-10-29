@@ -111,7 +111,7 @@ export function within(q, only, types) {
 // per period unless one period alone fills nearly all of both, as when traffic rose or fell tenfold
 // across a site with hundreds of pages; the other period's list can then come back short, and the
 // store asks for that period on its own.
-export const LISTS = { breakdown: { keep: 100, both: 1000 }, flows: { keep: 10000, both: 20000 }, pages: { keep: 200, both: 2000 }, audience: { keep: 2000, both: 4000 } };
+export const LISTS = { breakdown: { keep: 1000, both: 2000 }, flows: { keep: 10000, both: 20000 }, pages: { keep: 1000, both: 2000 }, audience: { keep: 2000, both: 4000 } };
 const limit = (list, only) => `LIMIT ${only ? list.keep : list.both}`;
 
 // One row per visit: n = events stored, w = page views they stand for (more than n once

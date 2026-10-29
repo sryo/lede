@@ -154,9 +154,9 @@ test('paid words are merged after cleaning, and one visitor’s ad word counts t
 
 test('lists are sorted by visitors and capped', () => {
   const site = [];
-  for (let w = 0; w < 150; w++) for (let v = 0; v < 2 + (w % 5); v++) site.push({ p: 1, url: `/s?q=w${w}`, visitor: `v${v}` });
+  for (let w = 0; w < 1050; w++) for (let v = 0; v < 1 + (w % 5); v++) site.push({ p: 1, url: `/s?q=w${w}`, visitor: `v${v}` });
   const out = toKeywords(site, []).site;
-  assert.equal(out.length, 100);
+  assert.equal(out.length, 1000);
   assert.ok(out.every((r, i) => !i || out[i - 1].visitors >= r.visitors));
 });
 

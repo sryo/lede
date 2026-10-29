@@ -265,37 +265,39 @@ test('engagement takes the median read and each Web Vital at the 75th percentile
 function listSql(calls, both, single) {
   return async (endpoint, init) => {
     calls.push(init.body);
-    const data = init.body.includes(' OR ') ? both : single(init.body.includes('LIMIT 100') ? 'cur' : 'prev');
+    const data = init.body.includes(' OR ') ? both : single(init.body.includes(`LIMIT ${LISTS.breakdown.keep}`) ? 'cur' : 'prev');
     return new Response(JSON.stringify({ data }));
   };
 }
 const row = (p, key, visitors) => ({ p, key, visitors: String(visitors), visits: String(visitors), views: String(visitors), bounces: '0', total_time: '0' });
 
-test('breakdowns keep the top 100 of each period from one query', async () => {
-  const calls = [];
+test('breakdowns keep the top 1,000 of each period from one query', async () => {
+  const calls = [], K = LISTS.breakdown.keep;
+  assert.equal(K, 1000);
   // Ordered by visitors across both periods, as SQL returns them.
   const rows = [];
-  for (let i = 0; i < 300; i++) rows.push(row(1, `/c${i}`, 1000 - i), row(0, `/p${i}`, 999 - i));
+  for (let i = 0; i < K + 200; i++) rows.push(row(1, `/c${i}`, 10000 - i), row(0, `/p${i}`, 9999 - i));
   const store = sqlStore(ENV, listSql(calls, rows, () => assert.fail('no second query')));
   const { rows: out } = await store.breakdown(parseQuery(url('breakdown?days=3'), SITES), 'path');
   assert.equal(calls.length, 1);
   const cur = out.filter(r => r.visitors > 0), gone = out.filter(r => r.visitors === 0);
-  assert.equal(cur.length, 100);
-  assert.equal(cur.at(-1).key, '/c99');
-  assert.equal(gone.length, 100, 'the previous period\'s own top 100, kept as losses');
-  assert.equal(gone.at(-1).prev.visitors, 900);
+  assert.equal(cur.length, K);
+  assert.equal(cur.at(-1).key, `/c${K - 1}`);
+  assert.equal(gone.length, K, 'the previous period\'s own top rows, kept as losses');
+  assert.equal(gone.at(-1).prev.visitors, 9999 - (K - 1));
 });
 
 test('when one period fills the whole answer, the other is asked for on its own', async () => {
   const calls = [];
   // Traffic fell tenfold: the previous period's long tail outranks most of this period.
-  const rows = [...Array.from({ length: 995 }, (_, i) => row(0, `/p${i}`, 5000 - i)), ...Array.from({ length: 5 }, (_, i) => row(1, `/c${i}`, 3000 - i))];
-  const own = Array.from({ length: 100 }, (_, i) => row(1, `/c${i}`, 3000 - i));
+  const { keep: K, both: B } = LISTS.breakdown;
+  const rows = [...Array.from({ length: B - 5 }, (_, i) => row(0, `/p${i}`, 50000 - i)), ...Array.from({ length: 5 }, (_, i) => row(1, `/c${i}`, 3000 - i))];
+  const own = Array.from({ length: K }, (_, i) => row(1, `/c${i}`, 3000 - i));
   const store = sqlStore(ENV, listSql(calls, rows, only => (assert.equal(only, 'cur'), own)));
   const { rows: out } = await store.breakdown(parseQuery(url('breakdown?days=3'), SITES), 'path');
   assert.equal(calls.length, 2);
-  assert.equal(out.filter(r => r.visitors > 0).length, 100);
-  assert.equal(out.filter(r => r.visitors === 0).length, 100);
+  assert.equal(out.filter(r => r.visitors > 0).length, K);
+  assert.equal(out.filter(r => r.visitors === 0).length, K);
 });
 
 test("today's hours match the local clock after a daylight-saving change earlier in the period", async () => {

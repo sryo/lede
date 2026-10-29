@@ -512,6 +512,8 @@ button.lrow:hover{background:var(--line)}
 .strip{display:flex;gap:2px;height:14px;border-radius:4px;overflow:hidden}
 .strip i{min-width:2px}
 .mix p{grid-column:2;margin:0;display:flex;flex-wrap:wrap;gap:2px 16px}
+.mix-more{all:unset;grid-column:2;justify-self:start;cursor:pointer;font-size:var(--fs-xs);color:var(--muted);text-decoration:underline;text-underline-offset:2px}
+.mix-more:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
 .mix span{white-space:nowrap}
 
 @media (max-width:1000px){
@@ -561,7 +563,7 @@ button.lrow:hover{background:var(--line)}
   .lrow.rate{grid-template-columns:minmax(0,1fr) 40px 56px 10px}
   .shot{height:300px} .reach-nums{column-gap:24px}
   .say{font-size:var(--fs-m)}
-  .mix{grid-template-columns:1fr}.mix p{grid-column:1}
+  .mix{grid-template-columns:1fr}.mix p,.mix-more{grid-column:1}
 }
 @media (prefers-reduced-motion:reduce){.blk,.shot,.shot img,.now .chev{transition:none}}
 </style>
@@ -1172,6 +1174,18 @@ async function view(body,fn){
 // goalable: rows are pages, and each gets a flag to track it as a goal.
 // named: keys this page's own sentence names; they are bold, as in every list.
 // share: how the share column is written (fmtShare, or a tenth of a point where every share is small).
+// A list that shows its first n rows (or pick's), with a button under it that shows all of full in place.
+// draw(box,rows) fills a box of its own, so the button stays under whatever it draws.
+function cutList(el,full,n,what,draw,pick=r=>r.slice(0,n)){
+  const show=all=>{
+    const box=document.createElement('div');el.replaceChildren(box);draw(box,all?full:pick(full));
+    if(all||full.length<=n)return;
+    const b=document.createElement('button');b.type='button';b.className='more-link';b.innerHTML=`<span>All ${fmtInt(full.length)} ${what}</span>${CHEV}`;
+    b.onclick=()=>{show(true);announce(`Showing all ${full.length} ${what}`)};
+    el.append(b);
+  };
+  show(false);
+}
 function rowsInto(group,rows,{fmt=fmtInt,total,inverse=false,onClick,subj='time',goalable=false,named=new Set(),share=fmtShare}){
   if(!rows.length){group.innerHTML='<div class="muted">No visitors yet.</div>';return}
   const max=maxOf(rows.map(r=>r.value))||1;
@@ -1493,7 +1507,10 @@ function drawAudience(sec,A){
     const top=rows.slice(0,far?3:4).concat(far?[on]:[]).map(r=>[labelOf(dim,r.key),r.visitors,r==on]),n=rows.length-top.length;
     if(n)top.push([`${n} more`,all-sum(top.map(r=>r[1])),0,'-p']);
     return all?`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v,b,a])=>`<i style="flex:${v};background:var(--time${b?'':a||'-t'})" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}</div>
-      <p>${top.map(([l,v,b])=>`<span>${b?`<b>${esc(l)}</b>`:esc(l)} ${fmtPct(v/all)}</span>`).join('')}</p></div>`:''}).join('')}<p class="say-sub">${audienceNote(A,DAYS)}</p>`;
+      <p>${top.map(([l,v,b])=>`<span>${b?`<b>${esc(l)}</b>`:esc(l)} ${fmtPct(v/all)}</span>`).join('')}</p>
+      ${n?`<button type="button" class="mix-more" aria-expanded="false">All ${fmtInt(rows.length)}</button><p hidden>${rows.map(r=>`<span>${esc(labelOf(dim,r.key))} ${fmtPct(r.visitors/all)} · ${fmtInt(r.visitors)}</span>`).join('')}</p>`:''}</div>`:''}).join('')}<p class="say-sub">${audienceNote(A,DAYS)}</p>`;
+  // "All N" opens every part of a list under its strip, with its share and visitors.
+  sec.querySelectorAll('.mix-more').forEach(b=>b.onclick=()=>{const p=b.nextElementSibling,open=p.hidden;p.hidden=!open;b.setAttribute('aria-expanded',open);b.textContent=open?'Fewer':`All ${p.children.length}`});
   sec.hidden=false;
 }
 
@@ -1510,7 +1527,8 @@ function drawLinks(body,L,visitors){
   const draw=i=>{
     const L=linksStory(modes[i][1],visitors,SITE);
     sec.querySelector('.card-say').innerHTML=L?.html||'';
-    rowsInto(sec.lastElementChild,modes[i][1].slice(0,8).map(r=>({key:r.key,label:r.key.startsWith(SITE+'/')?r.key.slice(SITE.length):r.key,value:r.visitors,prev:r.prev})),{total:visitors,subj:'muted',share:(v,t)=>fmtRate(v/t),named:L?.named});
+    cutList(sec.lastElementChild,modes[i][1].map(r=>({key:r.key,label:r.key.startsWith(SITE+'/')?r.key.slice(SITE.length):r.key,value:r.visitors,prev:r.prev})),8,'links',
+      (box,rows)=>rowsInto(box,rows,{total:visitors,subj:'muted',share:(v,t)=>fmtRate(v/t),named:L?.named}));
   };
   onSeg(sec,draw);
   draw(0);
@@ -1677,8 +1695,8 @@ async function renderSource(body,f){
   dayBars(body.querySelector('.chart'),{cur,prev:pr.visitors?ser.prev.visitors:null,start:ser.start,axis:!evs.length,scale:true,label:label2,subj:'src',
     hot:spike>=0?new Set([spike]):null,aria:`Visitors per day from ${label}.${label2?` ${label2.title}.`:''}`});
   if(evs.length)drawMarks(body.querySelector('.marks'),evs,H.ser,pick);
-  if(channel)rowsInto(body.querySelector('.members'),members.rows.filter(r=>r.visitors).slice(0,8).map(r=>({key:r.key,label:labelOf('referrer',r.key),value:r.visitors,prev:r.prev?.visitors})),
-    {total:c.visitors,subj:'src',onClick:(r,el)=>openFilter({referrer:r.key},r.label,el)});
+  if(channel)cutList(body.querySelector('.members'),members.rows.filter(r=>r.visitors).map(r=>({key:r.key,label:labelOf('referrer',r.key),value:r.visitors,prev:r.prev?.visitors})),8,'sources',
+    (box,rows)=>rowsInto(box,rows,{total:c.visitors,subj:'src',onClick:(r,el)=>openFilter({referrer:r.key},r.label,el)}));
   drawLanded(body.querySelector('.landed'),flows.flows.filter(x=>inside(x.source)),null,pages.rows);
   drawSquares(body.querySelector('.sq-box'),[
     {pct:c.visits?c.bounce:null,label,story:bouncy,aria:`${label}: ${c.visits?`${fmtPct(c.bounce)} bounce`:'no visits'}`,open:openBounce},
@@ -1978,13 +1996,13 @@ async function renderBounce(body){
     peak:standsOut&&{i:peakI,title:`${fmtDate(dayDate(ser.start,peakI))} · ${fmtPct(cur[peakI])}`,sub:spikeSrc?`the ${spikeSrc} day`:'',story:spikeDay,
       aria:`Bounce rate per day. Highest on ${fmtDate(dayDate(ser.start,peakI))} at ${fmtPct(cur[peakI])}.`}});
   for(const [dim,data] of [['referrer',refs],['entry',entry]]){
-    // Only the busiest keys, so a page with two visits can't top the list.
-    const rows=data.rows.slice().sort((a,b)=>b.visits-a.visits).slice(0,12).filter(r=>r.bounce!=null)
+    // First the 12 busiest, so a page with two visits can't top the list; all of them a press away. Each row has its visits beside it.
+    const rows=data.rows.filter(r=>r.bounce!=null).sort((a,b)=>b.visits-a.visits)
       .map(r=>({key:r.key,label:labelOf(dim,r.key),value:r.bounce,visits:r.visits,prev:r.prev?.visits?r.prev.bounce:null,
         story:(dim==='referrer'&&B?.cause==='source'&&B.top?.key===r.key)||(standout?.dim===dim&&standout.key===r.key),
-        open:el=>openFilter({[FILTER_OF[dim]]:r.key},labelOf(dim,r.key),el)}))
-      .sort((a,b)=>b.value-a.value);
-    rateRows(body.querySelector(`[data-dim="${dim}"]`),rows);
+        open:el=>openFilter({[FILTER_OF[dim]]:r.key},labelOf(dim,r.key),el)}));
+    const byRate=r=>r.slice().sort((a,b)=>b.value-a.value);
+    cutList(body.querySelector(`[data-dim="${dim}"]`),rows,12,dim==='referrer'?'sources':'pages',(box,r)=>rateRows(box,byRate(r)));
   }
 }
 

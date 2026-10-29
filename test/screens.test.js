@@ -301,3 +301,11 @@ test('a read-only link shows goal results, with no way to change the goals', () 
   assert.match(card, /if\(SHARED&&!GOALS\.includes\(path\)\)return/);
   assert.match(card, /SHARED\?'':goalSeg\(/);
 });
+
+test('no list stops without a way to see the rest: links, a channel’s sources, bounce rows and audience parts', () => {
+  assert.match(fn('cutList'), /All \$\{fmtInt\(full\.length\)\} \$\{what\}/);
+  assert.match(fn('drawLinks'), /cutList\([\s\S]*?\),8,'links'/);
+  assert.match(fn('renderSource'), /cutList\([\s\S]*?\),8,'sources'/);
+  assert.match(fn('renderBounce'), /cutList\([\s\S]*?,rows,12,/);
+  assert.match(fn('drawAudience'), /class="mix-more"/);
+});

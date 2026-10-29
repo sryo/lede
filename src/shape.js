@@ -236,7 +236,7 @@ export function searchWord(url) {
   return '';
 }
 
-const KEEP_WORDS = 100;
+const KEEP_WORDS = 1000;
 
 function wordList(cur, prev) {
   return [...cur].sort((a, b) => b[1] - a[1]).slice(0, KEEP_WORDS)
