@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { findSpike, readStory, tellStory, bounceSplit, bounceCaption, waterfallCaption, spikeSegment,
+import { moreFindings, findSpike, readStory, tellStory, bounceSplit, bounceCaption, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
   scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
   unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
@@ -1398,4 +1398,13 @@ test('a small site’s big day counts once it is clear of the day-to-day noise, 
   assert.equal(findSpike(days(3, 1), START), -1, 'and 2 more is no day at all');
   assert.equal(findSpike(days(130, 100), START), -1, '30 more on a 100 day is only 1.3 times');
   assert.equal(findSpike(days(180, 100), START), 9);
+});
+
+test('what else changed: every finding the sentences above didn’t tell, biggest first', () => {
+  const rows = [ref('google.com', 18000, 20000), ref('x.com', 3000, 1000), ref('bing.com', 10, 400), ref('duckduckgo.com', 900, 500)];
+  const { S } = story({ rows, ser: series(750) });
+  const all = findings(S, new Set());
+  const rest = moreFindings(S, new Set());
+  assert.deepEqual(rest.map(f => f.key), all.slice(1).map(f => f.key), 'the first is the one home and the overview already tell');
+  assert.ok(rest.some(f => f.kind === 'vanished' && f.key === 'bing.com'), 'a source that all but vanished is said');
 });

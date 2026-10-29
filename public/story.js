@@ -252,6 +252,9 @@ const moved = (change, prev) => prev >= 30 && Math.abs(change) >= Math.max(30, 2
 // Kinds: fast (the fastest rise), fresh (new source), vanished (a tenth or less of before), drop or rise (against the
 // total's direction, or either way when the total is flat), channel (a channel's share of visitors, spread over several sources).
 // before names the earlier stretch: "the 7 days before".
+// The findings after the first, which the overview's Where readers came from already tells: what else changed.
+export const moreFindings = (S, told, before) => findings(S, told, before).slice(1);
+
 export function findings(S, told, before = 'the days before') {
   const { c, p, diff } = S, u = S.unit || 'visitors', out = [];
   if (!p.visitors) return out;

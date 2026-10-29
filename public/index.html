@@ -250,6 +250,7 @@ button.tile-title:hover{color:var(--ink)}
 .event b,.node>span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .event>span>span{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .events-list,.list{display:flex;flex-direction:column;margin:0 -8px}
+.also{margin:0;padding-left:20px;display:grid;gap:6px;font-size:var(--fs-s)}
 .events-list .event{padding:8px;font-size:var(--fs-s);border-radius:8px}
 .events-list .event b,.events-list .event>span>span{white-space:normal}
 .events-list .event:hover{background:var(--line)}
@@ -587,7 +588,7 @@ import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWee
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
   dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
-  ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX } from '/story.js';
+  ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
 
@@ -1320,6 +1321,7 @@ async function renderFilter(body,f){
   body.innerHTML=`<p class="say">${say}${f.path!=null?' <span class="verdict"></span>':''}</p>${heroHTML(totals)}
     <section class="card"><div class="card-head"><div class="card-title">Visitors per day${pr.visitors?`, against the ${DAYS} days before`:''}</div></div><div class="chart"></div>${overview&&H?'<div class="marks"></div>':own.length?'<div class="marks own"></div>':''}</section>
     ${overview&&H?`<section class="card"><div class="card-title">What happened</div>${H.events.length?'<div class="events-list"></div>':`<p class="muted" style="margin:0">Nothing unusual in the last ${DAYS} days.</p>`}</section>`:''}
+    ${overview&&H?'<section class="card also-card" hidden><div class="card-title">What else changed</div><ul class="also"></ul></section>':''}
     ${overview&&H?'<section class="card inout"></section>':''}
     ${f.path!=null?'<section class="card"><div class="card-title">Where readers came from, and where they went next</div><p class="cross-say"></p><div class="cross-k" aria-hidden="true"><span>visitors</span><span></span></div><div class="landed cross"></div><p class="say-sub landed-note"></p></section>':''}
     ${f.path!=null&&f.path!=='/'?'<section class="card goal-card" hidden></section>':''}
@@ -1347,6 +1349,9 @@ async function renderFilter(body,f){
   if(marks){
     drawMarks(marks,H.events,H.ser);
     body.querySelector('.events-list')?.replaceChildren(...H.events.map(e=>eventButton(e,H.ser,true)));
+    // Every other finding, the ones no sentence above has room for.
+    const more=moreFindings(H.S,H.T.told,`the ${DAYS} days before`),also=body.querySelector('.also-card');
+    if(also&&more.length){also.querySelector('.also').innerHTML=more.map(f=>`<li>${f.html}</li>`).join('');bindLinks(also);also.hidden=false}
     drawInOut(body.querySelector('.inout'),H);
   }
   if(f.path!=null){
