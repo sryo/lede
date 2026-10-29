@@ -377,6 +377,25 @@ test('stats may be kept by the viewer\'s browser only; the edge keeps its own co
   } finally { delete globalThis.caches; }
 });
 
+test('a change is never answered from the edge cache, so the second of two is saved too', async () => {
+  const kept = new Map();
+  globalThis.caches = { default: { match: async k => kept.get(String(k))?.clone(), put: async (k, r) => { kept.set(String(k), r); } } };
+  try {
+    const env = { ...ENV, STORE: memoryKV({ sites: '["example.com"]' }) };
+    const put = async icon => {
+      const waits = [];
+      const res = await handleApi(new Request('https://worker.test/api/icon?site=example.com', { method: 'PUT', body: JSON.stringify({ icon }) }), env, { waitUntil: p => waits.push(p) });
+      await Promise.all(waits);
+      return res.json();
+    };
+    assert.deepEqual(await put(3), { icon: 3 });
+    assert.deepEqual(await put(5), { icon: 5 });
+    const goals = await handleApi(new Request('https://worker.test/api/goals?site=example.com'), env, { waitUntil() {} });
+    assert.equal((await goals.json()).icon, 5);
+    assert.equal(kept.size, 0);
+  } finally { delete globalThis.caches; }
+});
+
 async function busyAndQuiet(store, label) {
   const q = parseQuery(url('series?days=30'), SITES);
   const ser = await store.series(q);

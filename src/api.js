@@ -453,7 +453,8 @@ export async function handleApi(req, env, ctx, shared = null) {
     }
   }
   // Each stats request runs several SQL queries, so successful answers are cached briefly at the edge.
-  const cache = !demo && !settings && typeof caches !== 'undefined' ? caches.default : null;
+  // Only reads: the cache looks answers up by address alone, so a change answered from it is never made.
+  const cache = req.method === 'GET' && !demo && !settings && typeof caches !== 'undefined' ? caches.default : null;
   // The edge keeps its copy for s-maxage; the viewer's browser gets the private header either way.
   if (cache) {
     const hit = await cache.match(req.url);
