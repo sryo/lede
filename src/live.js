@@ -1,4 +1,5 @@
 import { shapeLive, byVisitor } from './shape.js';
+import { LIVE_ROWS } from './queries.js';
 
 // "Here now", pushed to the dashboard as it changes instead of asked for every minute. One Durable Object
 // per site keeps who was seen in the last 30 minutes, a row per page view (by visitor and view, as liveSql
@@ -13,6 +14,8 @@ export class Live {
   constructor(ctx) {
     this.ctx = ctx;
     this.sql = ctx.storage.sql;
+    // until: when a seed that filled liveSql's limit has left the window; before then, the counts are a floor.
+    this.sql.exec('CREATE TABLE IF NOT EXISTS cut (until INTEGER)');
     this.sql.exec('CREATE TABLE IF NOT EXISTS here (visitor TEXT, view INTEGER, path TEXT, referrer TEXT, country TEXT, first INTEGER, last INTEGER, out INTEGER, PRIMARY KEY (visitor, view))');
   }
 
@@ -48,7 +51,11 @@ export class Live {
 
   // liveSql's page views, for those this object hasn't heard of since.
   seed(rows) {
-    for (const r of Array.isArray(rows) ? rows.slice(0, 1000) : []) {
+    if (Array.isArray(rows) && rows.length >= LIVE_ROWS) {
+      this.sql.exec('DELETE FROM cut');
+      this.sql.exec('INSERT INTO cut VALUES (?)', Math.max(0, ...rows.slice(0, LIVE_ROWS).map(r => Number(r.last) || 0)) + WINDOW);
+    }
+    for (const r of Array.isArray(rows) ? rows.slice(0, LIVE_ROWS) : []) {
       if (typeof r.visitor !== 'string') continue;
       this.sql.exec('INSERT OR IGNORE INTO here VALUES (?, ?, ?, ?, ?, ?, ?, ?)', r.visitor, Number(r.vw) || 0, String(r.path ?? ''),
         String(r.referrer ?? ''), String(r.country ?? ''), Number(r.first) || 0, Number(r.last) || 0, Number(r.hid) > Number(r.shown) ? 1 : 0);
@@ -58,7 +65,8 @@ export class Live {
   // What GET /api/live answers, from the same rows liveSql gives it.
   snapshot(now) {
     this.sql.exec('DELETE FROM here WHERE last < ?', now - WINDOW);
-    return shapeLive(byVisitor(this.sql.exec('SELECT * FROM here').toArray()), now);
+    const until = this.sql.exec('SELECT until FROM cut').toArray()[0]?.until ?? 0;
+    return shapeLive(byVisitor(this.sql.exec('SELECT * FROM here').toArray()), now, now < until);
   }
 
   // At most once a second, to every dashboard watching.

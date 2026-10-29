@@ -198,19 +198,19 @@ const MIN_DAYS = 3;
 // At most PER_DAY messages a site a day (UTC), APART seconds apart, so one long spike is told once.
 const PER_DAY = 2;
 const APART = 3 * 3600;
-// The live query returns at most this many people.
-const LIVE_MAX = 200;
-
+// here: the live answer's groups of people here now (shapeLive), each n people; size adds them up.
+const size = list => list.reduce((a, g) => a + g.n, 0);
 const most = (list, key) => {
   const n = new Map();
-  for (const v of list) n.set(key(v), (n.get(key(v)) || 0) + 1);
+  for (const g of list) n.set(key(g), (n.get(key(g)) || 0) + g.n);
   return [...n].sort((a, b) => b[1] - a[1])[0];
 };
+const hereOf = live => live.groups.filter(g => g.here);
 
 // The page most of the crowd is on (when at least half are), and the source most of those came from.
 function crowdOf(here) {
   const [page, onPage] = most(here, v => v.path);
-  const focus = onPage * 2 >= here.length, crowd = focus ? here.filter(v => v.path === page) : here;
+  const focus = onPage * 2 >= size(here), crowd = focus ? here.filter(v => v.path === page) : here;
   const [src, fromSrc] = most(crowd, v => v.referrer);
   return { page, onPage, focus, crowd, src, fromSrc };
 }
@@ -218,13 +218,13 @@ function crowdOf(here) {
 // named: false keeps the source's host out of the message (see known below).
 export function spikeText(here, full, usual, site, named = true) {
   const { page, onPage, focus, crowd, src, fromSrc } = crowdOf(here);
-  const n = `${full ? 'At least ' : ''}${fmtInt(here.length)}`;
-  const all = onPage === here.length, where = all ? `${n} people are on ${pageName(page)} of ${displayHost(site)} right now`
+  const n = `${full ? 'At least ' : ''}${fmtInt(size(here))}`;
+  const all = onPage === size(here), where = all ? `${n} people are on ${pageName(page)} of ${displayHost(site)} right now`
     : `${n} people are on ${displayHost(site)} right now${focus ? `, ${fmtInt(onPage)} of them on ${pageName(page)}` : ''}`;
   // After "12 of them on /x", "most of those" says the count is of the people on that page.
   const mostOf = focus && !all ? 'most of those' : 'most';
   const name = named ? labelOf('referrer', src) : 'a site that sent nobody in the 2 weeks before';
-  const from = fromSrc * 2 > crowd.length
+  const from = fromSrc * 2 > size(crowd)
     ? (src ? `${mostOf} from ${name}` : `${focus && !all ? 'most of those' : 'most of them'} direct visitors`)
     : (src ? `more from ${name} than from anywhere else` : 'more direct visitors than from any one source');
   const r = Math.round(usual);
@@ -247,10 +247,10 @@ async function daysOfData(env, store, site, nowSec) {
   return first ? Math.max(0, Math.min(USUAL_DAYS, Math.floor((nowSec - 300 - first) / DAY))) : USUAL_DAYS;
 }
 
-const crowded = live => live.visitors.filter(v => v.active).length >= MIN_PEOPLE;
+const crowded = live => live.now >= MIN_PEOPLE;
 
 async function spike(env, store, site, live, nowSec, many, fetchImpl) {
-  const here = live.visitors.filter(v => v.active);
+  const here = hereOf(live);
   const key = `spike:${site}`, day = new Date(nowSec * 1000).toISOString().slice(0, 10);
   const was = JSON.parse(await env.STORE.get(key) || 'null');
   const sent = was?.day === day ? was.sent : 0;
@@ -258,8 +258,8 @@ async function spike(env, store, site, live, nowSec, many, fetchImpl) {
   const days = await daysOfData(env, store, site, nowSec);
   if (days < MIN_DAYS) return;
   const usual = sum(await store.usual(site, nowSec, days)) / days;
-  if (here.length < Math.max(2 * usual, usual + MIN_PEOPLE)) return;
-  const full = live.visitors.length >= LIVE_MAX && live.visitors[LIVE_MAX - 1].active;
+  if (live.now < Math.max(2 * usual, usual + MIN_PEOPLE)) return;
+  const full = live.atLeast;
   const { src } = crowdOf(here), named = known(src) || await store.sentBefore(site, src, nowSec);
   const origin = await dashboard(env);
   const text = spikeText(here, full, usual, site, named) + (origin ? `\n${origin}${viewToUrl({ v: 'online' }, { site: many ? site : null })}` : '');

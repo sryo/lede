@@ -136,7 +136,7 @@ export function toSeriesBoth(rows, days) {
   return { cur: toSeries(cur, days, days), prev: toSeries(prev, days) };
 }
 
-// liveSql's page views (or the Live object's), one row per visitor, the 200 seen last: first and last seen,
+// liveSql's page views (or the Live object's), one row per visitor, last seen first: first and last seen,
 // where they came from (their first page view's), here, when they were last seen on a page view they haven't
 // left (0 with none), and the page they're on (with none, the one they left last). A page view is left when
 // out says so, or (liveSql's) it was left (hid) after it was last seen otherwise (shown); a tie is still here.
@@ -150,21 +150,32 @@ export function byVisitor(views) {
     if (!out) v.here = Math.max(v.here, last);
     v.last = Math.max(v.last, last);
   }
-  return [...by.values()].sort((a, b) => b.last - a.last).slice(0, 200);
+  return [...by.values()].sort((a, b) => b.last - a.last);
 }
 
 // Here now: seen in the last 5 minutes on a page view they haven't left (here, see byVisitor; rows without it
-// count when the visitor was last seen at all).
-export function shapeLive(rows, nowSec) {
-  const visitors = rows.map(r => ({
+// count when the visitor was last seen at all). now and recent count everyone; visitors lists the LIVE_LIST seen
+// last, so the answer stays small however big the crowd. groups count everyone by page, source, here or not, and
+// band: how long they've been on the site, under 1, 5, 15 or 30 minutes (0 to 3), for the crowd to draw in
+// proportion. atLeast: the rows were cut short (liveSql's LIMIT), so every count is a floor.
+export const LIVE_LIST = 200;
+const BANDS_S = [60, 300, 900];
+export function shapeLive(rows, nowSec, atLeast = false) {
+  const all = rows.map(r => ({
     path: r.path,
     referrer: r.referrer ?? '',
     country: r.country ?? '',
     seconds: num(r.last) - num(r.first),
     ago: nowSec - num(r.last),
     active: nowSec - num(r.here ?? r.last) < 300,
-  }));
-  return { now: visitors.filter(v => v.active).length, recent: visitors.length, visitors };
+  })).sort((a, b) => a.ago - b.ago);
+  const by = new Map();
+  for (const v of all) {
+    const band = BANDS_S.filter(s => v.seconds >= s).length, key = `${v.path}\n${v.referrer}\n${+v.active}\n${band}`;
+    const g = by.get(key);
+    if (g) g.n++; else by.set(key, { path: v.path, referrer: v.referrer, here: v.active, band, n: 1 });
+  }
+  return { now: all.filter(v => v.active).length, recent: all.length, atLeast, visitors: all.slice(0, LIVE_LIST), groups: [...by.values()] };
 }
 
 // Engagement rows carry sums (see engagementSql). Each page gets the page views that sent one, how many

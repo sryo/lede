@@ -4,7 +4,7 @@ import { readStory, tellStory, bounceSplit, bounceCaption, waterfallCaption, spi
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
   scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
   unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
-  ICONS, iconFor, iconSVG, leftWord, pairStay, bounciestPair, outcomeStory, readingMap, lanes, laneX } from '../public/story.js';
+  ICONS, iconFor, iconSVG, figureScale, apportion, crowdFigures, laneScale, pageList, leftWord, pairStay, bounciestPair, outcomeStory, readingMap, lanes, laneX } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -457,7 +457,7 @@ test('a page that looks like a goal is suggested once there are none', () => {
 
 test('the online sentence says how many are here before saying "of them"', () => {
   const v = (referrer, path, seconds) => ({ referrer, path, seconds, active: true, ago: 10 });
-  const live = { now: 3, recent: 5, visitors: [v('google.com', '/a', 120), v('google.com', '/b', 60), v('', '/a', 30)] };
+  const live = { now: 3, recent: 3, visitors: [v('google.com', '/a', 120), v('google.com', '/b', 60), v('', '/a', 30)] };
   assert.equal(strip(onlineStory(live, new Set(['google.com']), '/x')), '3 people are here now; 2 of them are on /a. Everyone here now arrived in the last 3 minutes.');
   const one = { now: 1, recent: 1, visitors: [v('', '/a', 30)] };
   assert.equal(strip(onlineStory(one, new Set(), null)), 'One person is here now, on /a. They arrived in the last minute.');
@@ -1082,11 +1082,12 @@ test('a page’s lead weighs it against the site and names what to fix', () => {
   assert.equal(pageVerdict({ rating: 'needs work', wait: 3 }), null);
 });
 
-test('a live list cut at its 200 rows can still say a crowd is big, but never that it is small', () => {
+test('a count that is a floor can still say a crowd is big, but never that it is small', () => {
   const hourly = { start: START, days: 28, visitors: Array(28 * 24).fill(600) }, now = START + 27 * DAY + 10 * 3600 + 600;
-  assert.equal(onlinePace({ recent: 200, visitors: Array(200) }, hourly, now), null, 'the usual 300 can’t be weighed against a list cut at 200');
+  assert.equal(onlinePace({ recent: 200, atLeast: true, visitors: [] }, hourly, now), null, 'the usual 300 can’t be weighed against a floor of 200');
+  assert.equal(strip(onlinePace({ recent: 200, atLeast: false, visitors: Array(200) }, hourly, now).html), '200 came in the last 30 minutes, about usual for this hour.', 'a whole count is weighed as it is, however long the list');
   const quiet = { ...hourly, visitors: Array(28 * 24).fill(100) };
-  assert.equal(strip(onlinePace({ recent: 200, visitors: Array(200) }, quiet, now).html), 'At least 200 came in the last 30 minutes, at least 4 times the usual 50 at this hour.');
+  assert.equal(strip(onlinePace({ recent: 200, atLeast: true, visitors: [] }, quiet, now).html), 'At least 200 came in the last 30 minutes, at least 4 times the usual 50 at this hour.');
 });
 
 /* ---------- treemap labels: wrap or turn, never bend ---------- */
@@ -1242,8 +1243,9 @@ test('lanes put each person on their page, at how long they have been there, pag
   assert.deepEqual(L.rows.map(r => [r.path, r.here]), [['/b', 2], ['/a', 1], ['/c', 0]]);
   assert.deepEqual(L.rows[0].people.map(p => p.v.seconds), [19, 305], 'in order along the lane');
   assert.equal(L.rows[1].people.find(p => p.here).named, true);
-  assert.equal(strip(L.html), '2 of the 3 here have been on their page past 2 minutes, from google.com and ebird.org.');
-  assert.equal(lanes({ now: 1, recent: 1, visitors: [live.visitors[2]] }, new Set()).html, null, 'nobody past 2 minutes, nothing to say');
+  assert.equal(strip(L.html), '1 of the 3 here has been on the site past 5 minutes, from ebird.org.');
+  assert.equal(lanes({ now: 1, recent: 1, visitors: [live.visitors[2]] }, new Set()).html, null, 'nobody past 5 minutes, nothing to say');
+  assert.deepEqual(L.rows[0].bands, [{ here: 1, named: 0, gone: 0 }, { here: 0, named: 0, gone: 0 }, { here: 1, named: 0, gone: 0 }, { here: 0, named: 0, gone: 0 }], 'and how many in each band');
 });
 
 test('a lane’s distance grows fast at first and stops at 30 minutes', () => {
@@ -1298,4 +1300,89 @@ test('the icon is the mark in that colourway, ready for a data address', () => {
   const svg = iconSVG(2);
   assert.match(svg, /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg"/);
   for (const c of ICONS[2]) assert.ok(svg.includes(c), c);
+});
+
+/* ---------- a crowd at any size ---------- */
+
+test('a figure is one person while everyone fits, then a round number of people', () => {
+  assert.equal(figureScale(7, 78), 1);
+  assert.equal(figureScale(78, 78), 1);
+  assert.equal(figureScale(79, 78), 2);
+  assert.equal(figureScale(400, 78), 10, '5 a figure would need 80');
+  assert.equal(figureScale(4000, 78), 100);
+  assert.equal(figureScale(0, 78), 1);
+});
+
+test('figures are shared in proportion, and a group with anyone in it always gets one', () => {
+  assert.deepEqual(apportion([133, 267, 3], 10), [13, 26, 1]);
+  assert.deepEqual(apportion([7, 0, 4], 1), [7, 0, 4]);
+  assert.deepEqual(apportion([0, 0], 10), [0, 0]);
+  const f = apportion([395, 2, 3], 10);
+  assert.equal(f.reduce((a, b) => a + b), 40);
+  assert.ok(f[1] >= 1 && f[2] >= 1);
+});
+
+const crowdOf = (here, gone, named = 0, extra = {}) => ({ now: here, recent: here + gone, atLeast: false, visitors: [],
+  groups: [{ path: '/a', referrer: 'news.ycombinator.com', here: true, band: 0, n: named }, { path: '/a', referrer: '', here: true, band: 1, n: here - named },
+    { path: '/b', referrer: '', here: false, band: 2, n: gone }].filter(g => g.n), ...extra });
+
+test('a big crowd is drawn in proportion: here, from the told source, and gone, each figure the same number of people', () => {
+  const C = crowdFigures(crowdOf(400, 30, 133), new Set(['news.ycombinator.com']), 78);
+  assert.equal(C.unit, 10);
+  assert.equal(C.people.length, 43);
+  assert.deepEqual([C.people.filter(p => p.named).length, C.people.filter(p => p.here && !p.named).length, C.people.filter(p => !p.here).length], [13, 27, 3]);
+  assert.equal(C.more, 0);
+  assert.ok(C.people.every(p => p.letter && p.letter.length === 1));
+  assert.equal(strip(crowdCaption(crowdOf(400, 30, 133), C.unit)), '400 here now · 430 in the last 30 minutes · a figure is 10 people');
+  assert.equal(strip(crowdCaption({ ...crowdOf(400, 600), atLeast: true }, 20)), '400+ here now · 1,000+ in the last 30 minutes · a figure is 20 people');
+});
+
+test('a small crowd is still one figure a person, from the list itself', () => {
+  const live = { now: 2, recent: 3, atLeast: false, visitors: [
+    { path: '/a', referrer: '', country: 'US', seconds: 30, ago: 10, active: true },
+    { path: '/a', referrer: 'x.com', country: 'US', seconds: 60, ago: 20, active: true },
+    { path: '/b', referrer: '', country: 'US', seconds: 90, ago: 400, active: false }] };
+  const C = crowdFigures(live, new Set(['x.com']), 78);
+  assert.equal(C.unit, 1);
+  assert.equal(C.people.length, 3);
+  assert.equal(C.people[0].named, true);
+  assert.equal(strip(crowdCaption(live, 1)), '2 here now · 3 in the last 30 minutes');
+});
+
+test('the Online sentence counts everyone here, and says at least when the count is a floor', () => {
+  const big = crowdOf(400, 30, 300);
+  assert.equal(strip(onlineStory(big, new Set(), '/a')), '400 people are here now; all of them are on /a, most from Hacker News.');
+  assert.equal(strip(onlineStory({ ...big, atLeast: true }, new Set(), '/a')), 'At least 400 people are here now; all of them are on /a, most from Hacker News.');
+});
+
+test('lanes at scale: the same number of people a figure in every lane, so pages compare', () => {
+  const groups = [{ path: '/a', referrer: '', here: true, band: 0, n: 120 }, { path: '/a', referrer: '', here: false, band: 2, n: 30 },
+    { path: '/b', referrer: 'x.com', here: true, band: 3, n: 9 }];
+  const live = { now: 129, recent: 159, atLeast: false, visitors: [], groups };
+  const L = lanes(live, new Set(['x.com']));
+  assert.deepEqual(L.rows.map(r => r.path), ['/a', '/b']);
+  assert.deepEqual(L.rows[0].bands[0], { here: 120, named: 0, gone: 0 });
+  assert.deepEqual(L.rows[1].bands[3], { here: 9, named: 9, gone: 0 });
+  assert.deepEqual(laneScale(L, 12), { unit: 10, bands: true }, 'the fullest band, 120, in 12 places');
+  const few = lanes({ now: 1, recent: 1, atLeast: false, visitors: [{ path: '/a', referrer: '', country: 'US', seconds: 30, ago: 5, active: true }] }, new Set());
+  assert.deepEqual(laneScale(few, 12), { unit: 1, bands: false }, 'each person at their own time while the list holds everyone and no band is crowded');
+  assert.deepEqual(laneScale({ ...few, complete: false }, 12), { unit: 1, bands: true }, 'a list that left people out is drawn in bands');
+});
+
+test('the list under the lanes names each person on a page while there are few, else counts them by source', () => {
+  const v = (path, referrer, active, seconds) => ({ path, referrer, country: 'US', seconds, ago: 10, active });
+  const small = { now: 2, recent: 3, atLeast: false, visitors: [v('/a', 'google.com', true, 40), v('/a', '', true, 90), v('/a', 'x.com', false, 300)] };
+  const [a] = pageList(lanes(small, new Set()));
+  assert.deepEqual(a.people.map(p => p.v.seconds), [90, 40], 'here now, longest first');
+  assert.deepEqual(a.earlier, [['x.com', 1]]);
+  assert.equal(a.sources, null);
+  const groups = [{ path: '/a', referrer: 'google.com', here: true, band: 0, n: 120 }, { path: '/a', referrer: 'facebook.com', here: true, band: 1, n: 60 },
+    { path: '/a', referrer: 'chatgpt.com', here: true, band: 1, n: 30 }, { path: '/a', referrer: 'bing.com', here: true, band: 2, n: 20 },
+    { path: '/a', referrer: 'reddit.com', here: true, band: 2, n: 10 }, { path: '/a', referrer: '', here: false, band: 3, n: 33 }];
+  const [b] = pageList(lanes({ now: 240, recent: 273, atLeast: false, visitors: [], groups }, new Set()));
+  assert.equal(b.people, null);
+  assert.deepEqual(b.sources, [['google.com', 120], ['facebook.com', 60], ['chatgpt.com', 30]]);
+  assert.equal(b.more, 2, 'two more sources');
+  assert.deepEqual(b.earlier, [['Direct', 33]]);
+  assert.equal(b.here, 240);
 });

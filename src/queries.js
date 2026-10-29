@@ -270,13 +270,15 @@ export const linksSql = (ds, q, only) =>
 // seen otherwise, so a reader leaves "here now" as they go instead of 5 minutes later, and a tab shown again
 // pings. Rows from before views were sent (view 0) are one per visitor and never left. Only forms
 // the SQL API already takes elsewhere: no query over this one's aggregates.
+// Page views liveSql reads at most; an answer that fills it may have left people out.
+export const LIVE_ROWS = 1000;
 export const liveSql = (ds, site) => {
   const ts = 'toUnixTimestamp(timestamp)';
   return `SELECT ${COL.visitor} AS visitor, ${COL.view} AS vw, argMax(${COL.path}, timestamp) AS path, argMin(${COL.referrer}, timestamp) AS referrer, `
     + `argMin(${COL.country}, timestamp) AS country, toUnixTimestamp(min(timestamp)) AS first, toUnixTimestamp(max(timestamp)) AS last, `
     + `max(if(${COL.left} = 1, ${ts}, 0)) AS hid, max(if(${COL.left} = 1, 0, ${ts})) AS shown `
     + `FROM ${ds} WHERE index1 = '${site}' AND (${COL.type} = 'pageview' OR ${COL.type} = 'ping' OR (${COL.type} = 'engagement' AND ${COL.left} = 1)) `
-    + `AND timestamp > now() - INTERVAL '30' MINUTE GROUP BY visitor, vw ORDER BY last DESC LIMIT 1000`;
+    + `AND timestamp > now() - INTERVAL '30' MINUTE GROUP BY visitor, vw ORDER BY last DESC LIMIT ${LIVE_ROWS}`;
 };
 
 // How many people are usually here at this time of day: visitors seen in the same 5 minutes (the span

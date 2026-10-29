@@ -133,7 +133,8 @@ export function sqlStore(env, fetchImpl = fetch) {
       return { path, sampled: picked.sampled.cur, prevSampled: picked.sampled.prev, ...pairNext(rows, path, goals) };
     },
     async live(q, nowSec = Math.floor(Date.now() / 1000)) {
-      return shapeLive(byVisitor(await this.liveRows(q.site)), nowSec);
+      const rows = await this.liveRows(q.site);
+      return shapeLive(byVisitor(rows), nowSec, rows.length >= Q.LIVE_ROWS);
     },
     liveRows: site => run(Q.liveSql(ds, site)),
     // Rows per day; days with nobody have none.

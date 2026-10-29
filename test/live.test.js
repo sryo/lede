@@ -119,3 +119,14 @@ test('live: collect forwards what it wrote, with the visitor it hashed', async (
   assert.match(e.visitor, /^[\da-f]{32}$/);
   assert.deepEqual([e.path, e.view, e.left], ['/docs', Date.parse('2026-10-05T10:50:00Z'), 0]);
 });
+
+test('live: a seed that filled liveSql’s limit makes every count a floor until its people have left the window', async t => {
+  t.mock.timers.enable({ apis: ['Date'], now: 1_000_000_000 });
+  const now = 1_000_000, live = new Live(ctxOf());
+  await post(live, '/seed', Array.from({ length: 1000 }, (_, i) => ({ visitor: `v${i}`, vw: 1, path: '/', first: now - 100, last: now - 10 })));
+  assert.equal(live.snapshot(now).atLeast, true);
+  assert.equal(live.snapshot(now + 1801).atLeast, false, 'half an hour on, everyone counted came after the seed');
+  const small = new Live(ctxOf());
+  await post(small, '/seed', [{ visitor: 'a', vw: 1, path: '/', first: now - 100, last: now - 10 }]);
+  assert.equal(small.snapshot(now).atLeast, false);
+});

@@ -192,6 +192,24 @@ test('live page views become one row per visitor: here while a page view not lef
   assert.deepEqual([left[0].here, left[0].path], [0, '/b'], 'gone, on the page they left last');
 });
 
+test('a crowd past 200 is counted whole, with the 200 seen last listed and everyone grouped by page, source, here and time', () => {
+  const now = 100000;
+  const rows = Array.from({ length: 450 }, (_, i) => ({ path: i % 3 ? '/launch' : '/', referrer: i % 2 ? 'news.ycombinator.com' : '',
+    country: 'US', first: now - [30, 120, 600, 1200][i % 4] - (i < 400 ? 0 : 400), last: now - (i < 400 ? i % 200 : 400) }));
+  const live = shapeLive(rows, now);
+  assert.equal(live.now, 400, 'everyone here is counted, not only those listed');
+  assert.equal(live.recent, 450);
+  assert.equal(live.visitors.length, 200, 'the list keeps the 200 seen last');
+  assert.ok(live.visitors.every((v, i) => !i || v.ago >= live.visitors[i - 1].ago));
+  assert.equal(live.atLeast, false);
+  assert.equal(live.groups.reduce((a, g) => a + g.n, 0), 450);
+  assert.equal(live.groups.filter(g => g.here).reduce((a, g) => a + g.n, 0), 400);
+  const g = live.groups.find(x => x.path === '/launch' && x.referrer === 'news.ycombinator.com' && x.here && x.band === 0);
+  assert.ok(g && g.n > 0, 'under a minute on the site is band 0');
+  assert.deepEqual([...new Set(live.groups.map(x => x.band))].sort(), [0, 1, 2, 3]);
+  assert.equal(shapeLive(rows, now, true).atLeast, true, 'when the rows were cut short, the counts are a floor');
+});
+
 test('a live visitor is here while a page view they haven\'t left was seen in the last 5 minutes', () => {
   const live = shapeLive([{ path: '/a', first: 900, last: 990, here: '0' }, { path: '/b', first: 900, last: 980, here: '980' }, { path: '/c', first: 900, last: 970 }], 1000);
   assert.deepEqual([live.now, live.recent], [2, 3]);

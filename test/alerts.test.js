@@ -366,10 +366,13 @@ test('a spike names a source people know, or one that sent visitors before; neve
   assert.equal(known.sql.length, 2, 'Hacker News is known, so nothing more is asked');
 });
 
-test('a crowd bigger than the live list can show says so', async () => {
-  const f = fakes({ here: 200 });
+test('a crowd is counted whole past the list’s 200, and said as at least only when the live query was cut short', async () => {
+  const f = fakes({ here: 250 });
   await run(SPIKES, env(), f, WED);
-  assert.match(f.sent[0].body, /^At least 200 people are on/);
+  assert.match(f.sent[0].body, /^250 people are on/);
+  const cut = fakes({ here: 1000 });
+  await run(SPIKES, env(), cut, WED);
+  assert.match(cut.sent[0].body, /^At least [\d,]+ people are on/);
 });
 
 /* ---------- wiring ---------- */

@@ -181,6 +181,7 @@ h1,h2,h3{margin:0;font:inherit}
 .crowd-key{margin:10px 0 0;font-size:var(--fs-xs);color:var(--muted);display:flex;align-items:center;flex-wrap:wrap;gap:4px 14px}
 .crowd-key b{color:var(--ink);font-size:var(--fs-s)}
 .lrow.online .earlier{grid-column:3/5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lrow.online .tally{grid-column:3/6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lrow.online>.chevc{grid-column:-2;align-self:center}
 
 .grid{flex:1 0 auto;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(2,minmax(250px,1fr));gap:16px}
@@ -553,7 +554,7 @@ button.lrow:hover{background:var(--line)}
   .kw .bar,.kw>.lhead>span:nth-child(2){display:none}
   /* phones: the crowd above already shows the figures, so the table keeps page, source and time */
   .lrow.online{grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) 60px 10px;column-gap:8px}
-  .lrow.online .earlier{grid-column:2/4}
+  .lrow.online .earlier,.lrow.online .tally{grid-column:2/4}
   .lrow.online .cty,.lrow.online>.ppl,.lrow.lhead.online>span:nth-child(2){display:none}
   .lrow.lhead.online>span{white-space:nowrap}
   .lrow.rate{grid-template-columns:minmax(0,1fr) 40px 56px 10px}
@@ -586,7 +587,7 @@ import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWee
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
   dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
-  ICONS, iconFor, iconSVG, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX } from '/story.js';
+  ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
 
@@ -1882,24 +1883,37 @@ function opensPages(el){
 
 // Here now as lanes: one per page, each person standing as far along it as they've been on that page; those who
 // left are pale. The people the sentence counts, past 2 minutes, carry their source.
-function drawLanes(el,L){
+// named: the sources home's sentence names that people here came from, for the hints.
+function drawLanes(el,L,named=[]){
   observe(el,()=>{
     const W=el.clientWidth;if(!W)return;
-    const lane=44,pl=W<520?88:120,pr=16,H=L.rows.length*lane+28,X=s=>pl+laneX(s)*(W-pl-pr);
+    const narrow=W<520,lane=44,pl=narrow?88:120,pr=16,H=L.rows.length*lane+28,span=W-pl-pr,fw=9.4;
+    // In bands, each band is a quarter of the lane; a figure is fw wide, so a band holds cell of them side by side.
+    const cell=Math.max(1,Math.floor((span/4-8)/fw)),{unit,bands}=laneScale(L,cell),X=s=>pl+laneX(s)*span;
     el.style.height=H+'px';
-    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(L.rows.map(r=>`${r.path??`${r.pages} other pages`}: ${r.here} here now, ${r.people.length-r.here} left`).join('; '))}">`;
-    for(const [v,t] of W<520?[[0,'0'],[60,'1 min'],[300,'5 min'],[1800,'30 min']]:[[0,'just came'],[60,'1 min'],[300,'5 min'],[900,'15 min'],[1800,'30 min']])
+    const key=el.parentElement.querySelector('.lane-unit');
+    if(key){key.hidden=unit===1;key.textContent=`a figure is ${fmtInt(unit)} people`}
+    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(L.rows.map(r=>`${r.path??`${r.pages} other pages`}: ${fmtInt(r.here)} here now, ${fmtInt(r.n-r.here)} left`).join('; '))}">`;
+    const BANDS=[['under 1 min',narrow?'<1m':'under 1 min'],['1–5 min','1–5m'],['5–15 min','5–15m'],['15–30 min','15–30m']];
+    if(bands)BANDS.forEach(([,t],b)=>{const x=pl+b*span/4;s+=`<line x1="${x}" x2="${x}" y1="0" y2="${H-24}" stroke="var(--line)"/><text x="${x+4}" y="${H-6}" class="axis">${t}</text>`});
+    else for(const [v,t] of narrow?[[0,'0'],[60,'1 min'],[300,'5 min'],[1800,'30 min']]:[[0,'just came'],[60,'1 min'],[300,'5 min'],[900,'15 min'],[1800,'30 min']])
       s+=`<line x1="${X(v)}" x2="${X(v)}" y1="0" y2="${H-24}" stroke="var(--line)"/><text x="${X(v)}" y="${H-6}" text-anchor="${v?v===1800?'end':'middle':'start'}" class="axis">${t}</text>`;
+    const fig=(x,y,ink,hint)=>`<text class="fig" x="${x}" y="${y}" text-anchor="middle" style="fill:var(${ink})"${hint?` data-hint="${esc(hint)}"`:''}>`;
     L.rows.forEach((r,i)=>{
-      const y=i*lane+lane/2+4;
+      const y=i*lane+lane/2+4,name=r.path==null?`${r.pages} other pages`:r.path;
       s+=`<line x1="${pl}" x2="${W-pr}" y1="${y+8}" y2="${y+8}" stroke="var(--line)"/>`
-        +(r.path==null?`<text x="${pl-10}" y="${y-2}" text-anchor="end" class="${r.here?'ink':''}">${r.pages} other pages</text>`
-          :`<text x="${pl-10}" y="${y-2}" text-anchor="end" class="${r.here?'ink ':''}lane-name" tabindex="0" role="button" data-path="${esc(r.path)}" aria-label="${esc(`${r.path}: ${r.here} here now. Open`)}">${esc(r.path.length>18?r.path.slice(0,8)+'…'+r.path.slice(-8):r.path)}</text>`)
-        +`<text x="${pl-10}" y="${y+12}" text-anchor="end" class="axis">${r.here?`${r.here} here`:'left'}</text>`;
-      for(const p of r.people){
-        const src=labelOf('referrer',p.v.referrer),hint=`${p.here?'Here now':'Left'}: from ${src}${p.v.country?`, ${labelOf('country',p.v.country)}`:''}, ${fmtDur(p.v.seconds)} on ${pageName(p.v.path)}`;
-        s+=`<text class="fig" x="${X(p.v.seconds)}" y="${y+8}" text-anchor="middle" style="fill:var(${p.named?'--src':p.here?'--live':'--live-ps'})" data-hint="${esc(hint)}">${p.letter}</text>`;
-        if(p.here&&p.v.seconds>=120)s+=`<text x="${X(p.v.seconds)+9}" y="${y-12}" class="halo" style="font-size:11px;fill:var(--ink)">${esc(src)}</text>`;
+        +(r.path==null?`<text x="${pl-10}" y="${y-2}" text-anchor="end" class="${r.here?'ink':''}">${esc(name)}</text>`
+          :`<text x="${pl-10}" y="${y-2}" text-anchor="end" class="${r.here?'ink ':''}lane-name" tabindex="0" role="button" data-path="${esc(r.path)}" aria-label="${esc(`${r.path}: ${fmtInt(r.here)} here now. Open`)}">${esc(r.path.length>18?r.path.slice(0,8)+'…'+r.path.slice(-8):r.path)}</text>`)
+        +`<text x="${pl-10}" y="${y+12}" text-anchor="end" class="axis">${r.here?`${fmtInt(r.here)} here`:'left'}</text>`;
+      if(bands)r.bands.forEach((b,k)=>{
+        const [fn,fh,fg]=apportion([b.named,b.here-b.named,b.gone],unit),hint=`${name}, ${BANDS[k][0]} on the site: ${fmtInt(b.here)} here now${b.named?`, ${fmtInt(b.named)} of them from ${named.join(' or ')}`:''}${b.gone?`, ${fmtInt(b.gone)} left`:''}`;
+        let x=pl+k*span/4+8;
+        for(const [n,ink] of [[fn,'--src'],[fh,'--live'],[fg,'--live-ps']])for(let j=0;j<n;j++,x+=fw)s+=fig(x,y+8,ink,hint)+figureLetter(i*4+k+j)+'</text>';
+      });
+      else for(const p of r.people){
+        const src=labelOf('referrer',p.v.referrer),hint=`${p.here?'Here now':'Left'}: from ${src}${p.v.country?`, ${labelOf('country',p.v.country)}`:''}, ${fmtDur(p.v.seconds)} on the site, on ${pageName(p.v.path)}`;
+        s+=fig(X(p.v.seconds),y+8,p.named?'--src':p.here?'--live':'--live-ps',hint)+p.letter+'</text>';
+        if(p.here&&p.v.seconds>=300)s+=`<text x="${X(p.v.seconds)+9}" y="${y-12}" class="halo" style="font-size:11px;fill:var(--ink)">${esc(src)}</text>`;
       }
     });
     el.innerHTML=s+'</svg>';
@@ -1972,7 +1986,7 @@ const lineHTML=(C,cls='',more=0)=>`<span class="crowd ${cls}" aria-hidden="true"
 const crowdAria=(live,told)=>{
   if(!live?.now)return `No one here right now${live?.recent?`; ${live.recent} in the last 30 minutes`:''}`;
   const named=live.visitors.filter(v=>v.active&&told.has(v.referrer));
-  return `${live.now} here now${named.length?`, ${named.length} from ${labelOf('referrer',named[0].referrer)}`:''}; ${live.recent} in the last 30 minutes`;
+  return `${live.now}${live.atLeast?' or more':''} here now${named.length?`, ${named.length} from ${labelOf('referrer',named[0].referrer)}`:''}; ${live.recent} in the last 30 minutes`;
 };
 
 // Who is here now, grouped by the page they are on.
@@ -1981,35 +1995,38 @@ async function renderOnline(body){
   if(stale(body,gen))return;
   const H=home(),told=H?.T.told||new Set(),page=H?.T.page;
   // Amber figures came from a source home's sentence talks about; the key names it.
-  const earlier=live.recent-live.now,named=[...new Set(crowd(live,told,Infinity).filter(p=>p.named).map(p=>labelOf('referrer',p.v.referrer)))];
-  // One row per page, its people grouped as figures; each person here now gets a line, with their source, country
-  // and time on site; those who left are one muted line per page, by source.
-  const people=crowdLine(live,told,Infinity).people,groups=new Map();
-  for(const p of people){if(!groups.has(p.v.path))groups.set(p.v.path,[]);groups.get(p.v.path).push(p)}
-  const here=g=>g.filter(p=>p.here).length;
-  const rows=[...groups].sort((a,b)=>here(b[1])-here(a[1])||b[1].length-a[1].length);
-  const pace=onlinePace(live,H?.hourly,Date.now()/1000),LN=lanes(live,told);
+  const earlier=live.recent-live.now,plus=live.atLeast?'+':'',named=[...new Set(crowd(live,told,Infinity).filter(p=>p.named).map(p=>labelOf('referrer',p.v.referrer)))];
+  // A row per lane (pageList): while few are here on the page, each of them gets a line, with their source, country
+  // and time on site; else one line counts them by source. Those who left are one muted line, by source.
+  const pace=onlinePace(live,H?.hourly,Date.now()/1000),LN=lanes(live,told),rows=pageList(LN);
   body.innerHTML=`<p class="say">${onlineStory(live,told,page)}${pace?` ${pace.html}`:''}</p>
     ${rows.length?`<section class="card"><div class="card-title">Where they are, and how long they’ve been there</div>${LN.html?`<p class="card-say">${LN.html}</p>`:''}<div class="lanes svgc"></div>
-      <p class="crowd-key"><span><i class="sw here"></i><b>${live.now}</b> here now</span>${earlier>0?`<span><i class="sw gone"></i><b>${earlier}</b> left in the last 30 minutes</span>`:''}${named.length?`<span><i class="sw here" style="background:var(--src)"></i>from ${named.map(esc).join(' or ')}</span>`:''}</p></section>`:''}
+      <p class="crowd-key"><span><i class="sw here"></i><b>${fmtInt(live.now)}${plus}</b> here now</span>${earlier>0?`<span><i class="sw gone"></i><b>${fmtInt(earlier)}${plus}</b> left in the last 30 minutes</span>`:''}${named.length?`<span><i class="sw here" style="background:var(--src)"></i>from ${named.map(esc).join(' or ')}</span>`:''}<span class="lane-unit" hidden></span></p></section>`:''}
     <section class="card">${rows.length?`<div class="people list"><div class="lrow lhead online"><span>Page</span><span>People</span><span>Source</span><span class="cty">Country</span><span>Time on site</span><span></span></div></div>`:'<div class="muted">No one in the last 30 minutes.</div>'}</section>
     ${rows.length?'<p class="credit">Figures: Wee People, ProPublica</p>':''}`;
-  if(rows.length)drawLanes(body.querySelector('.lanes'),LN);
+  if(rows.length)drawLanes(body.querySelector('.lanes'),LN,named);
   const list=body.querySelector('.people');
-  for(const [path,g] of rows){
-    g.sort((a,b)=>b.here-a.here);
-    const now=g.filter(p=>p.here),gone=g.filter(p=>!p.here),n=now.length+(gone.length?1:0),b=document.createElement('button');b.type='button';b.className='lrow online';b.dataset.path=path;
-    const bySrc=new Map();for(const p of gone){const l=labelOf('referrer',p.v.referrer);bySrc.set(l,(bySrc.get(l)||0)+1)}
-    b.innerHTML=`<span class="name${path===page&&here(g)?' told-page':''}" style="grid-row:span ${n}">${esc(path)}</span>
-      <span class="ppl small" style="grid-row:span ${n}" aria-hidden="true">${g.map(p=>`<span class="${p.named?'named':p.here?'':'gone'}">${p.letter}</span>`).join('')}</span>`
-      +now.map(p=>{
+  // Figures beside a page are one a person while the list names them all; else each stands for unit people, the same
+  // in every row, so rows compare.
+  const unit=LN.complete?1:figureScale(Math.max(1,...rows.map(r=>r.here+r.gone)),10);
+  const top3=(list,more)=>list.slice(0,3).map(([l,k])=>`${esc(l)} ${fmtInt(k)}`).join(', ')+(more>0?` and ${more} more`:'');
+  for(const r of rows){
+    const {path,people}=r,name=path??`${r.pages} other pages`,lines=(people?people.length:r.here?1:0)+(r.earlier.length?1:0),n=Math.max(1,lines);
+    const named=sum(r.row.bands.map(b=>b.named));
+    const figs=unit===1?r.row.people.map(p=>`<span class="${p.named?'named':p.here?'':'gone'}">${p.letter}</span>`).join('')
+      :apportion([named,r.here-named,r.gone],unit).map((k,s)=>Array.from({length:k},(_,i)=>`<span class="${['named','','gone'][s]}">${figureLetter(i+s*11)}</span>`).join('')).join('');
+    const b=document.createElement('button');b.type='button';b.className='lrow online';if(path!=null)b.dataset.path=path;
+    b.innerHTML=`<span class="name${path!=null&&path===page&&r.here?' told-page':''}" style="grid-row:span ${n}">${esc(name)}</span>
+      <span class="ppl small" style="grid-row:span ${n}" aria-hidden="true">${figs}</span>`
+      +(people?people.map(p=>{
         const src=labelOf('referrer',p.v.referrer);
         return `<span class="src">${p.named?`<b>${esc(src)}</b>`:esc(src)}</span><span class="cty">${p.v.country?esc(labelOf('country',p.v.country)):''}</span><span class="num">${fmtDur(p.v.seconds)}</span>`;
-      }).join('')
-      +(gone.length?`<span class="earlier muted">${gone.length} earlier · ${[...bySrc].sort((a,b)=>b[1]-a[1]).map(([l,k])=>`${esc(l)} ${k}`).join(', ')}</span>`:'')
+      }).join(''):r.here?`<span class="tally"><b>${fmtInt(r.here)} here</b> · ${top3(r.sources,r.more)}</span>`:'')
+      +(r.earlier.length?`<span class="earlier muted">${fmtInt(r.gone)} earlier · ${top3(r.earlier,r.earlier.length-3)}</span>`:'')
       +`<span class="chevc" style="grid-row:1/span ${n}">${CHEV}</span>`;
-    b.setAttribute('aria-label',`${path}: ${here(g)} here now, ${n} in the last 30 minutes. `+g.map(p=>`${p.here?'Here now':'Earlier'} from ${labelOf('referrer',p.v.referrer)}${p.v.country?`, ${labelOf('country',p.v.country)}`:''}, ${fmtDur(p.v.seconds)}`).join('; ')+'. Open');
-    b.onclick=()=>openFilter({path},path,b);
+    b.setAttribute('aria-label',`${name}: ${fmtInt(r.here)} here now, ${fmtInt(r.gone)} left in the last 30 minutes. `
+      +(people?people.map(p=>`From ${labelOf('referrer',p.v.referrer)}${p.v.country?`, ${labelOf('country',p.v.country)}`:''}, ${fmtDur(p.v.seconds)}`).join('; '):r.here?`Here now from ${top3(r.sources,r.more)}`:'')+'. Open');
+    b.onclick=()=>path!=null?openFilter({path},path,b):openView({v:'pages'},b);
     list.append(b);
   }
 }
@@ -2046,14 +2063,15 @@ function drawNow(live,told,pace){
   const now=$('#now');if(!now)return;
   now.hidden=!live&&!pace;if(now.hidden)return;
   // On home the figures are only here or left; who they are is the online page's story. They wrap to the block's
-  // width, which its lines of text set; everyone is drawn up to three rows, and past that the line ends in +N.
-  const draw=C=>{now.innerHTML=`<span class="now-body">${pace?`<span class="pace">${pace.html}</span>`:''}${live?`${lineHTML(C,'wide',C.more)}<span>${crowdCaption(live)} ${CHEV}</span>`:''}</span>`};
-  let C=live&&crowdLine(live,new Set(),Infinity);
+  // width, which its lines of text set, in three rows at most: one figure a person while everyone fits, else a round
+  // number of people each (crowdFigures), which the caption says.
+  const draw=C=>{now.innerHTML=`<span class="now-body">${pace?`<span class="pace">${pace.html}</span>`:''}${live?`${lineHTML(C,'wide',C.more)}<span>${crowdCaption(live,C.unit)} ${CHEV}</span>`:''}</span>`};
+  let C=live&&crowdFigures(live,new Set(),30);
   draw(C);
   const box=live&&now.querySelector('.crowd');
   if(box){
-    const per=Math.max(10,Math.floor(box.clientWidth/(parseFloat(getComputedStyle(box).fontSize)*.31)));
-    if(C.people.length>per*3){C=crowdLine(live,new Set(),per*3-2);draw(C)}
+    const fit=3*Math.max(10,Math.floor(box.clientWidth/(parseFloat(getComputedStyle(box).fontSize)*.31))),D=crowdFigures(live,new Set(),fit);
+    if(D.unit!==C.unit||D.people.length!==C.people.length){C=D;draw(C)}
   }
   now.setAttribute('aria-label',`${pace?pace.html.replace(/<[^>]+>/g,'')+'. ':''}${live?crowdAria(live,told):''}. Open`);
 }

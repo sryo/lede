@@ -537,25 +537,95 @@ export function crowd(live, told, max = 18) {
   return people.map((p, i) => [p, i]).sort((a, b) => order(a[0]) - order(b[0]) || a[1] - b[1]).map(([p]) => p).slice(0, max);
 }
 
-// Here now as lanes: a lane per page, those here first, each person placed along it by how long they've been on
-// their page. Past max pages, the busiest max - 1 keep their lanes and the rest share one (path null, pages: how
-// many), so a crowd on many pages stays a few lanes. html names where the people reading past 2 minutes came from.
+// Everyone seen in the last 30 minutes as groups by page, source, here or not and band (how long on the site), as
+// shapeLive counts them; from the list when an answer has no groups.
+const BAND_S = [60, 300, 900];
+const groupsOf = live => live?.groups ?? (live?.visitors || []).map(v => ({ path: v.path, referrer: v.referrer, here: v.active,
+  band: BAND_S.filter(s => v.seconds >= s).length, n: 1 }));
+// The list holds everyone (shapeLive keeps only the people seen last), so each person can be drawn on their own.
+const whole = live => (live?.recent || 0) <= (live?.visitors?.length || 0);
+
+// Here now as lanes: a lane per page, those here first, with each person (people, from the list) and how many of
+// everyone are in each band (bands: here, of them from a source the sentence names, and gone). Past max pages, the
+// busiest max - 1 keep their lanes and the rest share one (path null, pages: how many). html names where the people
+// on the site past 5 minutes came from. complete: the list holds everyone.
 export function lanes(live, told, max = 8) {
-  const byPage = new Map();
-  for (const p of crowd(live, told, Infinity)) byPage.set(p.v.path, [...(byPage.get(p.v.path) || []), p]);
-  const rows = [...byPage].map(([path, people]) => ({ path, here: people.filter(p => p.here).length, people: people.sort((a, b) => a.v.seconds - b.v.seconds) }))
-    .sort((a, b) => b.here - a.here || b.people.length - a.people.length);
-  if (rows.length > max) {
-    const rest = rows.splice(max - 1);
-    rows.push({ path: null, pages: rest.length, here: sum(rest.map(r => r.here)), people: rest.flatMap(r => r.people).sort((a, b) => a.v.seconds - b.v.seconds) });
+  const byPage = new Map(), page = path => byPage.get(path) ?? byPage.set(path, { path, here: 0, n: 0, people: [], from: new Map(), bands: [0, 1, 2, 3].map(() => ({ here: 0, named: 0, gone: 0 })) }).get(path);
+  const add = (into, b) => { into.here += b.here; into.named += b.named; into.gone += b.gone; };
+  for (const g of groupsOf(live)) {
+    const r = page(g.path), b = r.bands[g.band];
+    r.n += g.n;
+    if (g.here) { r.here += g.n; b.here += g.n; if (told.has(g.referrer)) b.named += g.n; } else b.gone += g.n;
+    tallyFrom(r.from, labelOf('referrer', g.referrer), g.here ? g.n : 0, g.here ? 0 : g.n);
   }
-  const here = (live?.visitors || []).filter(v => v.active), long = here.filter(v => v.seconds >= 120);
-  const from = [...new Set(long.map(v => labelOf('referrer', v.referrer)))];
-  const html = long.length ? `${long.length === here.length ? (here.length === 1 ? 'The one person here has' : `All ${here.length} here have`) : `${long.length} of the ${here.length} here ${long.length === 1 ? 'has' : 'have'}`} been on their page past 2 minutes, from ${listed(from.map(l => `<b>${esc(l)}</b>`))}.` : null;
-  return { rows, html };
+  for (const p of crowd(live, told, Infinity)) page(p.v.path).people.push(p);
+  const rows = [...byPage.values()].sort((a, b) => b.here - a.here || b.n - a.n);
+  for (const r of rows) r.people.sort((a, b) => a.v.seconds - b.v.seconds);
+  if (rows.length > max) {
+    const rest = rows.splice(max - 1), bands = [0, 1, 2, 3].map(i => { const b = { here: 0, named: 0, gone: 0 }; for (const r of rest) add(b, r.bands[i]); return b; });
+    const from = new Map();
+    for (const r of rest) for (const [l, c] of r.from) tallyFrom(from, l, c.here, c.gone);
+    rows.push({ path: null, pages: rest.length, here: sum(rest.map(r => r.here)), n: sum(rest.map(r => r.n)), bands, from,
+      people: rest.flatMap(r => r.people).sort((a, b) => a.v.seconds - b.v.seconds) });
+  }
+  const here = groupsOf(live).filter(g => g.here), total = sum(here.map(g => g.n)), long = here.filter(g => g.band >= 2), n = sum(long.map(g => g.n));
+  const by = new Map();
+  for (const g of long) { const l = labelOf('referrer', g.referrer); by.set(l, (by.get(l) || 0) + g.n); }
+  const from = [...by].sort((a, b) => b[1] - a[1]).map(([l]) => `<b>${esc(l)}</b>`), names = from.length > 3 ? [...from.slice(0, 3), `${from.length - 3} more`] : from;
+  const html = n ? `${n === total ? (total === 1 ? 'The one person here has' : `All ${fmtInt(total)} here have`) : `${fmtInt(n)} of the ${fmtInt(total)} here ${n === 1 ? 'has' : 'have'}`} been on the site past 5 minutes, from ${listed(names)}.` : null;
+  return { rows, html, complete: whole(live) };
 }
+const tallyFrom = (m, label, here, gone) => { const c = m.get(label) ?? m.set(label, { here: 0, gone: 0 }).get(label); c.here += here; c.gone += gone; };
+
+// The list under the lanes, a row per lane: while the list holds everyone and few are here on the page, each of
+// them (people, longest here first); else how many came from each source, the top three (sources) and how many more
+// sources there are. earlier: those who left, by source, from the counts, so it's whole either way.
+export function pageList(L, few = 5) {
+  return L.rows.map(r => {
+    const tally = k => [...r.from].filter(([, c]) => c[k]).map(([l, c]) => [l, c[k]]).sort((a, b) => b[1] - a[1]);
+    const here = tally('here'), each = L.complete && r.here <= few;
+    return { path: r.path, pages: r.pages, here: r.here, gone: r.n - r.here, row: r,
+      people: each ? r.people.filter(p => p.here).sort((a, b) => b.v.seconds - a.v.seconds) : null,
+      sources: each ? null : here.slice(0, 3), more: each ? 0 : Math.max(0, here.length - 3), earlier: tally('gone') };
+  });
+}
+
 // Where on a lane: the square root of the time, so the first minutes, where most people are, get the most room; 30 minutes is the end.
 export const laneX = s => Math.sqrt(Math.min(Math.max(s, 0), 1800) / 1800);
+// How lanes are drawn when a band holds cell figures at most: each person at their own time while the list holds
+// everyone and no band is crowded, else in bands, each figure unit people, the same in every lane so pages compare.
+export function laneScale(L, cell) {
+  const most = Math.max(0, ...L.rows.flatMap(r => r.bands.map(b => b.here + b.gone))), unit = figureScale(most, cell);
+  return { unit, bands: unit > 1 || L.complete === false || most > cell };
+}
+
+// How many people a figure stands for: one while n fit in capacity, then the smallest of 2, 5, 10, 20, 50… that fits.
+export function figureScale(n, capacity) {
+  for (let e = 1; ; e *= 10) for (const m of [1, 2, 5]) if (Math.ceil(n / (m * e)) <= Math.max(1, capacity)) return m * e;
+}
+// Figures for groups of counts, unit people each: the total rounded, shared by largest remainder, and one at least
+// for any group with someone in it, taken from the biggest share, so nobody is rounded away.
+export function apportion(counts, unit) {
+  const some = counts.filter(c => c > 0).length, total = Math.max(some, Math.round(sum(counts) / unit));
+  const out = counts.map(c => Math.floor(c / unit)), left = total - sum(out);
+  counts.map((c, i) => [c / unit - out[i], i]).sort((a, b) => b[0] - a[0]).slice(0, Math.max(0, left)).forEach(([, i]) => out[i]++);
+  counts.forEach((c, i) => { if (c > 0 && !out[i]) { out[out.indexOf(Math.max(...out))]--; out[i] = 1; } });
+  return out;
+}
+
+// A figure that stands for more than one person, varied by its place i so a row doesn't repeat one shape.
+export const figureLetter = i => PEOPLE[(i * 7) % PEOPLE.length];
+
+// The crowd in capacity figures at most: each person while everyone fits and the list holds them all (crowdLine),
+// else in proportion, unit people a figure: here from a source the sentence names, here, then gone.
+export function crowdFigures(live, told, capacity) {
+  const total = live?.recent || 0;
+  if (total <= capacity && whole(live)) return { unit: 1, ...crowdLine(live, told, Infinity) };
+  const unit = figureScale(total, capacity), gs = groupsOf(live), count = f => sum(gs.filter(f).map(g => g.n));
+  const named = count(g => g.here && told.has(g.referrer)), shares = apportion([named, count(g => g.here) - named, count(g => !g.here)], unit);
+  const people = shares.flatMap((k, s) => Array.from({ length: k }, (_, i) => ({ here: s < 2, named: s === 0, letter: figureLetter(i + s * 11) })));
+  return { unit, people, more: 0 };
+}
 
 // The crowd as a line: people here now first, then those who left, each group in the order it arrived
 // (someone last seen `ago` seconds ago after `seconds` on the site arrived ago + seconds ago). Past `max`,
@@ -567,40 +637,43 @@ export function crowdLine(live, told, max = 30) {
   return { people: [...keepHere, ...keepGone], more: all.length - keepHere.length - keepGone.length };
 }
 
-export function crowdCaption(live) {
+// unit: how many people a figure stands for, said when it isn't one. A count that is a floor (atLeast) ends in +.
+export function crowdCaption(live, unit = 1) {
   // The second count is everyone seen in the last 30 minutes, those here now included.
-  const recent = live?.recent || 0;
-  const tail = recent > (live?.now || 0) ? ` <span class="muted">· ${fmtInt(recent)} in the last 30 minutes</span>` : '';
+  const recent = live?.recent || 0, plus = live?.atLeast ? '+' : '';
+  const tail = (recent > (live?.now || 0) ? ` <span class="muted">· ${fmtInt(recent)}${plus} in the last 30 minutes</span>` : '')
+    + (unit > 1 ? ` <span class="muted">· a figure is ${fmtInt(unit)} people</span>` : '');
   if (!live?.now) return `No one here right now${tail}`;
-  return `<i class="sw here"></i><b>${fmtInt(live.now)}</b> here now${tail}`;
+  return `<i class="sw here"></i><b>${fmtInt(live.now)}${plus}</b> here now${tail}`;
 }
 
-// The online view's sentence: who among those here came from a source the summary names, and since when.
+// The online view's sentence: who among those here came from a source the summary names, and since when. It counts
+// everyone (groupsOf), says at least when the counts are a floor, and says when they arrived only while the list
+// holds everyone.
 export function onlineStory(live, told, page) {
-  const here = (live?.visitors || []).filter(v => v.active);
-  if (!here.length) return 'No one is here right now.';
+  const here = groupsOf(live).filter(g => g.here), total = sum(here.map(g => g.n));
+  if (!total) return 'No one is here right now.';
   // The count comes first, so "of them" always has something to refer to.
-  const parts = [], named = here.filter(v => told.has(v.referrer));
-  const opener = here.length === 1 ? 'One person is here now' : `${fmtInt(here.length)} people are here now`;
-  const byPage = new Map();
-  for (const v of here) byPage.set(v.path, [...(byPage.get(v.path) || []), v]);
-  const [top, on] = [...byPage].sort((a, b) => b[1].length - a[1].length)[0], k = on.length;
+  const parts = [], at = live?.atLeast ? 'At least ' : '', tally = (gs, key) => { const m = new Map(); for (const g of gs) m.set(key(g), (m.get(key(g)) || 0) + g.n); return [...m].sort((a, b) => b[1] - a[1]); };
+  const named = here.filter(g => told.has(g.referrer)), nn = sum(named.map(g => g.n));
+  const opener = total === 1 && !at ? 'One person is here now' : `${at}${fmtInt(total)} people are here now`;
+  const [top, k] = tally(here, g => g.path)[0];
   // Many on one page is the news (something is being shared), so it leads, with where they came from when most share it.
-  if (k >= 2 && k * 2 >= here.length) {
-    const from = new Map();
-    for (const v of on) from.set(v.referrer, (from.get(v.referrer) || 0) + 1);
-    const [ref, m] = [...from].sort((a, b) => b[1] - a[1])[0];
+  if (k >= 2 && k * 2 >= total) {
+    const [ref, m] = tally(here.filter(g => g.path === top), g => g.referrer)[0];
     const src = m < 2 || m * 2 <= k ? '' : `, ${m === k ? 'all' : 'most'} ${ref ? `from <b>${esc(labelOf('referrer', ref))}</b>` : 'direct'}`;
-    parts.push(`${opener}; ${k} of them are on <b>${esc(pageName(top))}</b>${src}.`);
-  } else if (named.length) {
-    const who = labelOf('referrer', named[0].referrer), reading = named.every(v => v.path === page), one = here.length === 1;
-    const them = one ? '. They' : named.length === 1 ? '; one of them' : `; ${named.length} of them`;
+    parts.push(`${opener}; ${k === total ? 'all' : fmtInt(k)} of them are on <b>${esc(pageName(top))}</b>${src}.`);
+  } else if (nn) {
+    const who = labelOf('referrer', tally(named, g => g.referrer)[0][0]), reading = named.every(g => g.path === page), one = total === 1;
+    const them = one ? '. They' : nn === 1 ? '; one of them' : `; ${fmtInt(nn)} of them`;
     parts.push(`${opener}${them} came from <b class="told src">${esc(who)}</b>`
-      + (reading && page ? ` and ${named.length === 1 && !one ? 'is' : 'are'} reading <b>${esc(pageName(page))}</b>.` : '.'));
-  } else parts.push(here.length === 1 ? `${opener}, on ${esc(pageName(top))}.` : k > 1 ? `${opener}; ${k} of them are on <b>${esc(pageName(top))}</b>.` : `${opener}, each on a different page.`);
+      + (reading && page ? ` and ${nn === 1 && !one ? 'is' : 'are'} reading <b>${esc(pageName(page))}</b>.` : '.'));
+  } else parts.push(total === 1 ? `${opener}, on ${esc(pageName(top))}.` : k > 1 ? `${opener}; ${fmtInt(k)} of them are on <b>${esc(pageName(top))}</b>.` : `${opener}, each on a different page.`);
   // Someone last seen `ago` seconds ago after `seconds` on the site arrived ago + seconds ago (see crowdLine).
-  const mins = Math.max(1, Math.ceil(maxOf(here.map(v => v.ago + v.seconds)) / 60));
-  parts.push(here.length === 1 ? `They arrived ${mins === 1 ? 'in the last minute' : `${mins} minutes ago`}.` : `Everyone here now arrived in the last ${mins === 1 ? 'minute' : `${mins} minutes`}.`);
+  if (whole(live)) {
+    const mins = Math.max(1, Math.ceil(maxOf(live.visitors.filter(v => v.active).map(v => v.ago + v.seconds)) / 60));
+    parts.push(total === 1 ? `They arrived ${mins === 1 ? 'in the last minute' : `${mins} minutes ago`}.` : `Everyone here now arrived in the last ${mins === 1 ? 'minute' : `${mins} minutes`}.`);
+  }
   return parts.join(' ');
 }
 
@@ -616,14 +689,12 @@ export function usualHalfHour(hourly, nowSec) {
   return median(past.map(d => hourly.visitors[d * 24 + hour])) / 2;
 }
 
-// The live list stops at this many people (liveSql), so a count that reaches it may be short.
-const LIVE_MAX = 200;
 // "20 in the last 30 minutes, twice the usual 10 at this hour." Null when a usual half hour has fewer than 3, too few
-// to call anything unusual, or when the list was cut short and so can't say the crowd is small or usual.
+// to call anything unusual, or when the count is a floor (atLeast) and so can't say the crowd is small or usual.
 export function onlinePace(live, hourly, nowSec) {
   const usual = live?.recent == null ? null : usualHalfHour(hourly, nowSec);
   if (usual == null || usual < 3) return null;
-  const r = live.recent / usual, x = Math.round(r), u = fmtInt(usual), cut = (live.visitors?.length ?? 0) >= LIVE_MAX;
+  const r = live.recent / usual, x = Math.round(r), u = fmtInt(usual), cut = !!live.atLeast;
   if (cut && r < 1.75) return null;
   const how = r >= 1.75 ? `${cut ? 'at least ' : ''}${x === 2 ? 'twice' : `${x} times`} the usual ${u} at this hour` : r <= .6 ? `fewer than the usual ${u} at this hour` : 'about usual for this hour';
   return { usual, ratio: r, html: `${cut ? 'At least ' : ''}<b>${fmtInt(live.recent)}</b> came in the last 30 minutes, ${how}.` };

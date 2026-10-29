@@ -193,10 +193,11 @@ test('links show shares to a tenth of a point, and bold what the sentence names'
   assert.match(d, /named:L\?\.named/);
 });
 
-test('home’s crowd wraps to its block and shows everyone, up to three rows, then says how many more', () => {
+test('home’s crowd wraps to its block in three rows at most: a figure a person while everyone fits, else a round number each, said in the caption', () => {
   const d = fn('drawNow');
   assert.match(d, /lineHTML\(C,'wide',C\.more\)/);
-  assert.match(d, /per\*3/, 'the cap comes from how many fit on three rows, measured');
+  assert.match(d, /fit=3\*[\s\S]*crowdFigures\(live,new Set\(\),fit\)/, 'the room comes from how many fit on three rows, measured');
+  assert.match(d, /crowdCaption\(live,C\.unit\)/);
   assert.doesNotMatch(d, /more earlier/, 'no second count beside the caption’s');
   assert.match(html, /\.now \.crowd\{width:0;min-width:100%\}/, 'the figures take the block’s width, never set it');
 });
