@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compare, timing, noiseFrom, headroom, scheduleDay, sheetDay } from '../scripts/compare.mjs';
+import { compare, timing, noiseFrom, headroom, scheduleDay, sheetDay, limits, floors, exitCode, parseAccepted, since } from '../scripts/compare.mjs';
 import { counters, fakeAI, fakeFetch, WEBHOOK } from '../bench/fakes.mjs';
 import { baselineRef } from '../scripts/bench.mjs';
 
@@ -19,13 +19,55 @@ test('a timing that swings across the threshold is inconclusive, not a pass or a
   assert.equal(timing(base, run).verdict, 'inconclusive');
 });
 
-test('any byte or count increase is a regression, and a Worker answer over 5 ms fails on its own', () => {
+test('any byte or count increase is a regression, and a Worker answer over 5 ms is below a floor', () => {
   const rows = compare({
     base: side({ 'worker: summary': reps(4), 'browser: home drawn': reps(100) }),
     run: side({ 'worker: summary': reps(5.5), 'browser: home drawn': reps(100) }, { bytes: { 't.js gzip': 101 }, counts: { 'queries: /': 9 } }),
   });
   const v = Object.fromEntries(rows.map(r => [r.metric, r.verdict]));
-  assert.deepEqual(v, { 't.js gzip': 'worse', 'queries: /': 'better', 'worker: summary': 'worse', 'browser: home drawn': 'same' });
+  assert.deepEqual(v, { 't.js gzip': 'worse', 'queries: /': 'better', 'worker: summary': 'floor', 'browser: home drawn': 'same' });
+});
+
+test('a run below a floor fails even when the base was just as low', () => {
+  const counts = { 'queries: /': 8, 'visit: writes': 3, 'visit: requests': 2, 'visit: kv writes': 0 };
+  const rows = compare({ base: side({}, { counts }), run: side({}, { counts }) });
+  assert.deepEqual(rows.filter(r => r.verdict === 'floor').map(r => [r.metric, r.run]), [['visits a day before 100k writes', 33333]]);
+  assert.equal(exitCode(rows), 1);
+  assert.deepEqual(floors({ ...counts, 'visit: writes': 2 }), [], 'two writes a visit is the promise, exactly');
+  assert.deepEqual(floors({ ...counts, 'visit: writes': 2, 'queries: /': 11 }).map(r => r.metric), ['dashboard home loads a day before 10k queries']);
+});
+
+test('what costs nothing has no limit', () => {
+  assert.equal(limits({ 'queries: /': 0, 'visit: writes': 2, 'visit: requests': 2, 'visit: kv writes': 0 })['visits a day before 1k KV writes'], Infinity);
+});
+
+test('a run whose only doubt is an inconclusive timing exits 3, to be rerun; a regression or floor exits 1', () => {
+  assert.equal(exitCode([{ verdict: 'same' }, { verdict: 'better' }, { verdict: 'new' }]), 0);
+  assert.equal(exitCode([{ verdict: 'same' }, { verdict: 'inconclusive' }]), 3);
+  assert.equal(exitCode([{ verdict: 'inconclusive' }, { verdict: 'worse' }]), 1);
+  assert.equal(exitCode([{ verdict: 'missing' }]), 1);
+  assert.equal(exitCode([{ verdict: 'floor' }]), 1);
+});
+
+test('a Bench-Accepted price is read whatever the arrow, commas or colons in the metric', () => {
+  const p = parseAccepted([
+    'Bench-Accepted: sheet queries: /; 0 -> 2; buys: goal 1; tried: hourly; owner: yes, 2026-10-28',
+    'dashboard brotli; 115,973 → 118,230; buys: goal 3',
+    'not a price',
+    '',
+  ].join('\n'));
+  assert.deepEqual(p.map(({ metric, before, after }) => [metric, before, after]), [['sheet queries: /', 0, 2], ['dashboard brotli', 115973, 118230]]);
+});
+
+test('since a baseline, growth no price covers is unpriced; savings and priced growth are not', () => {
+  const from = { bytes: { 'dashboard brotli': 100, 't.js gzip': 50 }, counts: { 'queries: /': 8, 'sheet queries: /': 0 } };
+  const to = { bytes: { 'dashboard brotli': 130, 't.js gzip': 48 }, counts: { 'queries: /': 8, 'sheet queries: /': 2 } };
+  const rows = since(from, to, parseAccepted('sheet queries: /; 0 -> 2\ndashboard brotli; 100 -> 110'));
+  assert.deepEqual(rows.map(r => [r.metric, r.unpriced, r.priced.length]), [
+    ['dashboard brotli', true, 1],
+    ['t.js gzip', false, 0],
+    ['sheet queries: /', false, 1],
+  ]);
 });
 
 test('a timing that only one side has is missing or new', () => {

@@ -13,7 +13,7 @@ This page is for anyone, person or agent, changing Lede. What Lede does and how 
 - **The demo answers everything the Worker does.** `npm run dev` and the published demo run on `src/demo.js`, so every store method needs a demo twin, and the sample must tell the story the tests expect on every weekday (`test/weekdays.js`).
 - **Every query has a bench fake.** `bench/fakes.mjs` answers the bench's queries by their SQL aliases; a query it doesn't know gets the summary row, and the counts go wrong.
 - **Every error says what to do next,** in the dashboard or in the Worker's logs.
-- **Every change is measured.** The rule, and when the owner may let a regression through, are in [GOALS.md](../GOALS.md#how-we-know); how to run it is under [Measuring changes](#measuring-changes).
+- **Every change is measured.** What a cost may buy, the floors no change goes below, and how the owner accepts a price are in [GOALS.md](../GOALS.md#when-a-change-costs-more); how to run the bench is under [Measuring changes](#measuring-changes).
 - **Docs state rules and reasons,** not history: what changed and why goes in the commit message.
 
 ### Running it
@@ -228,11 +228,12 @@ The `Live` object (`src/live.js`) keeps one SQLite table of who was seen in the 
 
 ## Measuring changes
 
-Every change is measured before it goes in. Performance work must improve the numbers; any other change must keep them.
+Every change is measured before it goes in. Performance work must improve the numbers; any other change may make them worse only at a price the owner accepts, as [GOALS.md](../GOALS.md#when-a-change-costs-more) says.
 
 ```sh
 npm run bench            # this working copy against the commit in bench/baseline.json
-npm run bench:compare    # judges it; exits 1 on a regression
+npm run bench:compare    # judges it; exits 1 on a regression or a floor, 3 when a timing needs a rerun
+npm run bench:since      # what changed since main's baseline, and the prices accepted for it (or: -- <ref>)
 ```
 
 `scripts/bench.mjs` runs both versions without Cloudflare: the Worker in Node with stand-ins for Analytics Engine and KV that count every query and write (`bench/fakes.mjs`, `bench/server.mjs`), and the dashboard and tracker in headless Chrome Canary with the CPU slowed 4x. It records:
@@ -241,7 +242,10 @@ npm run bench:compare    # judges it; exits 1 on a regression
 - **Counts**: Analytics Engine queries, `/api` calls, page pictures and their browser time, KV reads, writes and lists, and Workers AI asks and the tokens they send (a token for about every 4 characters; Neurons follow tokens) per dashboard page, with the second line's sheet counted apart, since it's built at most once an hour per period; requests, writes and KV use per visit, and the `Live` object's requests per visit while no dashboard watches, plus requests and writes for a visit that leaves the tab and comes back, and one through a single-page app; and the same for one spike check and one week's story, run with an alert webhook set (`bench/cron.mjs`). These are what the free limits count, they don't vary between runs, and any increase is a regression. The judge also prints what the schedules take a day (96 spike checks and a seventh of the week's story), and how much a day the rest leaves room for.
 - **Timings**: the Worker per visit and per stats answer, what `t.js` adds to a page, and how long the dashboard home takes to draw and how long it blocks. The two versions run in turn, rep after rep, and the judge looks at the ratio of each pair. A timing is worse when the bootstrap 95% range of the median ratio sits wholly above the threshold for that metric (in `bench/noise.json`, twice what unchanged code swings, at least 5%) and the medians differ by more than 0.05 ms. A range that crosses the threshold is inconclusive: rerun before believing it. A Worker answer over 5 ms fails on its own, to stay well under the 10 ms of CPU free Workers get.
 
-A regression blocks the change. First make the change pay for itself, with a leaner way to do the same thing or a saving elsewhere in the same change, never by taking out what it's for. Only when that fails can the owner allow it, after seeing the numbers, and that should be rare; the commit message then names what got worse, by how much, and why it's worth it. Put the before and after numbers that changed in the commit message. When a change makes Lede smaller, cheaper or faster, record the new baseline in the same commit with `node scripts/bench.mjs --save-baseline`. After a Chrome Canary update or a move to another machine, measure the noise again: `node scripts/bench.mjs --aa` then `node scripts/compare.mjs --noise bench/runs/aa.json`. Runs land in `bench/runs/`, which git ignores.
+- **Floors**: GOALS.md's floors, as `FLOORS` and `CEILING_MS` in `scripts/compare.mjs`: visits a day before the free writes and Worker requests, home loads a day before the free queries, and a small site's Worker answer under 5 ms. A run below one fails whatever the base did, and no price lets it through.
+- **Since**: `npm run bench:since` compares `main`'s `bench/baseline.json` with this one, metric by metric (bytes and counts only, since timings compare only within one run), and reads every `Bench-Accepted:` trailer in between. Growth that the prices for its metric don't add up to is shown as unpriced. The owner reads it before `next` is merged into `main`.
+
+A regression blocks the change until it pays for itself or the owner accepts its price, as GOALS.md says; an inconclusive timing is rerun first. Put the before and after numbers that changed in the commit message. A new baseline, whether the change made Lede smaller, cheaper or faster or the owner accepted a price, is recorded with `node scripts/bench.mjs --save-baseline` in a commit of its own, which carries a `Bench-Accepted:` trailer for each price. After a Chrome Canary update or a move to another machine, measure the noise again: `node scripts/bench.mjs --aa` then `node scripts/compare.mjs --noise bench/runs/aa.json`. Runs land in `bench/runs/`, which git ignores.
 
 ## API
 

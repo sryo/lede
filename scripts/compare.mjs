@@ -6,13 +6,17 @@
 //                   by more than ABS ms, better when the whole range is below 1 - REL, inconclusive when
 //                   the range crosses a threshold (rerun before believing it), same otherwise.
 //                   REL per metric comes from bench/noise.json (an A/A run, see --noise), default 10%.
-//   ceiling         a Worker answer over CEILING_MS fails whatever the base did: free Workers stop at
-//                   10 ms of CPU.
-// Exits 1 on any regression or a timing that's missing.
+//   floors          GOALS.md's floors, "Free to run" in numbers: a run below one fails whatever the base
+//                   did, and no Bench-Accepted price lets it through. A small site's Worker answer over
+//                   CEILING_MS is one: free Workers stop at 10 ms of CPU.
+// Exits 1 on any regression, floor or missing timing; 3 when the only doubt is an inconclusive timing,
+// which is rerun before the change lands.
 //   node scripts/compare.mjs [bench/runs/latest.json]
 //   node scripts/compare.mjs --noise bench/runs/aa.json   writes bench/noise.json from an A/A run
+//   node scripts/compare.mjs --since main                 what changed since main's baseline, and its prices
 
 import { readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -57,11 +61,14 @@ export function compare(ab, noise = {}) {
     const b = ab.base.times[k], r = ab.run.times[k];
     if (!b || !r) { rows.push({ metric: k, kind: 'ms', verdict: b ? 'missing' : 'new' }); continue; }
     const t = timing(b, r, noise[k] ?? REL);
-    if (k.startsWith('worker:') && t.run > CEILING_MS) t.verdict = 'worse';
+    if (k.startsWith('worker:') && t.run > CEILING_MS) t.verdict = 'floor';
     rows.push({ metric: k, kind: 'ms', ...t });
   }
-  return rows;
+  return [...rows, ...floors(ab.run.counts)];
 }
+
+export const exitCode = rows => rows.some(r => ['worse', 'missing', 'floor'].includes(r.verdict)) ? 1
+  : rows.some(r => r.verdict === 'inconclusive') ? 3 : 0;
 
 // From an A/A run: twice the spread that unchanged code shows, never under 5%.
 export function noiseFrom(aa) {
@@ -87,20 +94,70 @@ const SHEETS = 24 * 2;
 export const sheetDay = counts => SHEETS * (counts['sheet queries: /'] ?? 0);
 
 // Headroom against the free limits: how many of each a day before Cloudflare stops serving, after what
-// the schedules take of the same allowance.
+// the schedules take of the same allowance. Infinity when it costs none.
+export function limits(counts) {
+  const per = (limit, x) => (x > 0 ? Math.floor(limit / x) : Infinity);
+  const day = scheduleDay(counts);
+  return {
+    'dashboard home loads a day before 10k queries': per(10000 - day.queries - sheetDay(counts), counts['queries: /']),
+    'visits a day before 100k writes': per(100000, counts['visit: writes']),
+    'visits a day before 100k Worker requests': per(100000, counts['visit: requests']),
+    'visits a day before 1k KV writes': per(1000 - day.kvWrites, counts['visit: kv writes']),
+  };
+}
+
 export function headroom(counts) {
   const n = x => (Math.round(x * 10) / 10).toLocaleString('en-US');
-  const per = (limit, x) => (x > 0 ? Math.floor(limit / x).toLocaleString('en-US') : 'unlimited');
   const day = scheduleDay(counts);
   return [
     `the schedules a day: ${n(day.queries)} queries, ${n(day.kvReads)} KV reads, ${n(day.kvWrites)} KV writes, ${n(day.ai)} Workers AI asks`,
     `the second line's sheet a day at most, per site: ${n(sheetDay(counts))} queries`,
-    `dashboard home loads a day before 10k queries: ${per(10000 - day.queries - sheetDay(counts), counts['queries: /'])}`,
-    `visits a day before 100k writes: ${per(100000, counts['visit: writes'])}`,
-    `visits a day before 100k Worker requests: ${per(100000, counts['visit: requests'])}`,
-    `visits a day before 1k KV writes: ${per(1000 - day.kvWrites, counts['visit: kv writes'])}`,
+    ...Object.entries(limits(counts)).map(([k, v]) => `${k}: ${v === Infinity ? 'unlimited' : v.toLocaleString('en-US')}`),
     `KV writes a day left after the schedules: ${Math.floor(1000 - day.kvWrites).toLocaleString('en-US')}`,
   ];
+}
+
+// GOALS.md's floors. 50,000 page views a day is the README's promise; a floor moves only when
+// Cloudflare's free limits do.
+export const FLOORS = {
+  'visits a day before 100k writes': 50000,
+  'visits a day before 100k Worker requests': 50000,
+  'dashboard home loads a day before 10k queries': 1000,
+};
+
+export function floors(counts) {
+  const have = limits(counts);
+  return Object.entries(FLOORS).filter(([k, min]) => have[k] < min)
+    .map(([k, min]) => ({ metric: k, kind: 'floor', base: min, run: have[k], verdict: 'floor' }));
+}
+
+/* ---------- prices ---------- */
+
+// A Bench-Accepted trailer (GOALS.md): "<metric>; <before> -> <after>; buys: …". Metric names hold colons,
+// so the fields are split at semicolons.
+export function parseAccepted(text) {
+  const num = s => Number(s.replace(/,/g, ''));
+  return text.split('\n').map(line => line.trim()).map(line => {
+    const m = line.replace(/^Bench-Accepted:\s*/i, '').match(/^(.+?);\s*([\d.,]+)\s*(?:->|→)\s*([\d.,]+)/);
+    return m && { metric: m[1].trim(), before: num(m[2]), after: num(m[3]), line };
+  }).filter(Boolean);
+}
+
+// What changed between two baselines, with the prices paid for it. Bytes and counts come out the same on
+// every run, so the net change is exact; timings only compare within one run, so they're left out.
+// Growth past what the prices for that metric add up to is unpriced.
+export function since(from, to, accepted = []) {
+  const rows = [];
+  for (const group of ['bytes', 'counts']) {
+    for (const k of new Set([...Object.keys(from[group] || {}), ...Object.keys(to[group] || {})])) {
+      const a = from[group]?.[k], b = to[group]?.[k];
+      if (a === b) continue;
+      const priced = accepted.filter(p => p.metric === k);
+      const paid = priced.reduce((s, p) => s + Math.max(0, p.after - p.before), 0);
+      rows.push({ metric: k, from: a, to: b, priced, unpriced: a != null && b != null && b - a > paid });
+    }
+  }
+  return rows;
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
@@ -110,6 +167,25 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const noise = noiseFrom(aa);
     writeFileSync(resolve(ROOT, 'bench/noise.json'), JSON.stringify(noise, null, 2) + '\n');
     for (const [k, v] of Object.entries(noise)) console.log(`${k.padEnd(34)} ±${(v * 100).toFixed(1)}%`);
+    process.exit(0);
+  }
+  if (args[0] === '--since') {
+    const ref = args[1] || 'main';
+    const git = (...a) => execFileSync('git', a, { cwd: ROOT, encoding: 'utf8' });
+    let from;
+    try { from = JSON.parse(git('show', `${ref}:bench/baseline.json`)).run; } catch { console.error(`${ref} has no bench/baseline.json`); process.exit(2); }
+    const to = JSON.parse(readFileSync(resolve(ROOT, 'bench/baseline.json'), 'utf8')).run;
+    const accepted = parseAccepted(git('log', '--format=%(trailers:key=Bench-Accepted,valueonly,unfold)', `${ref}..HEAD`));
+    const rows = since(from, to, accepted);
+    const n = v => v == null ? '-' : v.toLocaleString('en-US');
+    console.log(`baseline at ${ref} (${from.rev}) → now (${to.rev}): ${accepted.length} price(s) accepted`);
+    for (const r of rows) {
+      const pct = r.from && r.to != null ? ` ${r.to > r.from ? '+' : ''}${(((r.to - r.from) / r.from) * 100).toFixed(1)}%` : '';
+      console.log(`${(r.unpriced ? 'UNPRICED' : r.to < r.from ? 'BETTER' : 'PRICED').padEnd(12)} ${r.metric.padEnd(34)} ${n(r.from).padStart(10)} → ${n(r.to).padStart(10)}${pct}`);
+      for (const p of r.priced) console.log(`             ${p.line}`);
+    }
+    const unpriced = rows.filter(r => r.unpriced).length;
+    console.log(`${rows.length} changed, ${unpriced} unpriced`);
     process.exit(0);
   }
   const ab = JSON.parse(readFileSync(resolve(ROOT, args[0] || 'bench/runs/latest.json'), 'utf8'));
@@ -126,7 +202,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   }
   for (const line of headroom(ab.run.counts)) console.log('  ' + line);
   const bad = rows.filter(r => ['worse', 'missing'].includes(r.verdict));
+  const below = rows.filter(r => r.verdict === 'floor');
   const unsure = rows.filter(r => r.verdict === 'inconclusive');
-  console.log(`${rows.filter(r => r.verdict === 'better').length} better, ${bad.length} regression(s), ${unsure.length} inconclusive`);
-  process.exit(bad.length ? 1 : 0);
+  console.log(`${rows.filter(r => r.verdict === 'better').length} better, ${bad.length} regression(s), ${below.length} below a floor, ${unsure.length} inconclusive`);
+  const code = exitCode(rows);
+  if (code === 3) console.log('rerun before the change lands: npm run bench && npm run bench:compare');
+  process.exit(code);
 }
