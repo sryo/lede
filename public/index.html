@@ -441,14 +441,12 @@ p,li,figcaption,.say-sub,.cap{text-wrap:pretty}
 button.blk{cursor:pointer;transition:filter .15s;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left}
 button.blk:hover{filter:brightness(1.08)}
 button.blk:focus-visible{outline:2px solid var(--tile);outline-offset:-2px;box-shadow:inset 0 0 0 4px var(--ink)}
-.blk b{display:block;font-weight:700;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.blk b{display:block;font-weight:700;max-width:100%;white-space:nowrap;overflow:hidden;line-height:1.25}
 .blk span{font-variant-numeric:tabular-nums;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
 .blk.ring-blk{box-shadow:inset 0 0 0 2px var(--ink)}
-.blk.small b{white-space:normal;overflow-wrap:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
-/* a block a sentence names keeps its whole name, broken anywhere if it must */
-.blk.told b{display:block;-webkit-line-clamp:unset;white-space:normal;overflow-wrap:anywhere;text-overflow:clip;line-height:1.15}
 .blk.tall b{white-space:nowrap}
-.blk.tall{writing-mode:vertical-rl;transform:rotate(180deg);padding:8px 4px}
+.blk .hy{font-style:normal;opacity:.5}
+.blk.tall{writing-mode:vertical-rl;transform:rotate(180deg)}
 
 .seg{display:inline-flex;background:var(--tile);box-shadow:inset 0 0 0 1px var(--line);border-radius:999px;padding:4px;gap:0}
 .seg button{all:unset;padding:4px 12px;line-height:16px;border-radius:999px;font-size:var(--fs-s);cursor:pointer;color:var(--muted)}
@@ -573,7 +571,7 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow } from '/story.js';
+  dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
 
@@ -773,6 +771,13 @@ function squarify(vals,W,H){
   if(row.length)lay(row);
   return out;
 }
+// A label's width in the blocks' bold face, from a canvas, kept per text and size.
+const labelCanvas=document.createElement('canvas').getContext('2d'),labelWidths=new Map();
+function labelWidth(t,f){
+  const k=f+'|'+t;let v=labelWidths.get(k);
+  if(v==null){labelCanvas.font=`700 ${f}px ${getComputedStyle(document.body).fontFamily}`;v=labelCanvas.measureText(t).width;labelWidths.set(k,v)}
+  return v;
+}
 // items: [{label,value,color,on,sub?,onClick?}]
 function treemap(el,items,{gap=4}={}){
   // The long tail goes last whatever its size, so it fills the far corner instead of leading.
@@ -788,18 +793,17 @@ function treemap(el,items,{gap=4}={}){
       Object.assign(b.style,{left:r.x+gap/2+'px',top:r.y+gap/2+'px',width:Math.max(0,w)+'px',height:Math.max(0,h)+'px',background:it.color,color:it.on});
       if(it.ring)b.classList.add('ring-blk');
       if(it.told)b.classList.add('told');
-      // Labels by room: name and value, name only, name set sideways in a tall sliver, or none (the title has it).
-      // Small blocks use smaller type; long names keep their start and end, short ones are cut at the end.
-      const small=w<80;
-      if(small){Object.assign(b.style,{fontSize:'12px',padding:'4px'});b.classList.add('small')}
-      const fit=Math.max(4,Math.floor((w-(small?10:14))/(small?5.6:6.6)));
-      // A block a sentence names keeps its whole name, wrapping after a slash, so the words and the picture match.
-      const name=it.told?pathHTML(it.label):esc(it.label.length>14?shorten(it.label,fit):it.label);
-      if(small&&w>44&&h>22)b.innerHTML=`<b>${pathHTML(it.label)}</b>`;
-      else if(w>90&&h>38)b.innerHTML=`<b>${name}</b><span>${esc(it.sub??fmtN(it.value))}</span>`;
-      else if(w>44&&h>22)b.innerHTML=`<b>${name}</b>`;
-      else if(w>20&&h>72){b.classList.add('tall');b.innerHTML=`<b>${it.told?esc(it.label):esc(shorten(it.label,Math.floor((h-14)/6.6)))}</b>`}
-      else if(w>28&&h>18&&it.short)b.innerHTML=`<b>${esc(it.short)}</b>`;
+      // The name wraps at its joints, or turns to read up a tall block, at the biggest type that shows the most of it
+      // (fitLabel); the change goes under it when a line is left. A block too small for three letters shows its short
+      // tag or nothing: the title has the name.
+      const pad=w<80?4:8,L=fitLabel(it.label,w,h,labelWidth,pad);
+      b.style.padding=pad+'px';
+      if(L){
+        b.style.fontSize=L.f+'px';
+        if(L.up)b.classList.add('tall');
+        // A hyphen added to break a word is faded, so it isn't read as part of the address.
+        b.innerHTML=`<b>${L.lines.map(esc).join('<br>').replaceAll('\u2010','<i class="hy">\u2010</i>')}</b>${L.room?`<span>${esc(it.sub??fmtN(it.value))}</span>`:''}`;
+      }else if(w>28&&h>18&&it.short)b.innerHTML=`<b>${esc(it.short)}</b>`;
       b.title=`${it.label}: ${fmtInt(it.value)} visitors`;b.dataset.key=it.label;
       if(it.onClick){b.setAttribute('aria-label',`${it.label}, ${fmtInt(it.value)} visitors${it.sub?`, ${it.sub}`:''}. Open`);b.onclick=e=>{e.stopPropagation();it.onClick(b)}}
       return b;

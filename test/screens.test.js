@@ -38,7 +38,6 @@ test('What happened leads with its biggest item', () => {
 test('home’s treemap highlights the page its caption names, as well as the sentence’s', () => {
   assert.match(fn('drawHome'), /drawPages\(.*,found\?\.key\)/);
   assert.match(fn('drawPages'), /told:true/);
-  assert.match(fn('treemap'), /it\.told\?pathHTML\(it\.label\)/, 'a named block keeps its whole name');
 });
 
 test('the online list gives a country room for its name', () => {
@@ -202,9 +201,12 @@ test('home’s crowd wraps to its block and shows everyone, up to three rows, th
   assert.match(html, /\.now \.crowd\{width:0;min-width:100%\}/, 'the figures take the block’s width, never set it');
 });
 
-test('a treemap block a sentence names wraps its whole name', () => {
-  assert.match(fn('treemap'), /if\(it\.told\)b\.classList\.add\('told'\)/);
-  assert.doesNotMatch(fn('treemap'), /else if\(small\);/);
+test('treemap labels wrap at joints or turn, sized by fitLabel, with the change under them when there is room', () => {
+  const t = fn('treemap');
+  assert.match(t, /fitLabel\(it\.label,w,h,labelWidth,pad\)/);
+  assert.match(t, /L\.room\?/);
+  assert.doesNotMatch(t, /shorten\(/, 'no cut at a fixed number of letters');
+  assert.doesNotMatch(html, /\.blk\.small b\{|\.blk\.told b\{/, 'the lines come from fitLabel, not from CSS wrapping');
 });
 
 test('list tags line up in a column, and go under the name on phones', () => {

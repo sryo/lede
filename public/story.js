@@ -669,6 +669,110 @@ export function readsMore(rows, site, label) {
 // Under the sentence on Direct's view, since the word alone says little.
 export const DIRECT_MEANS = 'Direct means the visit came with no referrer: an address typed or bookmarked, or a link opened from an app, an email or a chat that doesn’t say where it was.';
 
+/* ---------- treemap labels ---------- */
+
+// A path in pieces that each end at a joint: "/robin-", "songs-", "by-", "season".
+const pieces = name => name.match(/[^-/]*[-/]?/g).filter(Boolean).reduce((a, p, i) => i && a.at(-1) === '/' ? (a[a.length - 1] += p, a) : [...a, p], []);
+const VOWEL = /[aeiouy]/i, letter = c => /[a-z]/i.test(c || '');
+// Where a word may break between syllables, with two letters or more either side: before a consonant that comes
+// between vowels (mi-gra-tion), between two consonants between vowels (rob-in), or between doubled letters (bud-dhism).
+function syllables(w) {
+  const out = [], n = [...w].filter(letter).length;
+  for (let i = 1, seen = 0; i < w.length - 1; i++) {
+    if (letter(w[i - 1])) seen++;
+    const [a, b, c, d] = [w[i - 2], w[i - 1], w[i], w[i + 1]];
+    if (seen < 2 || n - seen < 2 || !letter(b) || !letter(c)) continue;
+    if (!VOWEL.test(d || '') && !(b === c && !VOWEL.test(b))) continue;
+    if ((VOWEL.test(b) && !VOWEL.test(c)) || (!VOWEL.test(b) && !VOWEL.test(c) && VOWEL.test(a || ''))) out.push(i);
+    else if (b === c && !VOWEL.test(b)) out.push(i);
+  }
+  return out;
+}
+const HYPHEN = '‐';
+
+// Lines of at most caps[k] wide, filled in order with whole pieces; a line that can't take the next piece whole takes
+// it up to a syllable, with a hyphen, or failing that by letters. fromEnd fills from the end of the name instead.
+function fillLines(text, caps, len, fromEnd = false) {
+  const out = caps.map(() => '');
+  let rest = text;
+  for (let k = 0; k < caps.length && rest; k++) {
+    let put = '';
+    for (const p of fromEnd ? pieces(rest).reverse() : pieces(rest)) {
+      const t = fromEnd ? p + put : put + p;
+      if (len(t) <= caps[k]) put = t; else break;
+    }
+    if (!put) {
+      const p = fromEnd ? pieces(rest).at(-1) : pieces(rest)[0], at = syllables(p);
+      if (fromEnd) put = at.map(i => p.slice(i)).find(t => len(t) <= caps[k]) || '';
+      else { const i = at.filter(i => len(p.slice(0, i) + HYPHEN) <= caps[k]).at(-1); if (i) { out[k] = p.slice(0, i) + HYPHEN; rest = rest.slice(i); continue; } }
+      // By letters as a last resort, with a hyphen, and three letters or more either side of the break.
+      if (!put) {
+        const L = [...rest];
+        if (fromEnd) while (L.length && len(L.at(-1) + put) <= caps[k]) put = L.pop() + put;
+        else {
+          while (L.length && len(put + L[0] + HYPHEN) <= caps[k]) put += L.shift();
+          const left = (p.match(/[a-z]/gi) || []).length - (put.match(/[a-z]/gi) || []).length;
+          if ((put.match(/[a-z]/gi) || []).length < 3 || left < 3) put = ''; else { out[k] = put + HYPHEN; rest = rest.slice(put.length); continue; }
+        }
+      }
+    }
+    out[k] = put;
+    rest = fromEnd ? rest.slice(0, rest.length - put.length) : rest.slice(put.length);
+    if (!put) break;
+  }
+  return { out, rest };
+}
+
+// The name in lines of the given widths; when it doesn't fit, the start fills every line but the last, the end fills
+// the last, and "…" marks what's left out between. On one line the cut falls between joints when it can.
+function labelLines(name, caps, len) {
+  const all = fillLines(name, caps, len);
+  if (!all.rest) return all.out.filter(Boolean);
+  if (caps.length === 1) {
+    const fits = t => len(t) <= caps[0], J = [...name.matchAll(/[-/]/g)].map(m => m.index).filter(k => k > 0);
+    let best = null;
+    for (const x of J) for (const y of J) if (y > x) { const t = name.slice(0, x) + '…' + name.slice(y + 1); if (fits(t) && (!best || t.length > best.length)) best = t; }
+    if (best) return [best];
+    for (let k = name.length - 1; k > 2; k--) { const a = Math.ceil(k * .55), t = name.slice(0, a) + '…' + name.slice(name.length - (k - a)); if (fits(t)) return [t]; }
+    return [];
+  }
+  const last = caps.length - 1, tail = fillLines(name, [caps[last]], len, true).out[0];
+  const head = fillLines(name.slice(0, name.length - tail.length), caps.slice(0, last), len).out;
+  let k = head.length - 1;
+  while (k > 0 && !head[k]) k--;
+  while (head[k] && len(head[k] + '…') > caps[k]) head[k] = head[k].slice(0, -1);
+  // The cut goes back to the last joint on the line, if it has one, so no stray letters stand before the "…".
+  const j = Math.max(head[k].lastIndexOf('-'), head[k].lastIndexOf('/'));
+  if (j > 0 && j < head[k].length - 1 && !head[k].endsWith(HYPHEN)) head[k] = head[k].slice(0, j);
+  head[k] = head[k].replace(new RegExp(`[-${HYPHEN}]$`), '') + '…';
+  return [...head, tail].filter(Boolean);
+}
+
+// A treemap block's label: the name in lines broken at its joints, level from the top-left, or turned to read up from
+// the bottom-left, never bent along a path. Each block tries both ways at 12, 11 and 10px and keeps the one that shows
+// the most of the name, whole at the biggest type when it can, with no word broken but at a syllable and a whole word
+// at the end. measure(text, px) gives a bold label's width. room: a line is left under it for the change. Null when
+// the block can't show three letters.
+export function fitLabel(name, w, h, measure, pad = 8) {
+  let best = null;
+  for (const f of [12, 11, 10]) {
+    const len = t => measure(t, f), lh = f * 1.25;
+    for (const up of [false, true]) {
+      const across = (up ? h : w) - 2 * pad, down = (up ? w : h) - 2 * pad, n = Math.floor(down / lh);
+      if (n < 1 || across < len('/ab')) continue;
+      const lines = labelLines(name, Array(n).fill(across), len);
+      const shown = lines.join('').replace(new RegExp(`[${HYPHEN}…]`, 'g'), '').length;
+      const whole = lines.join('').replaceAll(HYPHEN, '') === name;
+      if (shown < 3 && !whole) continue;
+      const broken = lines.slice(0, -1).filter(t => !/[-/…]$/.test(t) && !t.endsWith(HYPHEN)).length;
+      const end = lines.at(-1).replace(/^.*…/, ''), at = name.lastIndexOf(end), fragment = !whole && end && at > 0 && !/[-/]/.test(name[at - 1]);
+      const score = shown * 100 + (whole ? 50 : 0) + f * 2 - broken * 400 - (fragment ? 300 : 0) - (up ? 5 : 0);
+      if (!best || score > best.score) best = { score, f, up, lines, room: !up && lines.length < n };
+    }
+  }
+  return best && { f: best.f, up: best.up, lines: best.lines, room: best.room };
+}
+
 /* ---------- countries, devices and browsers ---------- */
 
 const lower = (dim, k) => labelOf(dim, k).toLowerCase();
