@@ -137,7 +137,24 @@ export function toSeriesBoth(rows, days) {
   return { cur: toSeries(cur, days, days), prev: toSeries(prev, days) };
 }
 
-// Here now: seen in the last 5 minutes on a page view they haven't left (here, see liveSql; rows without it
+// liveSql's page views (or the Live object's), one row per visitor, the 200 seen last: first and last seen,
+// where they came from (their first page view's), here, when they were last seen on a page view they haven't
+// left (0 with none), and the page they're on (with none, the one they left last). A page view is left when
+// out says so, or (liveSql's) it was left (hid) after it was last seen otherwise (shown); a tie is still here.
+export function byVisitor(views) {
+  const by = new Map();
+  for (const r of [...views].sort((a, b) => num(a.first) - num(b.first))) {
+    const out = r.out != null ? num(r.out) > 0 : num(r.hid) > num(r.shown), last = num(r.last);
+    const v = by.get(r.visitor);
+    if (!v) { by.set(r.visitor, { path: r.path, referrer: r.referrer ?? '', country: r.country ?? '', first: num(r.first), last, here: out ? 0 : last }); continue; }
+    if (out ? !v.here && last >= v.last : last >= v.here) v.path = r.path;
+    if (!out) v.here = Math.max(v.here, last);
+    v.last = Math.max(v.last, last);
+  }
+  return [...by.values()].sort((a, b) => b.last - a.last).slice(0, 200);
+}
+
+// Here now: seen in the last 5 minutes on a page view they haven't left (here, see byVisitor; rows without it
 // count when the visitor was last seen at all).
 export function shapeLive(rows, nowSec) {
   const visitors = rows.map(r => ({

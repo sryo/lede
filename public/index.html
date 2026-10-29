@@ -271,7 +271,7 @@ button.tile-title:hover{color:var(--ink)}
 .sqrow.stack .sq-num{flex-direction:column;align-items:flex-start;gap:0}
 .sqrow.under{flex-direction:column;align-items:flex-start;gap:4px}
 .sq-label,.num .k,.credit{font-size:var(--fs-xs);color:var(--muted)}
-/* a name longer than its column ends in an ellipsis, with the whole name in its hint, instead of running under the squares */
+/* a long name ends in an ellipsis, whole in its hint */
 .sq-label{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sqrow svg{display:block;flex:none}
 
@@ -815,8 +815,7 @@ function dayBars(el,o){
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
     const top=o.label?40:o.scale?10:4,padB=o.axis?20:o.scale?4:0,base=H-padB,padR=o.scale?40:0,peakV=Math.max(maxOf(cur),prev?maxOf(prev):0);
-    // With a scale, the top gridline is a round number just above the tallest bar. Bars count people, so a
-    // gridline is never a fraction of one.
+    // With a scale, the top gridline is a round number just above the tallest bar, and never a fraction of a person.
     const step=o.scale?Math.max(1,nice(peakV||1).step):0,max=o.scale?Math.ceil((peakV||1)/step)*step:peakV*1.04||1;
     if(base<top+8)return;
     const cw=(W-padR)/n,bw=Math.max(2,Math.min(cw*.66,28)),Y=v=>top+(base-top)*(1-v/max),x=i=>i*cw+(cw-bw)/2,r=Math.min(2,bw/2);

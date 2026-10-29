@@ -1,5 +1,5 @@
 import * as Q from './queries.js';
-import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, firstsOf, toHourly, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, splitKeywords, toAudience, pickVisits, pairNext, toFunnel, pagePath } from './shape.js';
+import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, firstsOf, toHourly, mergeRows, shapeLive, byVisitor, toConversions, toEngagement, toLinks, toKeywords, splitKeywords, toAudience, pickVisits, pairNext, toFunnel, pagePath } from './shape.js';
 import { getSites, addSite, getAccountId, getSettings, saveSettings, getShares, makeShare, stopShare } from './settings.js';
 import { HttpError } from './errors.js';
 import { demoStore, demoNotes, DEMO_FUNNEL, DEMO_INSIGHT } from './demo.js';
@@ -133,7 +133,7 @@ export function sqlStore(env, fetchImpl = fetch) {
       return { path, sampled: picked.sampled.cur, prevSampled: picked.sampled.prev, ...pairNext(rows, path, goals) };
     },
     async live(q, nowSec = Math.floor(Date.now() / 1000)) {
-      return shapeLive(await this.liveRows(q.site), nowSec);
+      return shapeLive(byVisitor(await this.liveRows(q.site)), nowSec);
     },
     liveRows: site => run(Q.liveSql(ds, site)),
     // Rows per day; days with nobody have none.

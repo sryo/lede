@@ -1,4 +1,4 @@
-import { shapeLive } from './shape.js';
+import { shapeLive, byVisitor } from './shape.js';
 
 // "Here now", pushed to the dashboard as it changes instead of asked for every minute. One Durable Object
 // per site keeps who was seen in the last 30 minutes, a row per page view (by visitor and view, as liveSql
@@ -8,7 +8,6 @@ import { shapeLive } from './shape.js';
 // A plain class, not cloudflare:workers' DurableObject, so Node (the tests and the bench) can load the Worker.
 const WINDOW = 1800;
 const PUSH_MS = 1000;
-const MAX = 200;
 
 export class Live {
   constructor(ctx) {
@@ -47,28 +46,19 @@ export class Live {
     visitor, view, path, referrer, country, now, now, left ? 1 : 0);
   }
 
-  // liveSql's rows, for visitors this object hasn't heard of since.
+  // liveSql's page views, for those this object hasn't heard of since.
   seed(rows) {
-    for (const r of Array.isArray(rows) ? rows.slice(0, MAX) : []) {
+    for (const r of Array.isArray(rows) ? rows.slice(0, 1000) : []) {
       if (typeof r.visitor !== 'string') continue;
-      this.sql.exec(`INSERT INTO here SELECT ?, 0, ?, ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM here WHERE visitor = ?)`,
-        r.visitor, String(r.path ?? ''), String(r.referrer ?? ''), String(r.country ?? ''), Number(r.first) || 0, Number(r.last) || 0, r.here != null && !(Number(r.here) > 0) ? 1 : 0, r.visitor);
+      this.sql.exec('INSERT OR IGNORE INTO here VALUES (?, ?, ?, ?, ?, ?, ?, ?)', r.visitor, Number(r.vw) || 0, String(r.path ?? ''),
+        String(r.referrer ?? ''), String(r.country ?? ''), Number(r.first) || 0, Number(r.last) || 0, Number(r.hid) > Number(r.shown) ? 1 : 0);
     }
   }
 
-  // What GET /api/live answers: one row per visitor, as liveSql makes them, then shapeLive.
+  // What GET /api/live answers, from the same rows liveSql gives it.
   snapshot(now) {
     this.sql.exec('DELETE FROM here WHERE last < ?', now - WINDOW);
-    const by = new Map();
-    for (const r of this.sql.exec('SELECT * FROM here ORDER BY first').toArray()) {
-      const v = by.get(r.visitor);
-      // The page they're on is the one seen last of those not left; with none, the one left last.
-      if (!v) { by.set(r.visitor, { ...r, here: r.out ? 0 : r.last }); continue; }
-      if (r.out ? !v.here && r.last >= v.last : r.last >= v.here) v.path = r.path;
-      if (!r.out) v.here = Math.max(v.here, r.last);
-      v.last = Math.max(v.last, r.last);
-    }
-    return shapeLive([...by.values()].sort((a, b) => b.last - a.last).slice(0, MAX), now);
+    return shapeLive(byVisitor(this.sql.exec('SELECT * FROM here').toArray()), now);
   }
 
   // At most once a second, to every dashboard watching.

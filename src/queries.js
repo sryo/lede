@@ -263,21 +263,19 @@ export const linksSql = (ds, q, only) =>
   `SELECT ${PERIOD(q)} AS p, ${COL.type} AS kind, ${COL.target} AS key, count(DISTINCT ${COL.visitor}) AS visitors, sum(_sample_interval) AS clicks `
   + `FROM ${ds} WHERE ${within(q, only, ['outbound', 'download'])} GROUP BY p, kind, key ORDER BY visitors DESC ${limit(LISTS.pages, only)}`;
 
-// Who was here in the last 30 minutes, one row per visitor. Each page view (by its start, view) is gone once
-// it was left after it was last seen (an engagement event marked left: its tab hidden or closed, or a
-// single-page app moving on), so a reader leaves "here now" as they go instead of 5 minutes later; a tab
-// shown again pings. here is when the visitor was last seen on a page view not gone, 0 with none, and path
-// the page that was (with none, the page they left last); a tie (hidden and back within the second) is still here. Rows from before views were
-// sent (view 0) are never gone, as before.
+// Who was here in the last 30 minutes, one row per page view (by visitor and view, its start), which
+// byVisitor in shape.js makes one row per visitor. hid is when the page view was last left (an engagement
+// event marked left: its tab hidden or closed, or a single-page app moving on) and shown when it was last
+// seen otherwise, so a reader leaves "here now" as they go instead of 5 minutes later, and a tab shown again
+// pings. Rows from before views were sent (view 0) are one per visitor and never left, as before. Only forms
+// the SQL API already takes elsewhere: no query over this one's aggregates.
 export const liveSql = (ds, site) => {
   const ts = 'toUnixTimestamp(timestamp)';
-  const views = `SELECT ${COL.visitor} AS visitor, ${COL.view} AS vw, argMax(${COL.path}, timestamp) AS path, argMin(${COL.referrer}, timestamp) AS referrer, `
-    + `argMin(${COL.country}, timestamp) AS country, min(${ts}) AS first, max(${ts}) AS last, `
-    + `if(max(if(${COL.left} = 1, ${ts}, 0)) > max(if(${COL.left} = 1, 0, ${ts})), 1, 0) AS out `
+  return `SELECT ${COL.visitor} AS visitor, ${COL.view} AS vw, argMax(${COL.path}, timestamp) AS path, argMin(${COL.referrer}, timestamp) AS referrer, `
+    + `argMin(${COL.country}, timestamp) AS country, toUnixTimestamp(min(timestamp)) AS first, toUnixTimestamp(max(timestamp)) AS last, `
+    + `max(if(${COL.left} = 1, ${ts}, 0)) AS hid, max(if(${COL.left} = 1, 0, ${ts})) AS shown `
     + `FROM ${ds} WHERE index1 = '${site}' AND (${COL.type} = 'pageview' OR ${COL.type} = 'ping' OR (${COL.type} = 'engagement' AND ${COL.left} = 1)) `
-    + `AND timestamp > now() - INTERVAL '30' MINUTE GROUP BY visitor, vw`;
-  return `SELECT visitor, argMax(path, last + if(out = 0, 4294967296, 0)) AS path, argMin(referrer, first) AS referrer, argMin(country, first) AS country, `
-    + `min(first) AS first, max(last) AS last, max(if(out = 0, last, 0)) AS here FROM (${views}) GROUP BY visitor ORDER BY last DESC LIMIT 200`;
+    + `AND timestamp > now() - INTERVAL '30' MINUTE GROUP BY visitor, vw ORDER BY last DESC LIMIT 1000`;
 };
 
 // How many people are usually here at this time of day: visitors seen in the same 5 minutes (the span

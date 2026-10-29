@@ -4,7 +4,7 @@ import { parseQuery, sqlStore, handleApi, runSql } from '../src/api.js';
 import { ranges, where, hexOf, breakdownSql, flowSql, hourlySql, conversionsSql, engagementSql, linksSql, liveSql, summarySql, seriesSql, topSourceSql, DAY } from '../src/queries.js';
 import { demoStore } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
-import { mergeRows, shapeLive, toEngagement, toAudience } from '../src/shape.js';
+import { mergeRows, shapeLive, byVisitor, toEngagement, toAudience } from '../src/shape.js';
 import { audienceSql } from '../src/queries.js';
 import { vitalsLine } from '../public/story.js';
 
@@ -174,6 +174,20 @@ test('live visitors say how long ago they were last seen, and none are dropped',
   assert.equal(live.visitors[3].ago, 90);
   assert.equal(live.visitors[3].seconds, 60);
   assert.equal(live.now, 10, 'seen in the last 5 minutes');
+});
+
+test('live page views become one row per visitor: here while a page view not left was seen lately, on its page', () => {
+  const rows = byVisitor([
+    { visitor: 'a', vw: 1, path: '/x', referrer: 'hn', first: 100, last: 900, hid: 900, shown: 800 },
+    { visitor: 'a', vw: 2, path: '/y', referrer: '', first: 200, last: 850, hid: 0, shown: 850 },
+    { visitor: 'b', vw: 3, path: '/z', first: 300, last: 990, hid: 990, shown: 990 },
+    { visitor: 'c', vw: 4, path: '/p', first: 300, last: 600, hid: 0, shown: 600 },
+    { visitor: 'c', vw: 5, path: '/q', first: 400, last: 700, hid: 700, shown: 650 },
+  ]);
+  assert.deepEqual(rows.map(r => [r.path, r.referrer, r.first, r.last, r.here]), [
+    ['/z', '', 300, 990, 990], ['/y', 'hn', 100, 900, 850], ['/p', '', 300, 700, 600]]);
+  const left = byVisitor([{ visitor: 'd', vw: 1, path: '/a', first: 1, last: 5, hid: 5, shown: 4 }, { visitor: 'd', vw: 2, path: '/b', first: 2, last: 9, hid: 9, shown: 8 }]);
+  assert.deepEqual([left[0].here, left[0].path], [0, '/b'], 'gone, on the page they left last');
 });
 
 test('a live visitor is here while a page view they haven\'t left was seen in the last 5 minutes', () => {
@@ -407,9 +421,8 @@ test('stats count page views only; engagement and link queries ask for their own
   const live = liveSql('lede', 'example.com');
   assert.ok(live.includes(`blob8 = 'pageview'`) && live.includes(`blob8 = 'ping'`), 'someone still reading a page is here now');
   assert.ok(live.includes(`(blob8 = 'engagement' AND double8 = 1)`), 'and a page view left since is someone gone; no other engagement is read');
-  assert.ok(live.includes('max(if(out = 0, last, 0)) AS here'));
-  assert.ok(live.includes('argMax(path, last + if(out = 0, 4294967296, 0)) AS path'), 'the page they\'re on, or else the one they left last');
-  assert.match(live, /GROUP BY visitor, vw\) GROUP BY visitor/, 'each page view on its own, as one visitor can have several tabs');
+  assert.match(live, /GROUP BY visitor, vw ORDER BY last DESC/, 'each page view on its own, as one visitor can have several tabs');
+  assert.ok(!/\) GROUP BY/.test(live), 'and no query over its aggregates, which the SQL API refused');
   const eng = engagementSql('lede', q);
   assert.ok(eng.includes(`(blob8 = 'engagement' OR blob8 = 'ping')`) && !eng.includes(`'pageview'`), 'pings carry how long a view was read so far');
   assert.match(eng, /max\(double1\) AS e, max\(double2\) AS s, .* GROUP BY p, key, vis, vw, t\)/, 'each view\'s largest totals');
