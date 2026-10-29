@@ -56,7 +56,7 @@ When something's wrong, Lede says what to do next, on the dashboard or in the Wo
 - **The dashboard asks for a token, or says the token can't read the stats or find the account:** make one with the link above and run `npx wrangler secret put ANALYTICS_TOKEN`. When the token reaches more than one account, set `ACCOUNT_ID`.
 - **Fewer visits than you expected:** blocklists keep the tracker off `workers.dev`; serve it from your site's own address, as above. Bots, data-center networks and very old browsers aren't counted either (see [What isn't counted](#what-isnt-counted)).
 - **Signing in says to wait:** 10 wrong passwords from one address lock signing in from it for 10 minutes.
-- **A page's view has no picture:** the view says why. The token lacks Browser Run (add it to the token), the day's browser time is used (a picture comes tomorrow), or Cloudflare's browser was busy (open the view again a minute later).
+- **A page's view has no picture:** the view says why. The token lacks Browser Run (add it to the token), the day's browser time is used (a picture comes tomorrow), or no picture could be taken just then (open the view again a minute later).
 - **No second line under the sentence:** there is none with fewer than 30 visitors, once the day's Workers AI allowance is used (until 00:00 UTC), or when a line fails Lede's checks. The logs say which, once a day.
 - **No messages:** a webhook that fails is logged. Check `ALERT_WEBHOOK`, and open the dashboard once, so the messages can link to it.
 - **The dashboard says the dataset is missing:** if you renamed it in `wrangler.jsonc`, set `DATASET` to the same name.

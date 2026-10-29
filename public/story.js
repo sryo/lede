@@ -330,11 +330,11 @@ export function todayPace(hourly, nowSec) {
 
 /* ---------- what the counts can't say ---------- */
 
-// Under the home sentence, when the numbers come with a catch: Cloudflare stored some views as samples, or only
+// Under the home sentence, when the numbers come with a catch: some views were counted from samples, or only
 // one of the two periods crosses the start of a month (see unitOf).
 export function countNotes(totals, days) {
   const out = [], cur = totals.sampled, prev = totals.prevSampled;
-  if (cur || prev) out.push(`Cloudflare stored some views from ${cur && prev ? `these ${days} days and the ${days} before` : cur ? `these ${days} days` : `the ${days} days before`} as samples, each counted for the few like it, so the counts are estimates.`);
+  if (cur || prev) out.push(`Some views from ${cur && prev ? `these ${days} days and the ${days} before` : cur ? `these ${days} days` : `the ${days} days before`} are counted from samples, so the numbers are estimates.`);
   if (unitOf(totals) === 'visits') out.push(`Lede counts each visitor once a month, and ${totals.split.cur ? `these ${days} days cross` : `the ${days} days before cross`} the start of one, so the two are compared on visits instead of visitors.`);
   return out;
 }
@@ -1011,8 +1011,8 @@ export function scrollNumbers(r) {
 // picture of the page), og (the picture the page shares on social sites), none, or wait (still on its way).
 export function pictureCaption({ path, days, kind, why }) {
   const page = esc(pageName(path)), fix = 'give Lede’s Cloudflare token the Browser Run permission';
-  const later = why === 'failed' ? 'Cloudflare couldn’t take a picture of this page. ' : why === 'permission' ? `For a picture of the page, ${fix}. `
-    : why === 'busy' ? 'Cloudflare’s browser was busy; Lede tries again when you next open this page. ' : 'Lede takes a picture of the page tomorrow. ';
+  const later = why === 'failed' ? 'Lede couldn’t take a picture of this page. ' : why === 'permission' ? `For a picture of the page, ${fix}. `
+    : why === 'busy' ? 'Lede couldn’t take a picture just now and tries again when you next open this page. ' : 'Lede takes a picture of the page tomorrow. ';
   const what = kind === 'shot' ? `Picture of ${page} taken today. `
     : kind === 'og' ? `This is the picture ${page} shows when shared on social sites, not the page itself. ${later}`
       : kind === 'none' ? (why === 'permission' ? `To show a picture of the page here, ${fix}. ` : why === 'failed' || why === 'busy' ? later : 'No picture of the page yet; Lede takes one tomorrow. ') : '';

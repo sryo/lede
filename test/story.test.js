@@ -763,9 +763,9 @@ test('scroll picture: the caption says what the picture is and when it was taken
   assert.equal(pictureCaption({ path: '/', days: 7, kind: 'shot' }), 'Picture of the home page taken today. Readers counted over the last 7 days.');
   assert.equal(pictureCaption({ path: '/owls', days: 1, kind: 'shot' }), 'Picture of /owls taken today. Readers counted today.');
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'budget' }), 'No picture of the page yet; Lede takes one tomorrow. Readers counted over the last 30 days.');
-  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'failed' }), 'Cloudflare couldn’t take a picture of this page. Readers counted over the last 30 days.');
-  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'busy' }), 'Cloudflare’s browser was busy; Lede tries again when you next open this page. Readers counted over the last 30 days.');
-  assert.match(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'busy' }), /busy; Lede tries again/);
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'failed' }), 'Lede couldn’t take a picture of this page. Readers counted over the last 30 days.');
+  assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'none', why: 'busy' }), 'Lede couldn’t take a picture just now and tries again when you next open this page. Readers counted over the last 30 days.');
+  assert.match(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'busy' }), /just now and tries again/);
   assert.equal(pictureCaption({ path: '/owls', days: 30, kind: 'og', why: 'budget' }),
     'This is the picture /owls shows when shared on social sites, not the page itself. Lede takes a picture of the page tomorrow. Readers counted over the last 30 days.');
   // Waiting won't help when the token can't take pictures, so it says what to do.
@@ -877,9 +877,9 @@ test('a page or source on its own says its change in visits when the month split
 
 test('the notes under the sentence say which period was sampled, and when the month splits one', () => {
   assert.deepEqual(countNotes({ sampled: false }, 30), []);
-  assert.deepEqual(countNotes({ sampled: true }, 30), ['Cloudflare stored some views from these 30 days as samples, each counted for the few like it, so the counts are estimates.']);
-  assert.match(countNotes({ sampled: false, prevSampled: true }, 7)[0], /from the 7 days before as samples/);
-  assert.match(countNotes({ sampled: true, prevSampled: true }, 7)[0], /from these 7 days and the 7 before as samples/);
+  assert.deepEqual(countNotes({ sampled: true }, 30), ['Some views from these 30 days are counted from samples, so the numbers are estimates.']);
+  assert.match(countNotes({ sampled: false, prevSampled: true }, 7)[0], /^Some views from the 7 days before are counted/);
+  assert.match(countNotes({ sampled: true, prevSampled: true }, 7)[0], /^Some views from these 7 days and the 7 before are counted/);
   const both = { cur: { visitors: 300 }, prev: { visitors: 200 } };
   assert.deepEqual(countNotes({ ...both, split: { cur: true, prev: false } }, 7),
     ['Lede counts each visitor once a month, and these 7 days cross the start of one, so the two are compared on visits instead of visitors.']);
