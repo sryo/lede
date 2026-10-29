@@ -286,3 +286,7 @@ test('the tab shows the site’s icon, and Setup offers the nine colourways with
   assert.match(fn('drawSetup'), /Tab icon[\s\S]*ICONS\.map/);
   assert.match(fn('drawSetup'), /\/api\/icon\?site=/);
 });
+
+test('the Online view credits the figures only when it draws some', () => {
+  assert.match(fn('renderOnline'), /\$\{rows\.length\?'<p class="credit">Figures: Wee People, ProPublica<\/p>':''\}/);
+});

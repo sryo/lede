@@ -35,7 +35,7 @@ jobs:
       # The demo's tests run here as well as on the owner's machine, because Linux, like Pages, tells names apart
       # by case. The build then stops when it can't rewrite the page.
       - run: node --test test/demo.test.js
-      - run: npm run demo
+      - run: npm run demo -- --out demo-site
       - uses: actions/configure-pages@v6
       - uses: actions/upload-pages-artifact@v5
         with:

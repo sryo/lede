@@ -1993,7 +1993,7 @@ async function renderOnline(body){
     ${rows.length?`<section class="card"><div class="card-title">Where they are, and how long they’ve been there</div>${LN.html?`<p class="card-say">${LN.html}</p>`:''}<div class="lanes svgc"></div>
       <p class="crowd-key"><span><i class="sw here"></i><b>${live.now}</b> here now</span>${earlier>0?`<span><i class="sw gone"></i><b>${earlier}</b> left in the last 30 minutes</span>`:''}${named.length?`<span><i class="sw here" style="background:var(--src)"></i>from ${named.map(esc).join(' or ')}</span>`:''}</p></section>`:''}
     <section class="card">${rows.length?`<div class="people list"><div class="lrow lhead online"><span>Page</span><span>People</span><span>Source</span><span class="cty">Country</span><span>Time on site</span><span></span></div></div>`:'<div class="muted">No one in the last 30 minutes.</div>'}</section>
-    <p class="credit">Figures: Wee People, ProPublica</p>`;
+    ${rows.length?'<p class="credit">Figures: Wee People, ProPublica</p>':''}`;
   if(rows.length)drawLanes(body.querySelector('.lanes'),LN);
   const list=body.querySelector('.people');
   for(const [path,g] of rows){

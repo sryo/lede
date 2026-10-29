@@ -1250,7 +1250,7 @@ export function vitalsFinding(rows, pageRows, total) {
 
 /* ---------- the tab icon ---------- */
 
-// Lede's mark in nine colourways (brand/squares/family), outer square to inner, so tabs for different sites tell
+// Lede's mark (public/icon.svg) in nine colourways, outer square to inner, so tabs for different sites tell
 // apart at a glance. The first is Lede's own.
 export const ICONS = [
   ['#E10602', '#FF7300', '#FCD000'], ['#4800FF', '#0A6CFF', '#00C8FF'], ['#12974A', '#3CC23A', '#C8F03C'],

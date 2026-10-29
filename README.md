@@ -5,7 +5,7 @@
 
 Your site's stats, told as a story.
 
-<img src="lede.png" width="400" alt="Lede's home screen: 67,208 visitors, up 6%. google.com sent 2,092 of the 3,507 extra visitors, mostly to /migration.">
+<img src="docs/lede.png" width="400" alt="Lede's home screen: 67,208 visitors, up 6%. google.com sent 2,092 of the 3,507 extra visitors, mostly to /migration.">
 
 [Try the demo](https://sryo.github.io/lede/), with sample data. It's the dashboard and the Worker running in your browser, so nothing in it reaches Cloudflare ([how it's built](docs/how-it-works.md#run-it-locally)).
 

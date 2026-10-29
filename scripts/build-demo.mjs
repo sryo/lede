@@ -1,15 +1,19 @@
-// Writes demo-site/, the static sample published at sryo.github.io/lede: the dashboard from public/, with the
+// Writes the static sample published at sryo.github.io/lede: the dashboard from public/, with the
 // Worker bundled for the browser (demo/main.js) answering its /api/* from the sample data. Nothing in public/
 // changes, so the dashboard's bytes stay what the bench measures.
 //   npm run demo [-- --base /lede/ --out demo-site]
+// Without --out it goes to the system's temporary folder, so a local build never sits in the project going stale;
+// the workflow names its own folder to publish.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import * as esbuild from 'esbuild';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
+export const OUT = join(tmpdir(), 'lede-demo');
 const PUBLIC = join(ROOT, 'public');
 const ENTRY = join(ROOT, 'demo', 'main.js');
 // Cloudflare's headers mean nothing to GitHub Pages, and the sample may be found by search. routes.js is inside
@@ -51,7 +55,7 @@ export function clearable(out) {
   return dir;
 }
 
-export async function build({ out = 'demo-site', base = '/lede/' } = {}) {
+export async function build({ out = OUT, base = '/lede/' } = {}) {
   if (!base.startsWith('/') || !base.endsWith('/')) throw new Error(`The base starts and ends with a slash, like /lede/; got ${base}.`);
   const dir = clearable(out);
   rmSync(dir, { recursive: true, force: true });
@@ -75,6 +79,6 @@ export async function build({ out = 'demo-site', base = '/lede/' } = {}) {
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { values } = parseArgs({ options: { base: { type: 'string', default: '/lede/' }, out: { type: 'string', default: 'demo-site' } } });
+  const { values } = parseArgs({ options: { base: { type: 'string', default: '/lede/' }, out: { type: 'string', default: OUT } } });
   console.log(`${await build(values)}/ written for ${values.base}, from public/ and demo/main.js`);
 }

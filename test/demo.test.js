@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import * as routes from '../public/routes.js';
 import { demoFetch, demoEnv, memoryKV, withBase } from '../demo/runtime.js';
-import { build, rewrite, clearable } from '../scripts/build-demo.mjs';
+import { build, rewrite, clearable, OUT } from '../scripts/build-demo.mjs';
 
 const ORIGIN = 'https://sryo.github.io';
 const PUBLIC = fileURLToPath(new URL('../public/', import.meta.url));
@@ -211,4 +211,13 @@ test('the sample’s last half hour is about as busy as its hours say a usual on
   const q = parseQuery(new URL('https://x/api/hourly?site=example.com&days=30&tz=0'), ['example.com']);
   const P = onlinePace(await demoStore.live(q), await demoStore.hourly(q), Date.now() / 1000);
   if (P) assert.ok(P.ratio > .6 && P.ratio < 1.75, `ratio ${P.ratio.toFixed(2)}`);
+});
+
+test('a local build lands in the system’s temporary folder, never in the project; the workflow names its own', () => {
+  const ROOT = fileURLToPath(new URL('..', import.meta.url));
+  assert.equal(OUT, join(tmpdir(), 'lede-demo'));
+  assert.ok(!OUT.startsWith(ROOT));
+  const flow = readFileSync(new URL('../.github/workflows/demo.yml', import.meta.url), 'utf8');
+  assert.match(flow, /run: npm run demo -- --out demo-site\n/);
+  assert.match(flow, /path: demo-site\n/);
 });
