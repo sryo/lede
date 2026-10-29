@@ -265,12 +265,14 @@ button.tile-title:hover{color:var(--ink)}
 .sqrow{all:unset;cursor:pointer;display:flex;align-items:center;gap:12px;min-width:0;border-radius:6px}
 .sqrow:focus-visible{outline:2px solid var(--focus);outline-offset:3px}
 .sqrow:hover .sq-label{color:var(--ink)}
-.sq-num{flex:0 1 auto;display:flex;align-items:baseline;gap:8px;min-width:0}
+.sq-num{flex:0 1 auto;display:flex;align-items:baseline;gap:8px;min-width:0;max-width:100%}
 .sq-num b,.num .v{font-size:var(--fs-l);font-weight:700;font-variant-numeric:tabular-nums}
 
 .sqrow.stack .sq-num{flex-direction:column;align-items:flex-start;gap:0}
 .sqrow.under{flex-direction:column;align-items:flex-start;gap:4px}
 .sq-label,.num .k,.credit{font-size:var(--fs-xs);color:var(--muted)}
+/* a name longer than its column ends in an ellipsis, with the whole name in its hint, instead of running under the squares */
+.sq-label{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sqrow svg{display:block;flex:none}
 
 /* heatmap */
@@ -813,12 +815,13 @@ function dayBars(el,o){
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
     const top=o.label?40:o.scale?10:4,padB=o.axis?20:o.scale?4:0,base=H-padB,padR=o.scale?40:0,peakV=Math.max(maxOf(cur),prev?maxOf(prev):0);
-    // With a scale, the top gridline is a round number just above the tallest bar.
-    const step=o.scale?nice(peakV||1).step:0,max=o.scale?Math.ceil((peakV||1)/step)*step:peakV*1.04||1;
+    // With a scale, the top gridline is a round number just above the tallest bar. Bars count people, so a
+    // gridline is never a fraction of one.
+    const step=o.scale?Math.max(1,nice(peakV||1).step):0,max=o.scale?Math.ceil((peakV||1)/step)*step:peakV*1.04||1;
     if(base<top+8)return;
     const cw=(W-padR)/n,bw=Math.max(2,Math.min(cw*.66,28)),Y=v=>top+(base-top)*(1-v/max),x=i=>i*cw+(cw-bw)/2,r=Math.min(2,bw/2);
     let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(o.aria)}">`;
-    if(o.scale)for(let v=step;v<=max+1e-9;v+=step){const y=Y(v);s+=`<line class="grid-l" x1="0" x2="${W-padR}" y1="${y}" y2="${y}"/><text x="${W}" y="${y+4}" font-size="12" fill="var(--muted)" text-anchor="end">${v>=1000?`${+(v/1000).toFixed(1)}k`:v}</text>`}
+    if(o.scale)for(let k=1;k*step<=max+1e-9;k++){const v=k*step,y=Y(v);s+=`<line class="grid-l" x1="0" x2="${W-padR}" y1="${y}" y2="${y}"/><text x="${W}" y="${y+4}" font-size="12" fill="var(--muted)" text-anchor="end">${v>=1000?`${+(v/1000).toFixed(1)}k`:v}</text>`}
     cur.forEach((v,i)=>{
       if(o.seg&&o.seg.day===i){
         const y=Y(v),ym=Y(v-o.seg.top);
@@ -962,7 +965,7 @@ function drawSquares(el,rows){
     box.style.gap=Math.min(20,Math.max(6,(H-n*(size+line))/(n+1)))+'px';
     box.replaceChildren(...rows.map(r=>{
       const b=document.createElement('button');b.type='button';b.className='sqrow'+(under?' under':stack?' stack':'');b.dataset.key=r.label;
-      b.innerHTML=`<span class="sq-num"${under?'':` style="width:${text}px"`}><b${r.story?' class="told"':''}>${r.pct==null?'–':fmtPct(r.pct)}</b><span class="sq-label">${esc(r.label)}</span></span>${squaresSVG(r.pct||0,size,gap,r.fill||'var(--bnc)')}`;
+      b.innerHTML=`<span class="sq-num"${under?'':` style="width:${text}px"`}><b${r.story?' class="told"':''}>${r.pct==null?'–':fmtPct(r.pct)}</b><span class="sq-label" title="${esc(r.label)}">${esc(r.label)}</span></span>${squaresSVG(r.pct||0,size,gap,r.fill||'var(--bnc)')}`;
       b.setAttribute('aria-label',r.aria);
       b.onclick=e=>{e.stopPropagation();r.open(b)};
       return b;
@@ -1246,7 +1249,7 @@ function dimSection(sec,group,f,compact,boldKeys=null,engagement=null){
     const total=rows.reduce((a,r)=>a+r.value,0);
     const go=r=>el=>openFilter({...f,[FILTER_OF[r.dim]]:r.key},r.label,el);
     b.innerHTML='<div></div>';
-    // Only the overview repeats home's sentence, so only its lists bold what that sentence names.
+    // A list with nothing of its own to bold, on a view with no filter, bolds what home's sentence names.
     const H=home(),overview=compact&&f.path==null&&f.referrer==null&&f.channel==null&&H;
     const named=new Set(boldKeys?rows.filter(r=>boldKeys.has(r.dim==='channel'?'ch:'+r.key:r.key)).map(r=>r.key)
       :overview?rows.filter(r=>r.dim==='channel'?H.T.told.has('ch:'+r.key):r.dim==='referrer'?H.T.told.has(r.key):r.key===H.T.page).map(r=>r.key):[]);
