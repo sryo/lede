@@ -268,7 +268,8 @@ async function notes(req, url, q, env, demo) {
 }
 
 // The channel a referrer host falls in when no UTM tags say otherwise.
-export const withChannels = out => ({ ...out, rows: out.rows.map(r => ({ ...r, channel: channelFor(r.key, new URLSearchParams()) })) });
+const NO_TAGS = new URLSearchParams();
+export const withChannels = out => ({ ...out, rows: out.rows.map(r => ({ ...r, channel: channelFor(r.key, NO_TAGS) })) });
 
 // A funnel: two to five different pages a visit goes through, in order, read as stored pages (see
 // pageOf). Five of them, written as hex up to three times each, keep the query under 10 KiB.

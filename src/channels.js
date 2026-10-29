@@ -66,24 +66,42 @@ export function sourceTag(landing) {
 
 export const CHANNELS = ['paid', 'email', 'ai', 'search', 'video', 'social', 'referral', 'direct'];
 
-function matches(host, list) {
-  return !!host && list.some(d => d.endsWith('.')
-    ? host.startsWith(d) || host.includes('.' + d)
-    : host === d || host.endsWith('.' + d));
+// Which of the lists a host is on, as bits: a lookup for the host and each parent domain of it in one map of
+// every whole host, and a pattern per list for the names ending in a dot.
+const LISTS = [EMAIL, AI, SEARCH, NOT_SEARCH, VIDEO, SOCIAL];
+const [IS_EMAIL, IS_AI, IS_SEARCH, NOT_A_SEARCH, IS_VIDEO, IS_SOCIAL] = LISTS.map((_, i) => 1 << i);
+const WHOLE = new Map(), OPEN = [];
+LISTS.forEach((list, i) => {
+  for (const d of list) if (!d.endsWith('.')) WHOLE.set(d, (WHOLE.get(d) || 0) | 1 << i);
+  const open = list.filter(d => d.endsWith('.')).map(d => d.replace(/\./g, '\\.'));
+  if (open.length) OPEN.push([new RegExp(`(^|\\.)(${open.join('|')})`), 1 << i]);
+});
+
+function listsOf(host) {
+  let on = 0;
+  if (!host) return on;
+  for (const [re, bit] of OPEN) if (re.test(host)) on |= bit;
+  for (let at = host; ;) {
+    on |= WHOLE.get(at) || 0;
+    const dot = at.indexOf('.');
+    if (dot < 0) return on;
+    at = at.slice(dot + 1);
+  }
 }
+const searchOf = on => on & IS_SEARCH && !(on & NOT_A_SEARCH);
 
 // referrer: hostname without "www." ('' when none). landing: URLSearchParams of the page the visit started on.
 // The landing page's source tag counts as much as the referrer, since apps and newsletters often send none.
 export function channelFor(referrer, landing) {
   const medium = (landing.get('utm_medium') || '').toLowerCase();
   const source = sourceTag(landing);
-  const from = list => matches(referrer, list) || matches(source, list);
+  const r = listsOf(referrer), s = listsOf(source), on = r | s;
   if (PAID_MEDIUMS.includes(medium) || PAID_PARAMS.some(p => landing.has(p))) return 'paid';
-  if (medium === 'email' || medium === 'newsletter' || EMAIL_PARAMS.some(p => landing.has(p)) || from(EMAIL)) return 'email';
-  if (from(AI)) return 'ai';
-  if (medium === 'organic' || [referrer, source].some(h => matches(h, SEARCH) && !matches(h, NOT_SEARCH))) return 'search';
-  if (medium === 'video' || from(VIDEO)) return 'video';
-  if (medium === 'social' || medium === 'organic_social' || from(SOCIAL)) return 'social';
+  if (medium === 'email' || medium === 'newsletter' || EMAIL_PARAMS.some(p => landing.has(p)) || on & IS_EMAIL) return 'email';
+  if (on & IS_AI) return 'ai';
+  if (medium === 'organic' || searchOf(r) || searchOf(s)) return 'search';
+  if (medium === 'video' || on & IS_VIDEO) return 'video';
+  if (medium === 'social' || medium === 'organic_social' || on & IS_SOCIAL) return 'social';
   if (referrer || source) return 'referral';
   return 'direct';
 }

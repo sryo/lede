@@ -105,7 +105,9 @@ export const WEBHOOK = 'https://hooks.bench.test/lede';
 
 // A fetch that answers the Analytics Engine SQL API, the account lookup, Browser Rendering's screenshot and
 // the alert webhook; anything else is refused. profile.big answers as a big site does (see fill); it can be changed between calls.
+// Each answer is made once per query and kept, so the time spent making it isn't counted as the Worker's.
 export function fakeFetch(count, profile = {}) {
+  const made = new Map();
   return async (url, init = {}) => {
     const u = String(url);
     if (u.endsWith('/browser-rendering/screenshot')) {
@@ -115,8 +117,9 @@ export function fakeFetch(count, profile = {}) {
     }
     if (u.endsWith('/analytics_engine/sql')) {
       count.sql++;
-      const data = rowsFor(String(init.body), profile.big);
-      return new Response(JSON.stringify({ meta: [], data, rows: data.length }), { status: 200 });
+      const key = `${profile.big ? 'big' : ''}\n${init.body}`;
+      if (!made.has(key)) { const data = rowsFor(String(init.body), profile.big); made.set(key, JSON.stringify({ meta: [], data, rows: data.length })); }
+      return new Response(made.get(key), { status: 200 });
     }
     if (u === WEBHOOK) { count.webhooks++; return new Response('ok'); }
     if (u === 'https://api.cloudflare.com/client/v4/accounts') return new Response(JSON.stringify({ success: true, result: [{ id: 'acc' }] }));
