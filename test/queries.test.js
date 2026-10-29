@@ -321,3 +321,16 @@ test("today's hours match the local clock after a daylight-saving change earlier
     assert.equal(todayPace(hourly, t - 8 * H), null, 'too early in the day to say');
   }
 });
+
+test('breakdowns read the campaign tags and the new fields, each by a visit’s first event', () => {
+  for (const dim of ['campaign', 'medium', 'tag', 'os', 'language', 'place', 'screen', 'refUrl']) assert.ok(BREAKDOWNS.includes(dim), dim);
+  const q = { ...ranges(30, 0, Date.UTC(2026, 9, 28)), site: 'example.com', filters: {} };
+  assert.match(breakdownSql('lede', q, 'campaign'), /argMin\(blob12, timestamp\) AS key/);
+  assert.match(breakdownSql('lede', q, 'medium'), /argMin\(blob11, timestamp\) AS key/);
+  assert.match(breakdownSql('lede', q, 'tag'), /argMin\(blob10, timestamp\) AS key/);
+  assert.match(breakdownSql('lede', q, 'refUrl'), /argMin\(blob17, timestamp\) AS key/);
+  assert.match(breakdownSql('lede', q, 'os'), /argMin\(blob18, timestamp\) AS key/);
+  assert.match(breakdownSql('lede', q, 'place'), /argMin\(blob19, timestamp\) AS key/);
+  assert.match(breakdownSql('lede', q, 'language'), /argMin\(blob20, timestamp\) AS key/);
+  assert.match(breakdownSql('lede', q, 'screen'), /max\(double9\) AS key/, 'the width a page view sent, never an event’s 0');
+});

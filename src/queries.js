@@ -12,6 +12,16 @@ const VISIT_KEYS = {
   referrer: `argMin(${COL.referrer}, timestamp)`,
   channel: `argMin(${COL.channel}, timestamp)`,
   country: `argMin(${COL.country}, timestamp)`,
+  // The landing page's campaign tags: utm_campaign, utm_medium and utm_source (or source, or ref) as written.
+  campaign: `argMin(${COL.utmCampaign}, timestamp)`,
+  medium: `argMin(${COL.utmMedium}, timestamp)`,
+  tag: `argMin(${COL.utmSource}, timestamp)`,
+  refUrl: `argMin(${COL.refUrl}, timestamp)`,
+  os: `argMin(${COL.os}, timestamp)`,
+  place: `argMin(${COL.place}, timestamp)`,
+  language: `argMin(${COL.language}, timestamp)`,
+  // Only page views carry the screen's width; every other event has 0.
+  screen: `max(${COL.screen})`,
 };
 export const BREAKDOWNS = ['path', ...Object.keys(VISIT_KEYS)];
 

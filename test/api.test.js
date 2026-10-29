@@ -138,7 +138,7 @@ test('demo store answers every route with the same shapes', async () => {
   const ser = await demoStore.series(q);
   assert.equal(ser.cur.visitors.length, 30);
   assert.equal(ser.top.length, 30);
-  for (const dim of ['path', 'entry', 'exit', 'referrer', 'channel']) {
+  for (const dim of ['path', 'entry', 'exit', 'referrer', 'channel', 'campaign', 'medium', 'tag', 'os', 'language', 'place', 'screen']) {
     const { rows } = await demoStore.breakdown(q, dim);
     assert.ok(rows.length > 0, dim);
     assert.ok(rows[0].prev, dim);

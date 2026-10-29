@@ -1341,7 +1341,7 @@ async function renderFilter(body,f){
     ${f.path!=null&&f.path!=='/'?'<section class="card goal-card" hidden></section>':''}
     ${f.path==null&&!overview?'<section data-group="pages"></section>':''}
     ${f.referrer==null&&f.path==null&&!overview?'<section data-group="sources"></section>':''}
-    ${overview?'<section class="card kw" hidden></section><section class="card aud" hidden></section><section class="card"><div class="card-title heat-title">By weekday and hour</div><p class="card-say heat-say"></p><div class="chart"></div></section><section class="card funnels-card" hidden></section>':''}`;
+    ${overview?'<section class="card camp" hidden></section><section class="card kw" hidden></section><section class="card aud" hidden></section><section class="card"><div class="card-title heat-title">By weekday and hour</div><p class="card-say heat-say"></p><div class="chart"></div></section><section class="card funnels-card" hidden></section>':''}`;
   bindLinks(body.querySelector('.say'));
   const cur=ser.cur.visitors,busiest=cur.indexOf(maxOf(cur));
   // On the overview the markers row carries the dates, as on home.
@@ -1414,7 +1414,8 @@ async function renderFilter(body,f){
     if(S){drawSpeed(body,S,f.path);body._verdict?.(S)}
     else if(V)body.querySelector('.nums').insertAdjacentHTML('afterend',`<p class="say-sub vitals" title="${esc(VITALS_HINT)}">${V.html}</p>`);
   },()=>{});
-  if(overview)api('audience').then(A=>{if(!stale(body,gen))drawAudience(body.querySelector('.aud'),A)},()=>{});
+  if(overview)api('audience').then(A=>{if(!stale(body,gen)){drawAudience(body.querySelector('.aud'),A);drawAudienceMore(body.querySelector('.aud'),gen,body)}},()=>{});
+  if(overview)drawCampaigns(body.querySelector('.camp'),gen,body);
   if(overview)api('keywords').then(K=>{if(!stale(body,gen))drawKeywords(body.querySelector('.kw'),K)},()=>{});
   if(overview||f.path!=null)api('links',p).then(L=>{if(!stale(body,gen))drawLinks(body,L,c.visitors)},()=>{});
 }
@@ -1512,6 +1513,43 @@ function drawAudience(sec,A){
   // "All N" opens every part of a list under its strip, with its share and visitors.
   sec.querySelectorAll('.mix-more').forEach(b=>b.onclick=()=>{const p=b.nextElementSibling,open=p.hidden;p.hidden=!open;b.setAttribute('aria-expanded',open);b.textContent=open?'Fewer':`All ${p.children.length}`});
   sec.hidden=false;
+}
+
+// The landing pages' campaign tags, as written: a list per tag with a switch, opening on campaigns (or on sources
+// when no visit had a campaign). Hidden when no visit was tagged.
+async function drawCampaigns(sec,gen,body){
+  const modes=[['Campaigns','campaign'],['Mediums','medium'],['Sources','tag']],tagged=d=>api('breakdown',{dim:d}).then(r=>r.rows.filter(x=>x.key&&x.visitors)).catch(()=>[]);
+  let rows=await tagged('campaign'),at=0;
+  if(!rows.length){rows=await tagged('tag');at=2}
+  if(stale(body,gen)||!rows.length)return;
+  sec.innerHTML=`<div class="card-head"><div class="card-title">Campaigns</div>${segHTML('Campaign tags',modes.map(m=>m[0]),at)}</div><p class="say-sub">From the utm_ tags on the links visits came in by.</p><div></div>`;
+  const total=HOME?.S?.c?.visitors||sum(rows.map(r=>r.visitors));
+  const draw=list=>cutList(sec.lastElementChild,list.map(r=>({key:r.key,label:r.key,value:r.visitors,prev:r.prev?.visitors})),8,'tags',(box,r)=>rowsInto(box,r,{total,subj:'src'}));
+  draw(rows);
+  onSeg(sec,async i=>draw(await tagged(modes[i][1])));
+  sec.hidden=false;
+}
+
+// Under the audience strips: the readers' systems, languages, screen widths and places, a query each, after the rest.
+const BY_WIDTH=[[600,'under 600 px'],[1024,'600–1023 px'],[1440,'1024–1439 px'],[Infinity,'1440 px and up']];
+const languageName=k=>{try{return new Intl.DisplayNames(['en'],{type:'language'}).of(k)}catch{return k}};
+async function drawAudienceMore(sec,gen,body){
+  const got=await Promise.all(['os','language','screen','place'].map(d=>api('breakdown',{dim:d}).then(r=>r.rows).catch(()=>[])));
+  if(stale(body,gen)||sec.hidden)return;
+  const [os,lang,screen,place]=got.map(rows=>rows.filter(r=>r.key&&r.key!=='0'&&r.visitors));
+  const widths=new Map();
+  for(const r of screen){const l=BY_WIDTH.find(([w])=>+r.key<w)[1];widths.set(l,(widths.get(l)||0)+r.visitors)}
+  const parts=[['Systems',os.map(r=>[r.key==='other'?'Other systems':r.key,r.visitors])],['Languages',lang.map(r=>[languageName(r.key),r.visitors])],
+    ['Screens',BY_WIDTH.map(([,l])=>[l,widths.get(l)||0]).filter(x=>x[1])],['Places',place.map(r=>{const [city,region]=r.key.split('|');return [[city,region].filter(Boolean).join(', '),r.visitors]})]];
+  const note=sec.querySelector('.say-sub');
+  for(const [t,items] of parts){
+    const all=sum(items.map(x=>x[1]));if(!all)continue;
+    const sorted=t==='Screens'?items:items.slice().sort((a,b)=>b[1]-a[1]),top=sorted.slice(0,4),rest=all-sum(top.map(x=>x[1]));
+    note.insertAdjacentHTML('beforebegin',`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v])=>`<i style="flex:${v};background:var(--time-t)" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}${rest>0?`<i style="flex:${rest};background:var(--time-p)"></i>`:''}</div>
+      <p>${top.map(([l,v])=>`<span>${esc(l)} ${fmtPct(v/all)}</span>`).join('')}${rest>0?`<span>${sorted.length-top.length} more ${fmtPct(rest/all)}</span>`:''}</p>
+      ${sorted.length>4?`<button type="button" class="mix-more" aria-expanded="false">All ${fmtInt(sorted.length)}</button><p hidden>${sorted.map(([l,v])=>`<span>${esc(l)} ${fmtPct(v/all)} · ${fmtInt(v)}</span>`).join('')}</p>`:''}</div>`);
+  }
+  sec.querySelectorAll('.mix-more').forEach(b=>b.onclick=()=>{const p=b.nextElementSibling,open=p.hidden;p.hidden=!open;b.setAttribute('aria-expanded',open);b.textContent=open?'Fewer':`All ${p.children.length}`});
 }
 
 // Links to other sites and files people clicked, as a share of the visitors; a switch when there are both.
@@ -1684,7 +1722,15 @@ async function renderSource(body,f){
       <section class="card stay-card"><div class="card-title">Did they stay</div><div class="sq-box"></div>
         <p class="stay-time" id="sq-time" hidden></p><p class="say-sub" id="sq-note" hidden></p><button type="button" class="more-link">${bounceLink()}</button></section>
     </div>
-    <section class="card"><div class="card-title">Pages they read</div><div class="pages-list"></div></section>`;
+    <section class="card"><div class="card-title">Pages they read</div><div class="pages-list"></div></section>
+    ${channel||!f.referrer?'':`<section class="card linked" hidden><div class="card-title">Pages on ${esc(label)} that linked here</div><div></div></section>`}`;
+  // Where on the source people followed a link from, when their browsers said: most send only the site.
+  if(!channel&&f.referrer)api('breakdown',{...f,dim:'refUrl'}).then(d=>{
+    const rows=d.rows.filter(r=>r.key&&r.visitors),sec=body.querySelector('.linked');
+    if(stale(body,gen)||!rows.length||!sec)return;
+    cutList(sec.lastElementChild,rows.map(r=>({key:r.key,label:r.key.replace(/^https?:\/\/(www\.)?/,''),value:r.visitors,prev:r.prev?.visitors})),8,'pages',(box,r)=>rowsInto(box,r,{total:c.visitors,subj:'src'}));
+    sec.hidden=false;
+  }).catch(()=>{});
   const cur=ser.cur.visitors,spike=findSpike(cur,ser.start),usual=median(cur);
   let label2=null;
   if(spike>=0){

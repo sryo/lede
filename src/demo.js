@@ -213,6 +213,25 @@ function agg(f, d0, d1, pathFactor = () => 1) {
   return out;
 }
 
+// The sample's campaign tags and the newer fields, as shares of the visits (the rest have none).
+const SHARES = {
+  campaign: [['spring-migration', .04], ['owl-week', .025], ['newsletter-42', .015]],
+  medium: [['social', .04], ['email', .03], ['cpc', .02]],
+  tag: [['newsletter', .03], ['facebook', .025], ['google', .02]],
+  os: [['iOS 18.6', .31], ['Android 14', .22], ['Windows', .2], ['macOS', .17], ['Android 13', .05], ['Linux', .03], ['ChromeOS', .02]],
+  language: [['en-US', .46], ['en-GB', .14], ['de-DE', .08], ['es-AR', .06], ['fr-FR', .05], ['pt-BR', .05], ['ja-JP', .04], ['es-ES', .04], ['nl-NL', .03], ['it-IT', .03], ['sv-SE', .02]],
+  place: [['New York|New York', .08], ['London|England', .07], ['Los Angeles|California', .05], ['Toronto|Ontario', .04], ['Berlin|Berlin', .04], ['Buenos Aires|Buenos Aires F.D.', .03],
+    ['Seattle|Washington', .03], ['Chicago|Illinois', .03], ['Sydney|New South Wales', .03], ['Portland|Oregon', .02], ['Austin|Texas', .02]],
+  screen: [['390', .24], ['1440', .16], ['1920', .14], ['414', .12], ['360', .1], ['1280', .08], ['1536', .06], ['768', .04], ['820', .03], ['2560', .03]],
+};
+// The pages that linked to the sample, by source.
+const REF_URLS = {
+  'news.ycombinator.com': [['https://news.ycombinator.com/item?id=41234567', .7], ['https://news.ycombinator.com/', .3]],
+  'reddit.com': [['https://www.reddit.com/r/birding/comments/1abcde/owl_calls/', .6], ['https://www.reddit.com/r/whatsthisbird/', .4]],
+  'ebird.org': [['https://ebird.org/species/grhowl', .5], ['https://ebird.org/home', .5]],
+  'facebook.com': [['https://www.facebook.com/groups/birdwatchers/', 1]],
+};
+
 const windows = q => ({ cur: [N - q.days, N], prev: [N - 2 * q.days, N - q.days] });
 
 function keysFor(dim) {
@@ -292,6 +311,12 @@ export const demoStore = {
   },
   async breakdown(q, dim) {
     const w = windows(q);
+    // The campaign tags and the newer fields: each key a share of the visits, of a source's when it has its own.
+    const shares = dim === 'refUrl' ? REF_URLS[q.filters.referrer] || [] : SHARES[dim];
+    if (shares) {
+      const rows = range => { const a = agg(q.filters, ...range); return shares.map(([key, s]) => ({ key, visitors: a.visitors * s, visits: a.visits * s, views: a.views * s, bounces: a.bounces * s, total_time: a.total_time * s })); };
+      return { dim, rows: mergeRows(rows(w.cur), rows(w.prev)) };
+    }
     const factor = dim === 'entry' ? p => p.en : dim === 'exit' ? p => p.ex : undefined;
     const rows = range => keysFor(dim)
       .map(([name, key]) => {
