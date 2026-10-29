@@ -16,5 +16,3 @@ It runs free on Cloudflare up to about 50,000 page views a day, puts no cookies 
 1. Pick a password for your dashboard.
 2. Make a Cloudflare token so Lede can read your stats. The form links to it, ready to go.
 3. Open your dashboard, sign in with your password, type your site's address, and paste the line it gives you into every page of your site. The first visits show up within a couple of minutes.
-
-[How it works, and what it counts](docs/how-it-works.md)
