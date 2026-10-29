@@ -1518,29 +1518,28 @@ function drawAudience(sec,A){
 // The landing pages' campaign tags, as written: a list per tag with a switch, opening on campaigns (or on sources
 // when no visit had a campaign). Hidden when no visit was tagged.
 async function drawCampaigns(sec,gen,body){
-  const modes=[['Campaigns','campaign'],['Mediums','medium'],['Sources','tag']],tagged=d=>api('breakdown',{dim:d}).then(r=>r.rows.filter(x=>x.key&&x.visitors)).catch(()=>[]);
-  let rows=await tagged('campaign'),at=0;
-  if(!rows.length){rows=await tagged('tag');at=2}
+  const modes=[['Campaigns','campaign'],['Mediums','medium'],['Sources','tag']];
+  const C=await api('campaigns').catch(()=>null),tagged=i=>(C?.[modes[i][1]]||[]).filter(x=>x.visitors);
+  const at=tagged(0).length?0:2,rows=tagged(at);
   if(stale(body,gen)||!rows.length)return;
   sec.innerHTML=`<div class="card-head"><div class="card-title">Campaigns</div>${segHTML('Campaign tags',modes.map(m=>m[0]),at)}</div><p class="say-sub">From the utm_ tags on the links visits came in by.</p><div></div>`;
   const total=HOME?.S?.c?.visitors||sum(rows.map(r=>r.visitors));
   const draw=list=>cutList(sec.lastElementChild,list.map(r=>({key:r.key,label:r.key,value:r.visitors,prev:r.prev?.visitors})),8,'tags',(box,r)=>rowsInto(box,r,{total,subj:'src'}));
   draw(rows);
-  onSeg(sec,async i=>draw(await tagged(modes[i][1])));
+  onSeg(sec,i=>draw(tagged(i)));
   sec.hidden=false;
 }
 
-// Under the audience strips: the readers' systems, languages, screen widths and places, a query each, after the rest.
-const BY_WIDTH=[[600,'under 600 px'],[1024,'600–1023 px'],[1440,'1024–1439 px'],[Infinity,'1440 px and up']];
+// Under the audience strips: the readers' systems, languages and screen widths (one query), and places (another), after the rest.
+// Widths come in BY_WIDTH's bands, keyed by the least width in each (1 for under 600).
+const BY_WIDTH=[['1','under 600 px'],['600','600–1023 px'],['1024','1024–1439 px'],['1440','1440 px and up']];
 const languageName=k=>{try{return new Intl.DisplayNames(['en'],{type:'language'}).of(k)}catch{return k}};
 async function drawAudienceMore(sec,gen,body){
-  const got=await Promise.all(['os','language','screen','place'].map(d=>api('breakdown',{dim:d}).then(r=>r.rows).catch(()=>[])));
+  const [S,place]=await Promise.all([api('systems').catch(()=>({})),api('breakdown',{dim:'place'}).then(r=>r.rows.filter(r=>r.key&&r.visitors)).catch(()=>[])]);
   if(stale(body,gen)||sec.hidden)return;
-  const [os,lang,screen,place]=got.map(rows=>rows.filter(r=>r.key&&r.key!=='0'&&r.visitors));
-  const widths=new Map();
-  for(const r of screen){const l=BY_WIDTH.find(([w])=>+r.key<w)[1];widths.set(l,(widths.get(l)||0)+r.visitors)}
+  const [os,lang,screen]=['os','language','screen'].map(d=>(S[d]||[]).filter(r=>r.visitors)),width=new Map(screen.map(r=>[r.key,r.visitors]));
   const parts=[['Systems',os.map(r=>[r.key==='other'?'Other systems':r.key,r.visitors])],['Languages',lang.map(r=>[languageName(r.key),r.visitors])],
-    ['Screens',BY_WIDTH.map(([,l])=>[l,widths.get(l)||0]).filter(x=>x[1])],['Places',place.map(r=>{const [city,region]=r.key.split('|');return [[city,region].filter(Boolean).join(', '),r.visitors]})]];
+    ['Screens',BY_WIDTH.map(([k,l])=>[l,width.get(k)||0]).filter(x=>x[1])],['Places',place.map(r=>{const [city,region]=r.key.split('|');return [[city,region].filter(Boolean).join(', '),r.visitors]})]];
   const note=sec.querySelector('.say-sub');
   for(const [t,items] of parts){
     const all=sum(items.map(x=>x[1]));if(!all)continue;

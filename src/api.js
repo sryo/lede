@@ -1,5 +1,5 @@
 import * as Q from './queries.js';
-import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, firstsOf, toHourly, mergeRows, shapeLive, byVisitor, toConversions, toEngagement, toLinks, toKeywords, splitKeywords, toAudience, pickVisits, pairNext, toFunnel, pagePath } from './shape.js';
+import { toSummary, toSeriesBoth, byPeriod, topByDay, toFlows, firstsOf, toHourly, mergeRows, shapeLive, byVisitor, toConversions, toEngagement, toLinks, toKeywords, splitKeywords, toAudience, toSystems, toCampaigns, pickVisits, pairNext, toFunnel, pagePath } from './shape.js';
 import { getSites, addSite, getAccountId, getSettings, saveSettings, getShares, makeShare, stopShare } from './settings.js';
 import { HttpError } from './errors.js';
 import { demoStore, demoNotes, DEMO_FUNNEL, DEMO_INSIGHT } from './demo.js';
@@ -162,6 +162,14 @@ export function sqlStore(env, fetchImpl = fetch) {
     async audience(q) {
       const { cur, prev } = await lists(only => Q.audienceSql(ds, q, only), Q.LISTS.audience);
       return toAudience(cur, prev);
+    },
+    async systems(q) {
+      const { cur, prev } = await lists(only => Q.systemsSql(ds, q, only), Q.LISTS.audience);
+      return toSystems(cur, prev);
+    },
+    async campaigns(q) {
+      const { cur, prev } = await lists(only => Q.campaignsSql(ds, q, only), Q.LISTS.audience);
+      return toCampaigns(cur, prev);
     },
   };
 }
@@ -381,6 +389,8 @@ async function route(name, url, env, store, req, ask, shared) {
     case 'links': return store.links(q);
     case 'keywords': return store.keywords(q);
     case 'audience': return store.audience(q);
+    case 'systems': return store.systems(q);
+    case 'campaigns': return store.campaigns(q);
     case 'next':
       if (q.filters.path == null) throw new HttpError(400, 'Say which page with ?path=.');
       // With ?goal=, it also counts the visits that went on to one, from the same rows.

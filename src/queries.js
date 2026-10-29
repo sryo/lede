@@ -192,6 +192,19 @@ export const audienceSql = (ds, q, only) =>
   `SELECT p, country, device, browser, ${METRICS} FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS.country} AS country, argMin(${COL.device}, timestamp) AS device, `
   + `argMin(${COL.browser}, timestamp) AS browser`, PERIOD(q))} GROUP BY p, country, device, browser ORDER BY visitors DESC ${limit(LISTS.audience, only)}`;
 
+// Visits by system, language and screen width together, one query for the three lists as for countries: all
+// three come with the browser, so each visitor sits in about one row. Widths come in the dashboard's bands,
+// each as the least width in it (1 for under 600), which keeps the rows few; 0 is a visit with no page view's width.
+const BAND = `multiIf(${VISIT_KEYS.screen} = 0, 0, ${VISIT_KEYS.screen} < 600, 1, ${VISIT_KEYS.screen} < 1024, 600, ${VISIT_KEYS.screen} < 1440, 1024, 1440)`;
+export const systemsSql = (ds, q, only) =>
+  `SELECT p, os, language, screen, ${METRICS} FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS.os} AS os, ${VISIT_KEYS.language} AS language, ${BAND} AS screen`, PERIOD(q))} `
+  + `GROUP BY p, os, language, screen ORDER BY visitors DESC ${limit(LISTS.audience, only)}`;
+
+// The tagged visits by their campaign, medium and source tags together: a visit's tags come from one link.
+export const campaignsSql = (ds, q, only) =>
+  `SELECT p, campaign, medium, tag, ${METRICS} FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS.campaign} AS campaign, ${VISIT_KEYS.medium} AS medium, ${VISIT_KEYS.tag} AS tag`, PERIOD(q))} `
+  + `WHERE campaign != '' OR medium != '' OR tag != '' GROUP BY p, campaign, medium, tag ORDER BY visitors DESC ${limit(LISTS.audience, only)}`;
+
 // Visits by the source they came from, and how many of them viewed any of the goal pages.
 export const conversionsSql = (ds, q, from, to, goals) =>
   `SELECT src, count() AS visits, sum(hit) AS reached FROM ${visits(ds, where(q, from, to), `, ${VISIT_KEYS.referrer} AS src, `

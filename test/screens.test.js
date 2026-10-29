@@ -310,9 +310,11 @@ test('no list stops without a way to see the rest: links, a channel’s sources,
   assert.match(fn('drawAudience'), /class="mix-more"/);
 });
 
-test('the overview reads campaign tags and the readers’ OS, language, screen and place; a source shows the pages that linked', () => {
+test('the overview reads campaign tags and the readers’ OS, language, screen and place in three queries; a source shows the pages that linked', () => {
   assert.match(fn('drawCampaigns'), /\[\['Campaigns','campaign'\],\['Mediums','medium'\],\['Sources','tag'\]\]/);
-  assert.match(fn('drawAudienceMore'), /\['os','language','screen','place'\]/);
+  assert.match(fn('drawCampaigns'), /api\('campaigns'\)/);
+  assert.doesNotMatch(fn('drawCampaigns'), /breakdown/, 'switching tags asks nothing more');
+  assert.match(fn('drawAudienceMore'), /api\('systems'\)[\s\S]*api\('breakdown',\{dim:'place'\}\)/);
   assert.match(fn('renderSource'), /dim:'refUrl'/);
   assert.match(html, /<section class="card camp" hidden><\/section>/);
 });

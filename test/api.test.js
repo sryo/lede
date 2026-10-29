@@ -4,8 +4,8 @@ import { parseQuery, sqlStore, handleApi, runSql } from '../src/api.js';
 import { ranges, where, hexOf, breakdownSql, flowSql, hourlySql, conversionsSql, engagementSql, linksSql, liveSql, summarySql, seriesSql, topSourceSql, DAY } from '../src/queries.js';
 import { demoStore } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
-import { mergeRows, shapeLive, byVisitor, toEngagement, toAudience } from '../src/shape.js';
-import { audienceSql } from '../src/queries.js';
+import { mergeRows, shapeLive, byVisitor, toEngagement, toAudience, toSystems, toCampaigns } from '../src/shape.js';
+import { audienceSql, systemsSql, campaignsSql } from '../src/queries.js';
 import { vitalsLine } from '../public/story.js';
 
 const SITES = ['example.com'];
@@ -70,7 +70,18 @@ function fakeSql(calls) {
     calls.push({ endpoint, init });
     const sql = init.body;
     let data;
-    if (sql.includes('AS device')) data = [
+    if (sql.includes('AS language')) data = [
+      { p: 1, os: 'iOS 18.6', language: 'en-US', screen: '1', visitors: '30', visits: '30', views: '40', bounces: '20', total_time: '0' },
+      { p: 1, os: 'macOS', language: 'en-US', screen: '1440', visitors: '20', visits: '25', views: '60', bounces: '5', total_time: '900' },
+      { p: 1, os: '', language: '', screen: '0', visitors: '4', visits: '4', views: '4', bounces: '4', total_time: '0' },
+      { p: 0, os: 'iOS 18.6', language: 'de-DE', screen: '1', visitors: '10', visits: '10', views: '12', bounces: '6', total_time: '0' },
+    ];
+    else if (sql.includes('AS medium')) data = [
+      { p: 1, campaign: 'spring', medium: 'email', tag: 'newsletter', visitors: '12', visits: '12', views: '20', bounces: '4', total_time: '300' },
+      { p: 1, campaign: '', medium: 'social', tag: 'facebook.com', visitors: '8', visits: '9', views: '9', bounces: '8', total_time: '0' },
+      { p: 0, campaign: 'spring', medium: 'email', tag: 'newsletter', visitors: '6', visits: '6', views: '8', bounces: '2', total_time: '100' },
+    ];
+    else if (sql.includes('AS device')) data = [
       { p: 1, country: 'AR', device: 'phone', browser: 'chrome', visitors: '40', visits: '50', views: '60', bounces: '30', total_time: '600' },
       { p: 1, country: 'US', device: 'computer', browser: 'safari', visitors: '30', visits: '40', views: '90', bounces: '10', total_time: '2400' },
       { p: 1, country: 'US', device: 'phone', browser: 'safari', visitors: '10', visits: '10', views: '12', bounces: '6', total_time: '100' },
@@ -585,6 +596,52 @@ test('SQL store answers countries, devices and browsers with one query', async (
   assert.deepEqual(A.country.map(r => [r.key, r.visitors, r.prev?.visitors]), [['AR', 40, 20], ['US', 40, 25]]);
   assert.deepEqual(A.device.map(r => [r.key, r.visitors]), [['phone', 50], ['computer', 30]]);
   assert.equal(A.device[0].bounce, 36 / 60);
+});
+
+/* ---------- systems, languages and screens; campaign tags ---------- */
+
+test('systems, languages and screen widths come from one query, each width as the least of its band', () => {
+  const sql = systemsSql('lede', parseQuery(url('systems?days=7'), SITES));
+  for (const [col, as] of [['blob18', 'os'], ['blob20', 'language']]) assert.ok(sql.includes(`argMin(${col}, timestamp) AS ${as}`), as);
+  assert.match(sql, /multiIf\(max\(double9\) = 0, 0, max\(double9\) < 600, 1, max\(double9\) < 1024, 600, max\(double9\) < 1440, 1024, 1440\) AS screen/);
+  assert.match(sql, /GROUP BY p, os, language, screen/);
+});
+
+test('the systems lists add up their rows and leave out visits that recorded none', () => {
+  const S = toSystems([{ p: 1, os: 'iOS 18.6', language: 'en-US', screen: '1', visitors: '30' }, { p: 1, os: 'macOS', language: 'en-US', screen: '1440', visitors: '20' },
+    { p: 1, os: '', language: '', screen: '0', visitors: '4' }], [{ p: 0, os: 'iOS 18.6', language: 'de-DE', screen: '1', visitors: '10' }]);
+  assert.deepEqual(S.os.map(r => [r.key, r.visitors, r.prev?.visitors ?? null]), [['iOS 18.6', 30, 10], ['macOS', 20, null]]);
+  assert.deepEqual(S.language.map(r => [r.key, r.visitors, r.prev?.visitors ?? null]), [['en-US', 50, null], ['de-DE', 0, 10]]);
+  assert.deepEqual(S.screen.map(r => [r.key, r.visitors]), [['1', 30], ['1440', 20]]);
+});
+
+test('campaigns, mediums and sources as written come from one query of the tagged visits', () => {
+  const sql = campaignsSql('lede', parseQuery(url('campaigns?days=7'), SITES));
+  for (const [col, as] of [['blob12', 'campaign'], ['blob11', 'medium'], ['blob10', 'tag']]) assert.ok(sql.includes(`argMin(${col}, timestamp) AS ${as}`), as);
+  assert.match(sql, /WHERE campaign != '' OR medium != '' OR tag != '' GROUP BY p, campaign, medium, tag/);
+  const C = toCampaigns([{ p: 1, campaign: 'spring', medium: 'email', tag: 'newsletter', visitors: '12' }, { p: 1, campaign: '', medium: 'social', tag: 'facebook.com', visitors: '8' }], []);
+  assert.deepEqual(C.campaign.map(r => [r.key, r.visitors]), [['spring', 12]]);
+  assert.deepEqual(C.medium.map(r => r.key), ['email', 'social']);
+  assert.deepEqual(C.tag.map(r => r.key), ['newsletter', 'facebook.com']);
+});
+
+test('SQL store answers systems and campaign tags with a query each', async () => {
+  const calls = [], store = sqlStore(ENV, fakeSql(calls));
+  const S = await store.systems(parseQuery(url('systems?days=7'), SITES));
+  assert.equal(calls.length, 1);
+  assert.deepEqual(S.os.map(r => [r.key, r.visitors, r.prev?.visitors ?? null]), [['iOS 18.6', 30, 10], ['macOS', 20, null]]);
+  const C = await store.campaigns(parseQuery(url('campaigns?days=7'), SITES));
+  assert.equal(calls.length, 2);
+  assert.deepEqual(C.campaign.map(r => [r.key, r.visitors, r.prev?.visitors]), [['spring', 12, 6]]);
+});
+
+test('demo: systems, languages, screens and campaign tags answer from the sample', async () => {
+  const env = { STORE: memoryKV({ sites: '["example.com"]' }), DEMO: 'true' };
+  const S = await (await handleApi(new Request('https://worker.test/api/systems?days=30'), env, { waitUntil() {} })).json();
+  for (const dim of ['os', 'language', 'screen']) assert.ok(S[dim].length > 1 && S[dim].every(r => r.key && r.prev), dim);
+  assert.deepEqual(S.screen.map(r => r.key).sort(), ['1', '1024', '1440', '600']);
+  const C = await (await handleApi(new Request('https://worker.test/api/campaigns?days=30'), env, { waitUntil() {} })).json();
+  for (const dim of ['campaign', 'medium', 'tag']) assert.ok(C[dim].length > 1, dim);
 });
 
 test('demo: countries, devices and browsers add up to everyone, and phones leave sooner than computers', async () => {

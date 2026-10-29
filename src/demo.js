@@ -1,6 +1,6 @@
 // Sample data for DEMO="true": `npm run dev` and the static sample the demo build makes. It answers the same questions as the SQL
 // store, returning the same raw row fields, so the dashboard can't tell the difference.
-import { metrics, toSeries, toFlows, toFirsts, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience } from './shape.js';
+import { metrics, toSeries, toFlows, toFirsts, mergeRows, shapeLive, toConversions, toEngagement, toLinks, toKeywords, toAudience, toSystems, toCampaigns } from './shape.js';
 import { hourlyStart, BANDS } from './queries.js';
 import { usualHalfHour } from '../public/story.js';
 
@@ -233,6 +233,19 @@ const REF_URLS = {
 };
 
 const windows = q => ({ cur: [N - q.days, N], prev: [N - 2 * q.days, N - q.days] });
+
+// Each period's rows for some of SHARES' fields, a row per key of one field, as systemsSql and campaignsSql
+// answer them; screen widths go into their bands.
+const BAND = w => w < 600 ? 1 : w < 1024 ? 600 : w < 1440 ? 1024 : 1440;
+function shareRows(q, dims) {
+  const w = windows(q);
+  const rows = range => {
+    const a = agg(q.filters, ...range);
+    return dims.flatMap(d => SHARES[d].map(([key, s]) => ({ [d]: d === 'screen' ? String(BAND(+key)) : key,
+      visitors: a.visitors * s, visits: a.visits * s, views: a.views * s, bounces: a.bounces * s, total_time: a.total_time * s })));
+  };
+  return [rows(w.cur), rows(w.prev)];
+}
 
 function keysFor(dim) {
   if (dim === 'path' || dim === 'entry' || dim === 'exit') return PATHS.map(p => ['path', p.key]);
@@ -467,6 +480,8 @@ export const demoStore = {
     };
     return toAudience(rows(w.cur), rows(w.prev));
   },
+  async systems(q) { return toSystems(...shareRows(q, ['os', 'language', 'screen'])); },
+  async campaigns(q) { return toCampaigns(...shareRows(q, ['campaign', 'medium', 'tag'])); },
   async next(q) {
     const w = windows(q), path = q.filters.path, P = PATHS.find(P => P.key === path);
     const one = (range, before) => {

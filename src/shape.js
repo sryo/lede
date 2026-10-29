@@ -114,21 +114,29 @@ export function mergeRows(cur, prev) {
 // any, partial says which (this period wins), and devices and browsers carry no previous figures, since a
 // change against a period only partly recorded would be made up.
 export function toAudience(cur, prev) {
-  const add = (rows, dim) => {
-    const by = new Map();
-    for (const r of rows) {
-      const key = r[dim] ?? '';
-      if (dim !== 'country' && !key) continue;
-      const t = by.get(key) || by.set(key, { key, ...NONE }).get(key);
-      for (const k in NONE) t[k] += num(r[k]);
-    }
-    return [...by.values()].sort((a, b) => b.visitors - a.visitors);
-  };
   const unknown = rows => rows.some(r => !r.device);
   const partial = unknown(cur) ? 'cur' : unknown(prev) ? 'prev' : null;
-  const list = dim => mergeRows(add(cur, dim), dim === 'country' || !partial ? add(prev, dim) : []);
+  const list = dim => mergeRows(addUp(cur, dim, dim === 'country'), dim === 'country' || !partial ? addUp(prev, dim, dim === 'country') : []);
   return { country: list('country'), device: list('device'), browser: list('browser'), partial };
 }
+
+// Rows by several keys added up into one list for one of them, biggest first; rows without it are left out
+// unless blank counts (a visit from no known country is still one).
+function addUp(rows, dim, blank = false) {
+  const by = new Map();
+  for (const r of rows) {
+    const key = r[dim] ?? '';
+    if (!blank && (!key || key === '0')) continue;
+    const t = by.get(key) || by.set(key, { key, ...NONE }).get(key);
+    for (const k in NONE) t[k] += num(r[k]);
+  }
+  return [...by.values()].sort((a, b) => b.visitors - a.visitors);
+}
+const listsBy = (cur, prev, dims) => Object.fromEntries(dims.map(d => [d, mergeRows(addUp(cur, d), addUp(prev, d))]));
+
+// Systems, languages and screen-width bands from systemsSql's rows; campaigns, mediums and sources from campaignsSql's.
+export const toSystems = (cur, prev) => listsBy(cur, prev, ['os', 'language', 'screen']);
+export const toCampaigns = (cur, prev) => listsBy(cur, prev, ['campaign', 'medium', 'tag']);
 
 // Both periods' days from one set of rows, where d counts from the start of the previous period.
 export function toSeriesBoth(rows, days) {
