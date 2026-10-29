@@ -7,7 +7,13 @@ const EMAIL = ['mail.google.com', 'outlook.live.com', 'outlook.office.com', 'out
 const VIDEO = ['youtube.com', 'youtu.be', 'twitch.tv', 'vimeo.com'];
 const SOCIAL = ['facebook.com', 'm.facebook.com', 'l.facebook.com', 'instagram.com', 'linkedin.com', 'lnkd.in', 'x.com', 'twitter.com', 't.co', 'reddit.com', 'old.reddit.com', 'news.ycombinator.com', 'threads.net', 'threads.com', 'bsky.app', 'pinterest.', 'tiktok.com', 'snapchat.com', 'tumblr.com', 'producthunt.com', 'lobste.rs', 'mastodon.social', 'discord.com', 'telegram.org', 'whatsapp.com', 'slack.com', 'messenger.com'];
 
-const PAID_PARAMS = ['gclid', 'gbraid', 'wbraid', 'msclkid', 'ttclid', 'li_fat_id', 'twclid', 'dclid'];
+const PAID_PARAMS = ['gclid', 'gbraid', 'wbraid', 'msclkid', 'ttclid', 'li_fat_id', 'twclid', 'dclid', 'yclid'];
+// Tags email tools add to every link in a message.
+const EMAIL_PARAMS = ['mc_cid', 'mc_eid', '_hsenc', '_hsmi'];
+// The site a click ID or an email tool's tag comes from, for a visit with no referrer and no written source.
+const CLICK_SOURCES = { fbclid: 'facebook.com', igshid: 'instagram.com', gclid: 'google.com', gbraid: 'google.com', wbraid: 'google.com', dclid: 'google.com',
+  msclkid: 'bing.com', ttclid: 'tiktok.com', twclid: 'x.com', li_fat_id: 'linkedin.com', yclid: 'yandex.ru', mc_cid: 'mailchimp.com', mc_eid: 'mailchimp.com',
+  _hsenc: 'hubspot.com', _hsmi: 'hubspot.com' };
 const PAID_MEDIUMS = ['cpc', 'ppc', 'paid', 'paidsearch', 'paid_search', 'paid_social', 'paidsocial', 'display', 'cpm', 'banner'];
 
 // The same source under another name: link redirectors, mobile hosts and Android apps
@@ -50,12 +56,12 @@ export function referrerHost(url) {
   return host && nameOf(host);
 }
 
-// A landing page's utm_source (or source, or ref) as a source: "FB" → "facebook.com". Only a plain word
-// or host is taken, so a tag can't carry anything else into the stats; '' otherwise.
+// A landing page's utm_source (or source, or ref) as a source: "FB" → "facebook.com", "Spring Newsletter" as written,
+// lowercased and cut at 64 characters. Without one, the site a click ID or an email tool's tag comes from; else ''.
 export function sourceTag(landing) {
-  const tag = (landing.get('utm_source') || landing.get('source') || landing.get('ref') || '').trim().toLowerCase().replace(/^www\./, '');
-  if (!/^[a-z\d][a-z\d._-]{0,63}$/.test(tag)) return '';
-  return TAG_ALIASES[tag] || nameOf(tag);
+  const tag = (landing.get('utm_source') || landing.get('source') || landing.get('ref') || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/^www\./, '').slice(0, 64).trim();
+  if (tag) return TAG_ALIASES[tag] || nameOf(tag);
+  return CLICK_SOURCES[[...landing.keys()].find(k => CLICK_SOURCES[k])] || '';
 }
 
 export const CHANNELS = ['paid', 'email', 'ai', 'search', 'video', 'social', 'referral', 'direct'];
@@ -73,7 +79,7 @@ export function channelFor(referrer, landing) {
   const source = sourceTag(landing);
   const from = list => matches(referrer, list) || matches(source, list);
   if (PAID_MEDIUMS.includes(medium) || PAID_PARAMS.some(p => landing.has(p))) return 'paid';
-  if (medium === 'email' || medium === 'newsletter' || from(EMAIL)) return 'email';
+  if (medium === 'email' || medium === 'newsletter' || EMAIL_PARAMS.some(p => landing.has(p)) || from(EMAIL)) return 'email';
   if (from(AI)) return 'ai';
   if (medium === 'organic' || [referrer, source].some(h => matches(h, SEARCH) && !matches(h, NOT_SEARCH))) return 'search';
   if (medium === 'video' || from(VIDEO)) return 'video';

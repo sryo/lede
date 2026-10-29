@@ -6,6 +6,9 @@ export const FIELDS = [
   'country', 'utmSource', 'utmMedium', 'utmCampaign', 'target',
   // Kind of device (phone, tablet, computer) and browser family, then the ad keyword (utm_term).
   'device', 'browser', 'utmTerm',
+  // The referring address as the browser sent it (without its #), the OS and its version, the place as
+  // "city|region" from Cloudflare, and the browser's first language. With these, all 20 blobs are used.
+  'refUrl', 'os', 'place', 'language',
 ];
 // Engagement figures go in doubles: milliseconds the page was read, and how far down it was scrolled (%).
 // step is a page view's place in its visit (1, 2, or 3 for any later one; 0 when unknown), so visits and
@@ -14,7 +17,8 @@ export const FIELDS = [
 // ms, on its page view, engagement events and pings (0 on rows from before it was sent), so a view's
 // several engagement events can be told apart from another's; left is 1 on each engagement event sent since
 // the tracker marks the view left (hidden, closed or moved on from), 0 on rows from before.
-export const NUMBERS = ['engaged', 'scroll', 'step', 'lcp', 'inp', 'cls', 'view', 'left'];
+// screen is the screen's width in CSS pixels, on page views (0 when not sent); version the browser's major version.
+export const NUMBERS = ['engaged', 'scroll', 'step', 'lcp', 'inp', 'cls', 'view', 'left', 'screen', 'version'];
 
 export const COL = {
   ...Object.fromEntries(FIELDS.map((f, i) => [f, `blob${i + 1}`])),

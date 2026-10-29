@@ -1526,7 +1526,7 @@ function drawKeywords(sec,K){
       list.insertAdjacentHTML('beforeend',`<button type="button" class="more-link"><span>All ${C.all} words</span>${CHEV}</button>`);
       list.lastChild.onclick=()=>{const n=C.all;draw(k,1);const r=list.firstChild.children[6];r.tabIndex=-1;r.focus();announce(`Showing all ${n} words`)};
     }
-    note.textContent='Google doesn’t share what people searched for to find you.'+(k==='site'&&!C.empty?' Words only one person used are left out, and so are emails and phone numbers.':'');
+    note.textContent='Google doesn’t share what people searched for to find you.';
   };
   onSeg(sec,i=>draw(ks[i]));
   draw(k0);

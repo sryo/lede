@@ -1,6 +1,6 @@
 import { test, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseEvent, identify, visitHour, visitSalt, collect, scrubPath, senderCap, SENDER_LIMIT, ADDRESS_LIMIT, SENDER_WINDOW } from '../src/collect.js';
+import { parseEvent, identify, visitHour, visitSalt, collect, senderCap, SENDER_LIMIT, ADDRESS_LIMIT, SENDER_WINDOW } from '../src/collect.js';
 import { channelFor } from '../src/channels.js';
 import { FIELDS, NUMBERS } from '../src/schema.js';
 
@@ -15,23 +15,23 @@ test('drops events from sites that are not listed', () => {
   assert.equal(parseEvent({}, SITES), null);
 });
 
-test('normalizes host, path and query', () => {
-  const ev = parseEvent({ u: 'https://www.example.com/pricing/?plan=pro&utm_source=x&gclid=1', r: '', l: '' }, SITES);
+test('a page is its path and its own query; tracking tags only say where the visit came from', () => {
+  const ev = parseEvent({ u: 'https://www.example.com/pricing/?plan=pro&utm_source=x&gclid=1&fbclid=2&mc_cid=3', r: '', l: '' }, SITES);
   assert.equal(ev.site, 'example.com');
-  assert.equal(ev.path, '/pricing');
-  assert.equal(ev.url, '/pricing');
+  assert.equal(ev.path, '/pricing?plan=pro');
+  assert.equal(ev.url, '/pricing?plan=pro');
+  assert.equal(parseEvent({ u: 'https://example.com/?p=123' }, SITES).path, '/?p=123', 'query-routed pages are told apart');
 });
 
-test('a page address keeps only the word searched for, cleaned as search words are', () => {
-  const url = u => parseEvent({ u: 'https://example.com' + u }, SITES).url;
-  assert.equal(url('/search?q=Owl++Calls&page=2&session=abc123'), '/search?q=owl+calls');
-  assert.equal(url('/find?query=robin&email=a%40b.co#top'), '/find?q=robin');
-  assert.equal(url('/reset?token=9f8e7d6c5b4a&email=a%40b.co'), '/reset', 'a reset link keeps nothing of its query');
-  assert.equal(url('/search?q=call+me+on+0612345678'), '/search', 'a word that could name someone is dropped');
-  assert.equal(url('/search?q=a@b.co'), '/search');
-  assert.equal(url('/verify?s=f3a9bc0de1f2a3b4c5d6e7f8a9b0c1d2'), '/verify', 'a token in a search parameter is dropped');
-  assert.equal(url('/login?k=Xk9mQ2pL7vR4tY8wZ3bNaQ'), '/login', 'mixed case is checked before it is lowercased');
-  assert.equal(url('/search?s=Release+Notes+2026'), '/search?q=release+notes+2026');
+test('the word searched for is kept as q, whatever it is, after the page’s own query', () => {
+  const ev = u => parseEvent({ u: 'https://example.com' + u }, SITES);
+  assert.equal(ev('/search?q=Owl++Calls&page=2').url, '/search?page=2&q=owl+calls');
+  assert.equal(ev('/search?q=Owl++Calls&page=2').path, '/search?page=2', 'a search is one page, whatever was searched');
+  assert.equal(ev('/find?query=robin&lang=es#top').url, '/find?lang=es&q=robin');
+  assert.equal(ev('/search?q=call+me+on+0612345678').url, '/search?q=call+me+on+0612345678');
+  assert.equal(ev('/search?q=a@b.co').url, '/search?q=a%40b.co');
+  assert.equal(ev('/login?k=Xk9mQ2pL7vR4tY8wZ3bNaQ').url, '/login?q=xk9mq2pl7vr4ty8wz3bnaq');
+  assert.equal(ev('/search?s=Release+Notes+2026').url, '/search?q=release+notes+2026');
 });
 
 test('ignores self-referrals and strips www from referrers', () => {
@@ -55,8 +55,8 @@ test('without a referrer, the landing page\'s source tag says where the visit ca
   assert.equal(ev('?utm_source=chatgpt.com').channel, 'ai');
   assert.equal(ev('?utm_source=fb', 'https://news.ycombinator.com').referrer, 'news.ycombinator.com', 'a referrer wins over the tag');
   assert.equal(ev('?utm_source=example.com').referrer, '', 'the site itself is not a source');
-  assert.equal(ev('?utm_source=' + encodeURIComponent('me@mail.com hi')).referrer, '', 'only a plain word or host');
-  assert.equal(ev('?utm_source=' + 'a'.repeat(80)).referrer, '');
+  assert.deepEqual([ev('?utm_source=Spring+Newsletter').referrer, ev('?utm_source=Spring+Newsletter').channel], ['spring newsletter', 'referral'], 'a tag with spaces is a source as written');
+  assert.equal(ev('?utm_source=' + 'a'.repeat(80)).referrer, 'a'.repeat(64), 'cut at 64 characters');
   assert.deepEqual([ev('').referrer, ev('').channel], ['', 'direct']);
   assert.equal(ev('&utm_medium=email&utm_source=digest').channel, 'email', 'the tags as the tracker sends them, picked out of the query');
 });
@@ -78,6 +78,17 @@ test('one search engine, app or mail service is one source, wherever it sends fr
   assert.equal(ev('https://news.yahoo.com/').channel, 'referral');
   assert.equal(ev('https://search.yahoo.com/').channel, 'search');
   assert.equal(ref('https://google.example.org/'), 'google.example.org', 'only Google\'s own domains');
+});
+
+test('a click ID or an email tool’s tag says where a visit came from when nothing else does', () => {
+  const ev = l => parseEvent({ u: 'https://example.com/', r: '', l }, SITES);
+  assert.deepEqual([ev('?fbclid=1').referrer, ev('?fbclid=1').channel], ['facebook.com', 'social'], 'Facebook adds it to every link out, ads or not');
+  assert.deepEqual([ev('?igshid=1').referrer, ev('?igshid=1').channel], ['instagram.com', 'social']);
+  assert.deepEqual([ev('?gclid=1').referrer, ev('?gclid=1').channel], ['google.com', 'paid']);
+  assert.deepEqual([ev('?yclid=1').referrer, ev('?yclid=1').channel], ['yandex.ru', 'paid']);
+  assert.deepEqual([ev('?mc_cid=1&mc_eid=2').referrer, ev('?mc_cid=1').channel], ['mailchimp.com', 'email']);
+  assert.deepEqual([ev('?_hsenc=1').referrer, ev('?_hsmi=1').channel], ['hubspot.com', 'email']);
+  assert.equal(ev('?fbclid=1&utm_source=newsletter').referrer, 'newsletter', 'a written tag says more than a click ID');
 });
 
 test('classifies channels', () => {
@@ -294,35 +305,38 @@ test('collect takes a few events in one request, each checked and capped on its 
   assert.equal(points.length, 0, 'more than a tracker ever sends at once');
 });
 
-test('link clicks keep only the host and path of the link', () => {
+test('link clicks keep the whole link but its #, and email, phone and message links count too', () => {
   const ev = (t, o) => parseEvent({ u: 'https://example.com/docs', t, o }, SITES);
-  assert.equal(ev('outbound', 'https://www.GitHub.com/acme/repo/?token=x').target, 'github.com/acme/repo');
+  assert.equal(ev('outbound', 'https://www.GitHub.com/acme/repo/?tab=readme').target, 'github.com/acme/repo?tab=readme');
+  assert.equal(ev('outbound', 'https://www.youtube.com/watch?v=dQw4w9WgXcQ').target, 'youtube.com/watch?v=dQw4w9WgXcQ');
+  assert.equal(ev('outbound', 'mailto:Hi@Example.org').target, 'mailto:Hi@Example.org');
+  assert.equal(ev('outbound', 'tel:+54 9 11 1234-5678').target, 'tel:+54 9 11 1234-5678');
+  assert.equal(ev('outbound', 'sms:+5491112345678').target, 'sms:+5491112345678');
   assert.equal(ev('download', 'https://example.com/files/guide.pdf').target, 'example.com/files/guide.pdf');
   assert.equal(ev('outbound', 'https://www.example.com/pricing'), null, 'a link within the site is not outbound');
   assert.equal(ev('outbound', 'javascript:alert(1)'), null);
   assert.equal(ev('outbound', 'not a url'), null);
   assert.equal(ev('download', undefined), null);
   assert.equal(ev('outbound', 'https://a.test/' + 'x'.repeat(3000)), null);
-  assert.equal(ev('download', 'https://cdn.test/invoices/88123456/Invoice-88123456.pdf').target, 'cdn.test/invoices/*/*.pdf');
+  assert.equal(ev('download', 'https://cdn.test/invoices/88123456/Invoice-88123456.pdf').target, 'cdn.test/invoices/88123456/Invoice-88123456.pdf');
 });
 
-test('a link\'s path loses what could name a person or unlock something, and keeps the rest', () => {
-  assert.equal(scrubPath('/u/jane.doe@mail.com/files'), '/u/*/files');
-  assert.equal(scrubPath('/u/jane.doe%40mail.com'), '/u/*');
-  assert.equal(scrubPath('/order/12345678'), '/order/*');
-  assert.equal(scrubPath('/reports/20261005.pdf'), '/reports/20261005.pdf', 'a date is not a number to hide');
-  assert.equal(scrubPath('/d/0b9d1c1e-3f5a-4c8e-9d2b-6a7f8e9d0c1b/report.pdf'), '/d/*/report.pdf');
-  assert.equal(scrubPath('/blob/9fceb02d0ae598e95dc970b74767f19372d61af8/README.md'), '/blob/*/README.md');
-  assert.equal(scrubPath('/reset/Xk9mQ2pL7vR4tY8wZ3bN'), '/reset/*');
-  assert.equal(scrubPath('/files/a1b2c3d4e5f6a7b8c9d0.zip'), '/files/*.zip', 'the kind of file stays');
-  assert.equal(scrubPath('/watch/dQw4w9WgXcQ'), '/watch/dQw4w9WgXcQ', 'a short ID is a page, not a secret');
-  assert.equal(scrubPath('/acme/repo/issues/1234'), '/acme/repo/issues/1234');
-  assert.equal(scrubPath('/getting-started-with-the-new-api'), '/getting-started-with-the-new-api');
-  assert.equal(scrubPath('/Release-Notes-2026-October-Edition'), '/Release-Notes-2026-October-Edition', 'words with capitals and a year are a title');
-  assert.equal(scrubPath('/%E0%A4%A'), '/%E0%A4%A', 'a broken escape is kept as it was');
-  assert.equal(scrubPath('/img/logo@2x.png'), '/img/logo@2x.png', 'a retina image is not an email');
-  assert.equal(scrubPath('/lodash@4.17.21/lodash.min.js'), '/lodash@4.17.21/lodash.min.js', 'nor is a package version');
-  assert.equal(scrubPath('/u/jane@mail.co.uk.pdf'), '/u/*.pdf');
+test('collect keeps the referring address, the OS, place, language, screen and browser version', async () => {
+  const points = [];
+  const kv = new Map([['sites', '["example.com"]'], ['salt', 's']]);
+  const env = { STORE: { get: async k => kv.get(k) ?? null, put: async (k, v) => kv.set(k, v), delete: async k => kv.delete(k) }, EVENTS: { writeDataPoint: p => points.push(p) } };
+  const req = new Request('https://worker.test/lede', { method: 'POST', body: JSON.stringify({ u: 'https://example.com/docs', r: 'https://news.ycombinator.com/item?id=4242#c1', w: 1440 }),
+    headers: { 'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.6 Mobile/15E148 Safari/604.1',
+      'CF-Connecting-IP': '1.2.3.4', 'Accept-Language': 'es-AR,es;q=0.9,en;q=0.8' } });
+  Object.defineProperty(req, 'cf', { value: { country: 'AR', city: 'Córdoba', region: 'Cordoba' } });
+  await collect(req, env);
+  const row = Object.fromEntries(FIELDS.map((f, i) => [f, points[0].blobs[i]])), n = Object.fromEntries(NUMBERS.map((f, i) => [f, points[0].doubles[i]]));
+  assert.deepEqual(FIELDS.slice(16), ['refUrl', 'os', 'place', 'language']);
+  assert.deepEqual(NUMBERS.slice(8), ['screen', 'version']);
+  assert.deepEqual([row.referrer, row.refUrl], ['news.ycombinator.com', 'https://news.ycombinator.com/item?id=4242']);
+  assert.deepEqual([row.os, row.place, row.language, n.screen, n.version], ['iOS 18.6', 'Córdoba|Cordoba', 'es-AR', 1440, 18]);
+  assert.equal(parseEvent({ u: 'https://example.com/', r: 'https://example.com/a?x=1' }, SITES).refUrl, '', 'a page of the site itself is no referrer');
+  assert.equal(parseEvent({ u: 'https://example.com/', w: 'wide' }, SITES).screen, 0);
 });
 
 test('collect writes engagement as doubles and the link in its own blob, hashed like a page view', async () => {
@@ -338,10 +352,10 @@ test('collect writes engagement as doubles and the link in its own blob, hashed 
   await send({ t: 'download', o: 'https://example.com/files/guide.pdf' });
   assert.equal(points.length, 3);
   const rows = points.map(p => Object.fromEntries(FIELDS.map((f, i) => [f, p.blobs[i]])));
-  assert.deepEqual(FIELDS.slice(12), ['target', 'device', 'browser', 'utmTerm'], 'new fields go at the end, so stored rows keep their layout');
-  assert.deepEqual(NUMBERS, ['engaged', 'scroll', 'step', 'lcp', 'inp', 'cls', 'view', 'left'], 'and new numbers too');
+  assert.deepEqual(FIELDS.slice(12, 16), ['target', 'device', 'browser', 'utmTerm'], 'new fields go at the end, so stored rows keep their layout');
+  assert.deepEqual(NUMBERS.slice(0, 8), ['engaged', 'scroll', 'step', 'lcp', 'inp', 'cls', 'view', 'left'], 'and new numbers too');
   assert.deepEqual(rows.map(r => r.type), ['pageview', 'engagement', 'download']);
-  assert.deepEqual(points.map(p => p.doubles), [[0, 0, 2, 0, 0, 0, v, 0], [12000, 80, 0, 1841, 96, 43, v, 1], [0, 0, 0, 0, 0, 0, 0, 0]]);
+  assert.deepEqual(points.map(p => p.doubles.slice(0, 8)), [[0, 0, 2, 0, 0, 0, v, 0], [12000, 80, 0, 1841, 96, 43, v, 1], [0, 0, 0, 0, 0, 0, 0, 0]]);
   assert.deepEqual(rows.map(r => r.target), ['', '', 'example.com/files/guide.pdf']);
   assert.ok(rows.every(r => r.visitor === rows[0].visitor && r.visit === rows[0].visit && r.path === '/docs'));
 });

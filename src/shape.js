@@ -215,13 +215,9 @@ export function toLinks(cur, prev) {
 
 /* ---------- keywords ---------- */
 
-// Search words are typed by people, so anything that could name one of them is left out: an email
-// address, or 6 or more digits in a row (a phone, an order or an account number). The check runs on the
-// whole word, before it's cut to 80 characters, so an address past the cut is caught too.
-const PRIVATE = /[^\s@]@[^\s@]+\.[^\s@]|\d{6}/;
+// A search or ad word as the lists count it: lowercased, spaces squeezed, cut at 80 characters.
 export function keyword(s) {
-  const w = String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
-  return PRIVATE.test(w) ? '' : w.slice(0, 80).trim();
+  return String(s ?? '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 80).trim();
 }
 
 // The words searched for on a page address such as /search?q=owl+calls&page=2. Parsing the query decodes
@@ -240,12 +236,10 @@ export function searchWord(url) {
   return '';
 }
 
-// A word seen by fewer than this many visitors isn't shown, so a list can't point at one person.
-export const MIN_VISITORS = 2;
 const KEEP_WORDS = 100;
 
 function wordList(cur, prev) {
-  return [...cur].filter(([, n]) => n >= MIN_VISITORS).sort((a, b) => b[1] - a[1]).slice(0, KEEP_WORDS)
+  return [...cur].sort((a, b) => b[1] - a[1]).slice(0, KEEP_WORDS)
     .map(([key, visitors]) => ({ key, visitors, prev: prev.get(key) || null }));
 }
 

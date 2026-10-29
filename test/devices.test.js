@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { deviceOf, browserOf } from '../src/devices.js';
+import { deviceOf, browserOf, osOf, versionOf } from '../src/devices.js';
 
 // Real user agents, as each browser sends them today.
 const UA = {
@@ -76,4 +76,29 @@ test('on iPhone, Chrome and Firefox go by their own names, and apps\' own browse
   assert.equal(browserOf(UA.instagramIOS), 'app');
   assert.equal(browserOf(UA.facebookIOS), 'app');
   assert.equal(browserOf('Mozilla/5.0 (iPhone; CPU iPhone OS 18_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/22G86'), 'app', 'a web view with no Safari in it');
+});
+
+test('the operating system, with its version where the user agent tells it', () => {
+  assert.equal(osOf(UA.iphoneSafari), 'iOS 18.6');
+  assert.equal(osOf(UA.instagramIOS), 'iOS 18.6');
+  assert.equal(osOf(UA.androidPhone), 'Android 10');
+  assert.equal(osOf(UA.samsung), 'Android 14');
+  assert.equal(osOf(UA.firefoxTablet), 'Android 14');
+  assert.equal(osOf(UA.windowsEdge), 'Windows', 'Windows 10 and 11 send the same version');
+  assert.equal(osOf(UA.macSafari), 'macOS', 'Macs have sent 10.15.7 for years, whatever they run');
+  assert.equal(osOf(UA.linuxFirefox), 'Linux');
+  assert.equal(osOf('Mozilla/5.0 (X11; CrOS x86_64 14541.0.0) AppleWebKit/537.36 Chrome/139.0.0.0 Safari/537.36'), 'ChromeOS');
+  assert.equal(osOf('curl/8'), 'other');
+});
+
+test('the browser’s major version', () => {
+  assert.equal(versionOf(UA.windowsChrome), 139);
+  assert.equal(versionOf(UA.windowsEdge), 139);
+  assert.equal(versionOf(UA.samsung), 28);
+  assert.equal(versionOf(UA.opera), 122);
+  assert.equal(versionOf(UA.linuxFirefox), 142);
+  assert.equal(versionOf(UA.macSafari), 18);
+  assert.equal(versionOf(UA.chromeIOS), 139);
+  assert.equal(versionOf(UA.firefoxIOS), 142);
+  assert.equal(versionOf(UA.instagramIOS), 0, 'an app’s own browser has none');
 });

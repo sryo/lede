@@ -126,17 +126,18 @@ test('tracker: a page restored by the back button counts again', () => {
 
 test('tracker: coming from the www host is the same site, not a new source', () => {
   const p = page('https://example.com/a', { referrer: 'https://news.ycombinator.com/' });
-  assert.equal(p.sent[0].r, 'https://news.ycombinator.com');
+  assert.equal(p.sent[0].r, 'https://news.ycombinator.com/');
   const q = page('https://example.com/b', { referrer: 'https://www.example.com/a' });
   assert.equal(q.sent[0].r, '');
 });
 
-test('tracker: sends only the referring site and the landing page\'s tags, not their whole addresses', () => {
-  const p = page('https://example.com/a?utm_source=news&token=secret&gclid=1&q=owls', { referrer: 'https://news.ycombinator.com/item?id=4242' });
-  assert.deepEqual([p.sent[0].r, p.sent[0].l], ['https://news.ycombinator.com', '?utm_source=news&gclid=1']);
+test('tracker: sends the referring address without its #, and the landing page\'s tags', () => {
+  const p = page('https://example.com/a?utm_source=news&token=secret&gclid=1&q=owls', { referrer: 'https://news.ycombinator.com/item?id=4242#c1' });
+  assert.deepEqual([p.sent[0].r, p.sent[0].l], ['https://news.ycombinator.com/item?id=4242', '?utm_source=news&gclid=1']);
   assert.equal(p.sent[0].u, 'https://example.com/a?utm_source=news&token=secret&gclid=1&q=owls', 'the page itself is the server\'s to clean');
-  assert.equal(page('https://example.com/', { referrer: 'android-app://com.google.android.gm/' }).sent[0].r, 'android-app://com.google.android.gm');
-  assert.equal(page('https://example.com/?li_fat_id=1&twclid=2&dclid=3&fbclid=4&source=pdf&ref=hn').sent[0].l, '?li_fat_id=1&twclid=2&dclid=3&source=pdf&ref=hn');
+  assert.equal(page('https://example.com/', { referrer: 'android-app://com.google.android.gm/' }).sent[0].r, 'android-app://com.google.android.gm/');
+  assert.equal(page('https://example.com/?li_fat_id=1&twclid=2&dclid=3&fbclid=4&source=pdf&ref=hn').sent[0].l, '?li_fat_id=1&twclid=2&dclid=3&fbclid=4&source=pdf&ref=hn');
+  assert.equal(page('https://example.com/?mc_cid=a&mc_eid=b&_hsenc=c&_hsmi=d&via=e&igshid=f&yclid=g&srsltid=h').sent[0].l, '?mc_cid=a&mc_eid=b&_hsenc=c&_hsmi=d&via=e&igshid=f&yclid=g&srsltid=h', 'email tools’ and other sites’ tags too');
   assert.equal(page('https://example.com/?q=owls&utm_medium=email').sent[0].l, '&utm_medium=email', 'the server reads it as a query all the same');
   assert.deepEqual([page('https://example.com/?q=owls').sent[0].l, page('https://example.com/').sent[0].r], ['', '']);
 });
@@ -145,7 +146,7 @@ test('tracker: a link within the site that carries tags doesn\'t replace where t
   const storage = new Map();
   page('https://example.com/a', { referrer: 'https://news.ycombinator.com/', storage });
   const next = page('https://example.com/b?ref=footer', { referrer: 'https://example.com/a', storage });
-  assert.deepEqual([next.sent[0].r, next.sent[0].l], ['https://news.ycombinator.com', '']);
+  assert.deepEqual([next.sent[0].r, next.sent[0].l], ['https://news.ycombinator.com/', '']);
   const first = page('https://example.com/b?utm_source=news', { referrer: 'https://example.com/a' });
   assert.equal(first.sent[0].l, '?utm_source=news', 'a tab with no source yet takes the tags');
   const elsewhere = page('https://example.com/c?utm_source=mail', { storage });
@@ -323,7 +324,7 @@ test('tracker: a visible tab says it is still here every 3 minutes, so a long re
   assert.equal(pings(p).length, 0);
   p.wait(60e3);
   assert.equal(pings(p).length, 1);
-  assert.deepEqual([pings(p)[0].u, pings(p)[0].r, pings(p)[0].h], ['https://example.com/docs', 'https://news.ycombinator.com', p.sent[0].h]);
+  assert.deepEqual([pings(p)[0].u, pings(p)[0].r, pings(p)[0].h], ['https://example.com/docs', 'https://news.ycombinator.com/', p.sent[0].h]);
   p.wait(6 * 60e3);
   assert.equal(pings(p).length, 3);
   assert.equal(p.sent.length, 1, 'a ping is not another page view');
@@ -420,7 +421,7 @@ test('tracker: scrolling up into the chapter before leaves the one being read wh
   assert.equal(p.events[0].s, 50);
 });
 
-test('tracker: clicks on links to other sites and on files are sent, without the query', () => {
+test('tracker: clicks on links to other sites, on files, and on email, phone and message links are sent, without the #', () => {
   const p = page('https://example.com/docs', { referrer: 'https://news.ycombinator.com/' });
   p.click('https://github.com/acme/repo?token=secret#readme');
   p.click('/files/guide.PDF?v=2');
@@ -430,12 +431,13 @@ test('tracker: clicks on links to other sites and on files are sent, without the
   p.click('https://github.com/', { type: 'auxclick', button: 2 });
   p.click('https://github.com/', { type: 'auxclick', button: 1 });
   assert.deepEqual(p.events.map(e => [e.t, e.o]), [
-    ['outbound', 'https://github.com/acme/repo'],
-    ['download', 'https://example.com/files/guide.PDF'],
+    ['outbound', 'https://github.com/acme/repo?token=secret'],
+    ['download', 'https://example.com/files/guide.PDF?v=2'],
+    ['outbound', 'mailto:hi@example.com'],
     ['outbound', 'https://github.com/'],
   ]);
   assert.equal(p.events[0].u, 'https://example.com/docs');
-  assert.equal(p.events[0].r, 'https://news.ycombinator.com', 'credited to the visit\'s source');
+  assert.equal(p.events[0].r, 'https://news.ycombinator.com/', 'credited to the visit\'s source');
 });
 
 const engaged = p => p.events.filter(e => e.t === 'engagement');

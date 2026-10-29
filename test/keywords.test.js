@@ -23,14 +23,11 @@ test('a keyword is lowercased, trimmed, its spaces squeezed and its length cappe
   assert.equal(keyword(null), '');
 });
 
-test('a keyword that looks like an email or holds 6 digits in a row is dropped', () => {
-  assert.equal(keyword('jane.doe@example.com'), '');
-  assert.equal(keyword('order for Jane@Mail.co'), '');
-  assert.equal(keyword('track 123456'), '');
-  assert.equal(keyword('+44 7700900123'), '');
-  assert.equal(keyword('12345 main st'), '12345 main st', 'five digits are a zip code or a model number');
-  // An email past the 80th character is still caught: the check runs before the cut.
-  assert.equal(keyword('a'.repeat(76) + ' me@x.io'), '');
+test('every keyword is kept as typed, lowercased and cut at 80 characters, emails and numbers too', () => {
+  assert.equal(keyword('Jane.Doe@Example.com'), 'jane.doe@example.com');
+  assert.equal(keyword('track 123456'), 'track 123456');
+  assert.equal(keyword('  Bird   Feeder '), 'bird feeder');
+  assert.equal(keyword('a'.repeat(90)), 'a'.repeat(80));
 });
 
 test('a search word is read from the common search parameters of a page address', () => {
@@ -41,7 +38,7 @@ test('a search word is read from the common search parameters of a page address'
   assert.equal(searchWord('/x?page=2&query=heron'), 'heron');
   assert.equal(searchWord('/faq?id=4'), '');
   assert.equal(searchWord('/search?q='), '');
-  assert.equal(searchWord('/search?q=me%40mail.com'), '');
+  assert.equal(searchWord('/search?q=me%40mail.com'), 'me@mail.com');
   assert.equal(searchWord('/search'), '');
   assert.equal(searchWord('/search?q=%E0%A4%A'), '', 'a broken escape is not a word');
 });
@@ -52,8 +49,8 @@ test('the ad keyword (utm_term) of the landing page is kept, cleaned', () => {
   const ev = l => parseEvent({ u: 'https://example.com/', r: 'https://www.google.com/', l }, SITES);
   assert.equal(ev('?utm_source=google&utm_medium=cpc&utm_term=Bird+Feeder').utmTerm, 'bird feeder');
   assert.equal(ev('?utm_term=' + 'w'.repeat(300)).utmTerm.length, 80);
-  assert.equal(ev('?utm_term=bob%40mail.com').utmTerm, '');
-  assert.equal(ev('?utm_term=call+0612345678').utmTerm, '');
+  assert.equal(ev('?utm_term=bob%40mail.com').utmTerm, 'bob@mail.com');
+  assert.equal(ev('?utm_term=call+0612345678').utmTerm, 'call 0612345678');
   assert.equal(ev('').utmTerm, '');
 });
 
@@ -127,7 +124,7 @@ test('a big site\'s rows give the same lists as the two queries did', () => {
 
 /* ---------- shaping ---------- */
 
-test('search words merge result pages and spellings, count each visitor once, and hide words fewer than 2 used', () => {
+test('search words merge result pages and spellings, count each visitor once, and keep a word one person used', () => {
   const site = [
     { p: 1, url: '/search?q=Pricing', visitor: 'a' },
     { p: 1, url: '/search?q=pricing&page=2', visitor: 'a' },
@@ -142,17 +139,17 @@ test('search words merge result pages and spellings, count each visitor once, an
     { p: 0, url: '/search?q=gone', visitor: 'y' },
   ];
   const out = toKeywords(site, []);
-  assert.deepEqual(out.site, [{ key: 'pricing', visitors: 3, prev: 2 }]);
+  assert.deepEqual(out.site, [{ key: 'pricing', visitors: 3, prev: 2 }, { key: 'me@x.com', visitors: 2, prev: null }, { key: 'refund', visitors: 1, prev: null }]);
   assert.deepEqual(out.paid, []);
 });
 
-test('paid words are merged after cleaning and the ones under 2 visitors are hidden', () => {
+test('paid words are merged after cleaning, and one visitor’s ad word counts too', () => {
   const paid = [
     { p: 1, key: 'Bird Feeder', visitors: '5' }, { p: 1, key: 'bird feeder', visitors: '2' },
     { p: 1, key: 'owl box', visitors: '1' }, { p: 1, key: '', visitors: '9' },
     { p: 0, key: 'bird feeder', visitors: '1' },
   ];
-  assert.deepEqual(toKeywords([], paid).paid, [{ key: 'bird feeder', visitors: 7, prev: 1 }]);
+  assert.deepEqual(toKeywords([], paid).paid, [{ key: 'bird feeder', visitors: 7, prev: 1 }, { key: 'owl box', visitors: 1, prev: null }]);
 });
 
 test('lists are sorted by visitors and capped', () => {
@@ -171,12 +168,11 @@ test('GET /api/keywords answers both lists from the demo, with change against th
   const k = await res.json();
   assert.ok(k.site.length >= 5 && k.paid.length >= 3);
   for (const list of [k.site, k.paid]) {
-    assert.ok(list.every(r => r.visitors >= 2 && typeof r.key === 'string' && r.key === r.key.toLowerCase()));
+    assert.ok(list.every(r => r.visitors >= 1 && typeof r.key === 'string' && r.key === r.key.toLowerCase()));
     assert.ok(list.every((r, i) => !i || list[i - 1].visitors >= r.visitors));
   }
-  // The demo's messy addresses come out merged and the private ones left out.
+  // The demo's messy addresses come out merged.
   assert.equal(new Set(k.site.map(r => r.key)).size, k.site.length);
-  assert.ok(!k.site.some(r => /@|\d{6}/.test(r.key)));
   // The season's search grows: the top word is more than twice what it was.
   assert.equal(k.site[0].key, 'owl calls');
   assert.ok(k.site[0].visitors >= 2 * k.site[0].prev);

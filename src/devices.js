@@ -1,5 +1,5 @@
-// The kind of device and the browser family a visit came from, read from the user agent. No versions and
-// nothing finer, so neither tells people apart.
+// What a visit came from, read from the user agent: the kind of device, the browser family and its major
+// version, and the operating system with its version where the user agent tells it.
 
 // iPadOS 13 and later sends the same user agent as Safari on a Mac, so most iPads land on computer;
 // only older iPads, Android tablets and the Kindle's Silk say they're tablets.
@@ -23,6 +23,27 @@ const BROWSERS = [
   ['chrome', /Chrome\/|CriOS\/|Chromium\//],
   ['safari', /Version\/[\d.]+ (?:Mobile\/\w+ )?Safari\//],
 ];
+
+// The operating system, with the version iPhones and Android send. Windows 10 and 11 send the same version,
+// and Macs have sent 10.15.7 for years whatever they run, so neither is told.
+export function osOf(ua) {
+  const ios = ua.match(/(?:iPhone|iPad|iPod).*? OS (\d+)_(\d+)/);
+  if (ios) return `iOS ${ios[1]}.${ios[2]}`;
+  const android = ua.match(/Android (\d+)/);
+  if (android) return `Android ${android[1]}`;
+  if (/Windows/.test(ua)) return 'Windows';
+  if (/CrOS/.test(ua)) return 'ChromeOS';
+  if (/Macintosh|Mac OS X/.test(ua)) return 'macOS';
+  if (/Linux|X11/.test(ua)) return 'Linux';
+  return 'other';
+}
+
+// The browser's major version, by the family browserOf finds; 0 for apps' own browsers and others.
+const VERSIONS = { edge: /Edg(?:e|A|iOS)?\/(\d+)/, samsung: /SamsungBrowser\/(\d+)/, opera: /(?:OPR|OPiOS|OPT)\/(\d+)/,
+  firefox: /(?:Firefox|FxiOS)\/(\d+)/, chrome: /(?:Chrome|CriOS|Chromium)\/(\d+)/, safari: /Version\/(\d+)/ };
+export function versionOf(ua) {
+  return Number(VERSIONS[browserOf(ua)]?.exec(ua)?.[1]) || 0;
+}
 
 export function browserOf(ua) {
   for (const [name, re] of BROWSERS) if (re.test(ua)) return name;

@@ -19,8 +19,8 @@
 
   var bare = function (host) { return host.replace(/^www\./, ''); };
 
-  // Where the visit came from: the referring site (protocol and host; the rest of its address isn't
-  // needed) and the landing page's tags. A link within the site that carries tags doesn't change it.
+  // Where the visit came from: the referring address, as the browser gives it, without its #, and the landing
+  // page's tags. A link within the site that carries tags doesn't change it.
   function source() {
     var from = '', saved = null, ref;
     inside = false;
@@ -30,10 +30,10 @@
       ref = new URL(document.referrer);
       var same = bare(ref.hostname) === bare(location.hostname);
       inside = same && !/[?&]__cf_/.test(ref.search);
-      if (!same) from = ref.protocol + '//' + ref.host;
+      if (!same) from = ref.href.split('#')[0];
     } catch (e) {}
     // The parts of the landing page's query that say where the visit came from; the rest stays on the page.
-    var tags = (location.search.match(/[?&](utm_\w+|ref|source|[gd]clid|[gw]braid|msclkid|t[tw]clid|li_fat_id)=[^&]*/g) || []).join('');
+    var tags = (location.search.match(/[?&](utm_\w+|ref|source|[gd]clid|[gw]braid|msclkid|t[tw]clid|li_fat_id|fbclid|igshid|yclid|mc_[ce]id|_hs(enc|mi)|via|srsltid)=[^&]*/g) || []).join('');
     var fresh = { r: from, l: tags };
     try {
       saved = JSON.parse(sessionStorage.getItem(KEY));
@@ -185,7 +185,7 @@
     if (view) { vitals = shifts ? { cls: 0 } : {}; paint = null; burst = burstStart = lastShift = 0; }
     var src = source(), v = visit(1), now = Date.now(), shown;
     shown = view = { u: location.href, r: src.r, l: src.l, h: v.h, v: now, ms: 0, since: 0, depth: 0, box: document.querySelector('[data-lede-page="' + location.pathname + '"]') };
-    var hit = { u: view.u, r: view.r, l: view.l, h: view.h, v: now, k: Math.min(v.n, 3) };
+    var hit = { u: view.u, r: view.r, l: view.l, h: view.h, v: now, k: Math.min(v.n, 3), w: window.screen && screen.width };
     post(left ? [left, hit] : hit);
     seen = input = now;
     gone = 0;
@@ -193,16 +193,17 @@
     if (engage) { resume(); setTimeout(function () { if (view === shown) scrolled(); }, 1000); }
   }
 
-  // A link to another site, or to a file on any site. The query is left out, since links often carry
-  // a token or an email address in it. A middle click opens the link in a new tab, so it counts too.
+  // A link to another site, a file on any site, or an email, phone or message link. The # is left out, as it
+  // only moves within the page. A middle click opens the link in a new tab, so it counts too.
   function clicked(e) {
     if (!view || (e.type === 'auxclick' && e.button !== 1)) return;
     var a = e.target && e.target.closest && e.target.closest('a[href]'), to;
     if (!a) return;
     try { to = new URL(a.href, location.href); } catch (err) { return; }
-    if (to.protocol !== 'https:' && to.protocol !== 'http:') return;
-    var type = FILE.test(to.pathname) ? 'download' : bare(to.hostname) !== bare(location.hostname) ? 'outbound' : '';
-    if (type) post({ t: type, u: location.href, r: view.r, l: view.l, h: view.h, o: to.origin + to.pathname });
+    var contact = /^(mailto|tel|sms):$/.test(to.protocol);
+    if (!contact && to.protocol !== 'https:' && to.protocol !== 'http:') return;
+    var type = contact ? 'outbound' : FILE.test(to.pathname) ? 'download' : bare(to.hostname) !== bare(location.hostname) ? 'outbound' : '';
+    if (type) post({ t: type, u: location.href, r: view.r, l: view.l, h: view.h, o: contact ? to.href : to.origin + to.pathname + to.search });
   }
   document.addEventListener('click', clicked);
   document.addEventListener('auxclick', clicked);

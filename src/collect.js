@@ -1,6 +1,6 @@
 import { unwanted, isSpam } from './bots.js';
 import { channelFor, referrerHost, sourceTag } from './channels.js';
-import { deviceOf, browserOf } from './devices.js';
+import { deviceOf, browserOf, osOf, versionOf } from './devices.js';
 import { toDataPoint } from './schema.js';
 import { SEARCH_PARAMS } from './queries.js';
 import { keyword, searchWord } from './shape.js';
@@ -26,27 +26,9 @@ const vital = (v, max) => typeof v === 'number' && v >= 0 && v <= max ? Math.rou
 // CLS is often truly 0, so a measured one is stored one higher and 0 still means not measured.
 const shift = v => typeof v === 'number' && v >= 0 && v <= 10e3 ? Math.round(v) + 1 : 0;
 
-// Parts of a link's path that can name a person or unlock something: an email address, 7 or more digits
-// that aren't a date (20261005), a UUID, 16 or more hex characters, or a long token mixing upper and
-// lower case with digits. Each is kept as *, with the file's extension, so downloads of one kind of file
-// stay together. An email's domain ends in letters that aren't a file's extension, so logo@2x.png and
-// lodash@4.17.21 are names, not addresses.
-const DATE = /^(19|20)\d\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/;
-const EMAIL = /[^@\s]@[^@\s]+\.(?!(?:png|jpe?g|gif|webp|avif|svg|ico|m?js|css|map|json|wasm|html?|xml|pdf|txt|csv|zip|t?gz)(?![\da-z]))[a-z]{2,}(?![\da-z])/i;
-function secret(s) {
-  return EMAIL.test(s) || /[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}/i.test(s) || /[\da-f]{16}/i.test(s)
-    || (s.match(/\d{7,}/g) || []).some(d => !DATE.test(d))
-    || (s.match(/[A-Za-z\d]{20,}/g) || []).some(t => /[a-z]/.test(t) && /[A-Z]/.test(t) && /\d/.test(t));
-}
-export function scrubPath(path) {
-  return path.split('/').map(part => {
-    let text = part;
-    try { text = decodeURIComponent(part); } catch {}
-    if (!secret(text)) return part;
-    const ext = text.match(/\.[a-z\d]{1,5}$/i)?.[0];
-    return ext && secret(text.slice(0, -ext.length)) ? '*' + ext : '*';
-  }).join('/');
-}
+// Query parameters that say where a visit came from rather than which page it is: campaign tags and the click IDs
+// ad and email tools add. They're read from the landing page (the tracker sends them as l), never kept in a page.
+export const TRACKING = /^(utm_\w+|ref|source|[gd]clid|[gw]braid|msclkid|t[tw]clid|li_fat_id|fbclid|igshid|yclid|mc_[ce]id|_hs(enc|mi)|via|srsltid)$/;
 
 // The type-specific part of an event, or null if it doesn't make sense. Engagement carries e (engaged ms)
 // and s (scroll depth, %), and the page view's Web Vitals when the browser measured them: lcp and inp in
@@ -73,10 +55,12 @@ function details(type, body, site) {
   if (typeof body.o !== 'string' || body.o.length > 2048) return null;
   let to;
   try { to = new URL(body.o); } catch { return null; }
+  // An email, phone or message link is kept as it was written: the address is the site's own.
+  if (type === 'outbound' && /^(mailto|tel|sms):$/.test(to.protocol)) return { target: clip(body.o.trim()) };
   if (to.protocol !== 'https:' && to.protocol !== 'http:') return null;
   const host = stripWww(to.hostname);
   if (type === 'outbound' && host === site) return null;
-  return { target: clip(host + scrubPath(trimPath(to.pathname))) };
+  return { target: clip(host + trimPath(to.pathname) + to.search) };
 }
 
 // Turns the tracker's payload into the fields we store, or null if the event should be dropped.
@@ -104,21 +88,22 @@ export function parseEvent(body, sites) {
 
   const extra = details(type, body, site);
   if (!extra) return null;
-  const path = trimPath(page.pathname);
-  // Of the page's query only what was searched for is kept, cleaned as search words are, since the rest
-  // can hold a reset token, an email address or a session ID. A magic link can put its token in s or k,
-  // so a word that looks like one is dropped too; that's checked before lowercasing hides mixed case.
-  const raw = SEARCH_PARAMS.map(p => page.searchParams.get(p)).find(Boolean);
-  const word = raw && !secret(raw) ? searchWord(page.search) : '';
+  // A page is its path and its own query, so /?p=123 and /?p=124 are two pages. Tracking tags say where the visit
+  // came from, and the words searched for are what was searched, not another page: both are left out of it.
+  const own = new URLSearchParams([...page.searchParams].filter(([k]) => !TRACKING.test(k) && !SEARCH_PARAMS.includes(k))).toString();
+  const path = trimPath(page.pathname) + (own ? '?' + own : '');
+  const word = searchWord(page.search);
 
   return {
     site,
     type,
     ...extra,
     path: clip(path),
-    url: clip(path + (word ? '?' + new URLSearchParams({ q: word }) : '')),
+    url: clip(path + (word ? (own ? '&' : '?') + new URLSearchParams({ q: word }) : '')),
     step: type === 'pageview' && [1, 2, 3].includes(body.k) ? body.k : 0,
     referrer: clip(referrer),
+    refUrl: referrer && body.r ? clip(String(body.r).split('#')[0]) : '',
+    screen: Number.isInteger(body.w) && body.w >= 100 && body.w <= 20000 ? body.w : 0,
     channel: channelFor(referrer, landing),
     utmSource: clip((landing.get('utm_source') || landing.get('source') || landing.get('ref') || '').toLowerCase()),
     utmMedium: clip((landing.get('utm_medium') || '').toLowerCase()),
@@ -261,11 +246,13 @@ export async function collect(req, env, ctx) {
   const address = senderKey(`${salt}|${ip}`);
   if (env.BEACON_LIMIT && !(await env.BEACON_LIMIT.limit({ key: address })).success) return new Response(null, { status: 204, headers: CORS });
   const device = deviceOf(ua, req.headers.get('Sec-CH-UA-Mobile')), browser = browserOf(ua), country = req.cf?.country || '';
+  const os = osOf(ua), version = versionOf(ua), language = (req.headers.get('Accept-Language') || '').split(',')[0].split(';')[0].trim().slice(0, 35);
+  const place = req.cf?.city || req.cf?.region ? clip(`${req.cf.city || ''}|${req.cf.region || ''}`) : '';
   for (const [b, ev] of events) {
     if (!underCap(senderKey(`${salt}|${ip}|${ua}|${ev.site}`), now.getTime()) || !underAddressCap(address, now.getTime())) continue;
     const started = visitHour(b.h, now);
     const ids = await identify(await visitSalt(env, started, now, salt), ev.site, ip, ua, now, started);
-    env.EVENTS.writeDataPoint(toDataPoint({ ...ev, ...ids, country, device, browser }));
+    env.EVENTS.writeDataPoint(toDataPoint({ ...ev, ...ids, country, device, browser, os, version, place, language }));
     forward(env, ctx, { ...ev, ...ids, country });
   }
   return new Response(null, { status: 204, headers: CORS });
