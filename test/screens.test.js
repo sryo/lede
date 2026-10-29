@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { cover } from './raster.mjs';
 
 // What each screen asks for and names, read from the dashboard's source, where a rule has no function of its own.
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
@@ -169,10 +170,39 @@ test('the speed card’s note keeps the layout score, on hover', () => {
   assert.match(fn('drawSpeed'), /S\.layout/);
 });
 
-test('the overview shows sources and pages as two strips, the named one solid, its rows a tap away', () => {
+test('the overview shows sources and pages as two strips shaded by position, its rows a tap away', () => {
   const d = fn('drawInOut');
   assert.match(d, /class="strip"/);
+  assert.match(d, /shadeSeg\(subj,i\)/);
   assert.doesNotMatch(d, /rowsInto\(/);
+});
+
+// The strips' textures: what shadeSeg asks for, and the hatch rules the page carries for light and dark.
+const shadeSeg = new Function(`${html.match(/const GLYPHS4=.*\n/)[0]}${html.match(/const shadeSeg=.*\n/)[0]}return shadeSeg`)();
+const hatchLine = html.split('\n').find(l => l.includes('.hatch-diag.w1{'));
+const darkAt = hatchLine.indexOf('@media (prefers-color-scheme:dark){');
+const patterns = css => Object.fromEntries([...css.matchAll(/\.hatch-(\w+)\.(w\d)\{--hatch-g:url\("data:image\/svg\+xml,(.*?)"\)\}/g)]
+  .map(m => [`${m[1]}.${m[2]}`, m[3].match(/ d='([^']*)'/)[1]]));
+const PATTERNS = { light: patterns(hatchLine.slice(0, darkAt)), dark: patterns(hatchLine.slice(darkAt)) };
+const patternOf = i => { const c = shadeSeg('src', i).match(/hatch-(\w+) (w\d)/); return c && `${c[1]}.${c[2]}`; };
+// A path that starts with the whole tile is cut out of it, under evenodd.
+const ink = d => d.startsWith('M0 0h8v8H0z') ? cover({ invert: true, d: d.slice(11) }) : cover(d);
+
+test('a strip’s first part is plain, and every later part has its texture in both themes', () => {
+  assert.equal(patternOf(0), null);
+  assert.match(shadeSeg('page', 0), /class="page-s"/);
+  for (let i = 1; i <= 8; i++) {
+    for (const theme of ['light', 'dark']) assert.ok(PATTERNS[theme][patternOf(i)], `${theme} has ${patternOf(i)}, for the part at ${i}`);
+  }
+});
+
+test('textures keep the part’s own color and fade it toward the card in even steps', () => {
+  assert.match(html, /\.src-h,\.page-h,\.time-h\{--hatch-ink:var\(--tile\);--hatch-a:1\}/);
+  for (const s of ['src', 'page', 'time']) assert.match(html, new RegExp(`\\.${s}-h,\\.${s}-s\\{background:var\\(--${s}\\)\\}`));
+  const STEPS = [.23, .45, .65, .85];
+  const at = [1, 2, 3, 4].map(i => ({ light: ink(PATTERNS.light[patternOf(i)]), dark: ink(PATTERNS.dark[patternOf(i)]) }));
+  at.forEach(({ light, dark }, k) => assert.ok(Math.abs((light + dark) / 2 - STEPS[k]) < .03, `part ${k + 2} inks ${((light + dark) / 2 * 100).toFixed(1)}%, about ${STEPS[k] * 100}%`));
+  for (const theme of ['light', 'dark']) assert.ok(at.every((x, k) => !k || x[theme] > at[k - 1][theme]), `${theme} inks more at every step`);
 });
 
 test('a funnel is drawn as rows against its first step, the visits lost in pale violet', () => {

@@ -1426,8 +1426,9 @@ async function renderFilter(body,f){
 }
 
 // The overview's sources and pages, one strip each, from the rows home already has: led by what home's sentence left
-// out on each side, the row it names solid and the rest faded, as on the audience card; each label opens its row.
-// A strip shades by position: the first segment plain, each next one under more texture.
+// out on each side, the row it names in bold; each label opens its row.
+// A strip shades by position, as one ramp: the first part plain, each next one under a texture of its own with more
+// of it, knocked out toward the card, the named row and the rest included. Each key swatch matches its part.
 const GLYPHS4=['diag','dots','back','squiggle'];
 const shadeSeg=(subj,i)=>i?`class="${subj}-h hatch-${GLYPHS4[Math.min(4,i)-1]} w${Math.min(4,i)}"`:`class="${subj}-s"`;
 const keySw=(subj,i)=>`<span ${shadeSeg(subj,i).replace('class="','class="sw hk ')}></span>`;
@@ -1511,7 +1512,8 @@ async function showPicture(sec,path){
   }catch{if(sec.isConnected)say('none','failed')}
 }
 
-// Where readers are and what they use: the finding, then each list as one strip of shares, the row it names solid.
+// Where readers are and what they use: the finding, then each list as one strip of shares, shaded by position as the
+// overview's sources and pages are, the row it names in bold.
 function drawAudience(sec,A){
   const S=audienceStory(A);if(!S)return;
   sec.innerHTML=`<div class="card-title">Where readers are and what they use</div><p class="sentence">${S.html}</p>${[['Countries','country'],['Devices','device'],['Browsers','browser']].map(([t,dim])=>{
