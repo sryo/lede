@@ -1984,7 +1984,7 @@ function drawLanes(el,L,named=[]){
     let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(L.rows.map(r=>`${r.path??`${r.pages} other pages`}: ${fmtInt(r.here)} here now, ${fmtInt(r.n-r.here)} left`).join('; '))}">`;
     const BANDS=[['under 1 min',narrow?'<1m':'under 1 min'],['1–5 min','1–5m'],['5–15 min','5–15m'],['15–30 min','15–30m']];
     if(bands)BANDS.forEach(([,t],b)=>{const x=pl+b*span/4;s+=`<line x1="${x}" x2="${x}" y1="0" y2="${H-24}" stroke="var(--line)"/><text x="${x+4}" y="${H-6}" class="axis">${t}</text>`});
-    else for(const [v,t] of narrow?[[0,'0'],[60,'1 min'],[300,'5 min'],[1800,'30 min']]:[[0,'just came'],[60,'1 min'],[300,'5 min'],[900,'15 min'],[1800,'30 min']])
+    else for(const [v,t] of narrow?[[0,'0'],[60,'1 min'],[300,'5 min'],[1800,'30 min']]:[[0,'just now'],[60,'1 min'],[300,'5 min'],[900,'15 min'],[1800,'30 min']])
       s+=`<line x1="${X(v)}" x2="${X(v)}" y1="0" y2="${H-24}" stroke="var(--line)"/><text x="${X(v)}" y="${H-6}" text-anchor="${v?v===1800?'end':'middle':'start'}" class="axis">${t}</text>`;
     const fig=(x,y,ink,hint)=>`<text class="fig" x="${x}" y="${y}" text-anchor="middle" style="fill:var(${ink})"${hint?` data-hint="${esc(hint)}"`:''}>`;
     L.rows.forEach((r,i)=>{
