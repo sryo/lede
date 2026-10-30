@@ -591,7 +591,7 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  dayHint, thenLine, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
   ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -872,7 +872,7 @@ function dayBars(el,o){
     // One strip per day, the full height, so a short bar or an empty day is as easy to point at as a tall one.
     // On a chart that takes notes, a day's hint says so, with the note already on it.
     const noted=i=>o.note&&NOTES.find(x=>x.day===dayKey(dayDate(o.start,i)));
-    cur.forEach((v,i)=>{const nt=noted(i),h=dayHint(day(i),v,prev?.[i],DAYS)+(o.note?(nt?`\nYour note: ${nt.text}. Click to change it`:'\nClick to add a note'):'');
+    cur.forEach((v,i)=>{const nt=noted(i),h=dayHint(fmtDate(dayDate(start,i)),v,prev?.[i],fmtDate(dayDate(start,i-DAYS)))+(o.note?(nt?`\nYour note: ${nt.text}. Click to change it`:'\nClick to add a note'):'');
       s+=`<rect x="${i*cw}" y="${top}" width="${cw}" height="${base-top}" fill="transparent" data-hint="${esc(h)}"/>`});
     if(o.axis){
       // The peak's date shows only where it clears the first and last dates by 8px (a date is about 7px a character).
@@ -931,7 +931,7 @@ function lines(el,{cur,prev,fmt,axis,start,peak,span=0}){
       const v=cur[i],at=v??(prev?.[i]??lo),said=x=>x==null?'no visits':fmt(x);
       g.setAttribute('opacity',1);g.querySelector('line').setAttribute('x1',X(i));g.querySelector('line').setAttribute('x2',X(i));
       const c=g.querySelector('circle');c.setAttribute('cx',X(i));c.setAttribute('cy',Y(at));c.setAttribute('opacity',v==null?0:1);
-      t.hidden=false;t.innerHTML=`${day(i)}: <b>${said(v)}</b>${prev?`<br><span class="muted">${DAYS} days earlier: ${said(prev[i])}</span>`:''}`;
+      t.hidden=false;t.innerHTML=`${fmtDate(dayDate(start,i))}: <b>${said(v)}</b>${prev?`<br><span class="muted">${thenLine(v,prev[i],fmtDate(dayDate(start,i-DAYS)),1)}</span>`:''}`;
       // Near the top the tip goes under the point instead of over the card's title.
       t.style.left=Math.min(W-t.offsetWidth/2,Math.max(t.offsetWidth/2,X(i)))+'px';t.style.top=Y(at)+'px';t.classList.toggle('below',Y(at)<t.offsetHeight+8);
     };

@@ -19,7 +19,22 @@ export const fmtSigned = n => (n > 0 ? '+' : n < 0 ? '−' : '±') + fmtInt(Math
 // Hover hints on the charts.
 const many = (n, u = 'visitors') => `${fmtInt(n)} ${Math.round(n) === 1 ? u.slice(0, -1) : u}`;
 const visitors = n => many(n);
-export const dayHint = (day, n, before, days) => `${day}: ${visitors(n)}${before == null ? '' : ` · ${days} days earlier: ${fmtInt(before)}`}`;
+// How a day compares with the same day of the period before, named by its date so the weekdays can explain a dip.
+// A count changes by a share of the earlier day; a rate (bounce) by points, never a percent of a percent.
+// For a rate, null is a day with no visits.
+export const thenLine = (n, before, was, rate) => {
+  if (rate && before == null) return `no visits on ${was}${n == null ? ' either' : ''}`;
+  if (rate && n == null) return `${fmtPct(before)} on ${was}`;
+  if (!rate && !before) return `none on ${was}${n ? '' : ' either'}`;
+  // Past a doubling, a count says how many times as many, as home's sentence does.
+  const x = Math.round(n / before);
+  if (!rate && n / before >= 1.95) return `${x === 2 ? 'twice' : `${x} times`} the ${fmtInt(before)} on ${was}`;
+  // A rate's points come from the two percentages as shown, so the words never disagree with them.
+  const d = rate ? Math.round(n * 100) - Math.round(before * 100) : Math.round((n - before) / before * 100), a = Math.abs(d);
+  return `${d ? `${a}${rate ? ` point${a === 1 ? '' : 's'}` : '%'} ${d > 0 ? rate ? 'higher' : 'more' : rate ? 'lower' : 'fewer'}`
+    : rate || n === before ? 'the same as' : 'about the same as'}${d ? ' than' : ''} the ${rate ? fmtPct(before) : fmtInt(before)} on ${was}`;
+};
+export const dayHint = (day, n, before, was) => `${day}: ${visitors(n)}${before == null ? '' : `\n${thenLine(n, before, was)}`}`;
 export const ribbonHint = (from, to, n) => `${from} → ${to}: ${visitors(n)}`;
 export const sourceHint = (label, n, prev, u = 'visitors') => `${label}: ${many(n, u)}, `
   + (!prev ? 'none before' : n > prev ? `${fmtInt(n - prev)} more than before` : n < prev ? `${fmtInt(prev - n)} fewer than before` : 'the same as before');
