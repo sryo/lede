@@ -59,6 +59,13 @@ test('a bounce chart never blows a one-point wobble up to its full height', () =
   assert.match(fn('lines'), /hi-lo<span/);
 });
 
+test('day charts draw sharp: gridlines on the half pixel, a day with any visitors at least 2px, bars square at the baseline', () => {
+  assert.match(fn('dayBars'), /y=Y\(v\)\+\.5/);
+  assert.match(fn('lines'), /y=Math\.round\(Y\(v\)\)\+\.5/);
+  assert.match(fn('dayBars'), /v\?Math\.min\(Y\(v\),base-2\):base/);
+  assert.doesNotMatch(fn('dayBars'), /rx=/);
+});
+
 test('the Online screen weighs the last half hour against a usual one, from home’s hours', () => {
   assert.match(fn('renderOnline'), /onlinePace\(live,H\?\.hourly/);
   assert.match(fn('drawHome'), /hourly,pace:/);
