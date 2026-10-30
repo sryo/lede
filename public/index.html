@@ -894,6 +894,8 @@ function dayBars(el,o){
 function lines(el,{cur,prev,fmt,axis,start,peak,span=0}){
   const day=i=>fmtDay(dayDate(start,i)),vals=[...cur,...(prev||[])].filter(v=>v!=null);
   if(!vals.length){el.innerHTML='<div class="empty">No visits yet</div>';return}
+  // The picked day outlives a redraw, so a resize doesn't send the keyboard back to the latest day.
+  let on;
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
     const padL=8,padR=40,padB=22,padT=peak?44:10,n=cur.length;
@@ -923,20 +925,36 @@ function lines(el,{cur,prev,fmt,axis,start,peak,span=0}){
     if(peak)html+=`<div class="peak" style="${anchorStyle(X(peak.i)/W)}"><b>${esc(peak.title)}</b>${peak.sub?`<br><span>${esc(peak.sub)}</span>`:''}</div>`;
     el.innerHTML=html;
     const g=el.querySelector('.guide'),t=el.querySelector('.tip');
+    // The pointer and the keyboard show a day the same way; a screen reader hears the tip's words as the slider's value.
+    const show=i=>{
+      i=Math.max(0,Math.min(n-1,i));on=i;
+      const v=cur[i],y=Y(v??(prev?.[i]??lo)),w=v==null?'no visits':fmt(v),d=fmtDate(dayDate(start,i)),th=prev&&thenLine(v,prev[i],fmtDate(dayDate(start,i-DAYS)),1);
+      g.setAttribute('opacity',1);g.querySelector('line').setAttribute('x1',X(i));g.querySelector('line').setAttribute('x2',X(i));
+      const c=g.querySelector('circle');c.setAttribute('cx',X(i));c.setAttribute('cy',y);c.setAttribute('opacity',v==null?0:1);
+      t.hidden=false;t.innerHTML=`${d}: <b>${w}</b>${th?`<br><span class="muted">${th}</span>`:''}`;
+      // Near the top the tip goes under the point instead of over the card's title.
+      t.style.left=Math.min(W-t.offsetWidth/2,Math.max(t.offsetWidth/2,X(i)))+'px';t.style.top=y+'px';t.classList.toggle('below',y<t.offsetHeight+8);
+      el.setAttribute('aria-valuenow',i);el.setAttribute('aria-valuetext',`${d}: ${w}${th?`, ${th}`:''}`);
+    };
+    const hide=()=>{g.setAttribute('opacity',0);t.hidden=true};
+    el.tabIndex=0;el.setAttribute('role','slider');el.setAttribute('aria-valuemin',0);el.setAttribute('aria-valuemax',n-1);
+    el.setAttribute('aria-label',`${peak?.aria||'This period compared with the previous one.'} Move by day with the arrow keys.`);
     // A sideways drag scrubs the days and a vertical one still scrolls.
     // A finger lifting off keeps its day shown; only a mouse leaving clears it.
     el.style.touchAction='pan-y pinch-zoom';
-    el.onpointermove=e=>{
-      const i=Math.max(0,Math.min(n-1,Math.round((e.clientX-el.getBoundingClientRect().left-padL)/gap)));
-      const v=cur[i],at=v??(prev?.[i]??lo),said=x=>x==null?'no visits':fmt(x);
-      g.setAttribute('opacity',1);g.querySelector('line').setAttribute('x1',X(i));g.querySelector('line').setAttribute('x2',X(i));
-      const c=g.querySelector('circle');c.setAttribute('cx',X(i));c.setAttribute('cy',Y(at));c.setAttribute('opacity',v==null?0:1);
-      t.hidden=false;t.innerHTML=`${fmtDate(dayDate(start,i))}: <b>${said(v)}</b>${prev?`<br><span class="muted">${thenLine(v,prev[i],fmtDate(dayDate(start,i-DAYS)),1)}</span>`:''}`;
-      // Near the top the tip goes under the point instead of over the card's title.
-      t.style.left=Math.min(W-t.offsetWidth/2,Math.max(t.offsetWidth/2,X(i)))+'px';t.style.top=Y(at)+'px';t.classList.toggle('below',Y(at)<t.offsetHeight+8);
-    };
+    el.onpointermove=e=>show(Math.round((e.clientX-el.getBoundingClientRect().left-padL)/gap));
     el.onpointerdown=el.onpointermove;
-    el.onpointerleave=e=>{if(e.pointerType=='mouse'){g.setAttribute('opacity',0);t.hidden=true}};
+    el.onpointerleave=e=>{if(e.pointerType=='mouse')hide()};
+    // Page Up and Page Down move a week, so the same weekday comes round. Esc hides the day first, and only then
+    // goes back as it does everywhere else.
+    el.onkeydown=e=>{
+      const k={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1,PageDown:-7,PageUp:7,Home:-n,End:n}[e.key];
+      if(k){e.preventDefault();show((on??n-1)+k)}
+      else if(e.key==='Escape'&&!t.hidden){e.stopPropagation();hide()}
+    };
+    // A click focuses the chart too; only focus from the keyboard shows a day, the last one picked or else the latest.
+    el.onfocus=()=>{if(el.matches(':focus-visible'))show(on??n-1)};
+    el.onblur=hide;
   });
 }
 

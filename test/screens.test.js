@@ -66,6 +66,15 @@ test('day charts draw sharp: gridlines on the half pixel, a day with any visitor
   assert.doesNotMatch(fn('dayBars'), /rx=/);
 });
 
+test('the bounce line is a slider: arrows, a week a page, Home and End, Esc hides the day before it goes back', () => {
+  const f = fn('lines');
+  assert.match(f, /setAttribute\('role','slider'\)/);
+  assert.match(f, /aria-valuetext/);
+  assert.match(f, /PageDown:-7,PageUp:7,Home:-n,End:n/);
+  assert.match(f, /e\.key==='Escape'&&!t\.hidden\)\{e\.stopPropagation\(\)/);
+  assert.match(f, /matches\(':focus-visible'\)/);
+});
+
 test('the Online screen weighs the last half hour against a usual one, from home’s hours', () => {
   assert.match(fn('renderOnline'), /onlinePace\(live,H\?\.hourly/);
   assert.match(fn('drawHome'), /hourly,pace:/);
