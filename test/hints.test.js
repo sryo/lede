@@ -1,6 +1,22 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dayHint, thenLine, ribbonHint, sourceHint, pageHint, rowLabel } from '../public/story.js';
+import { dayHint, thenLine, usualDay, todayHint, ribbonHint, sourceHint, pageHint, rowLabel } from '../public/story.js';
+
+test('today says its visitors so far and a usual whole day of its weekday, rounded, never a comparison', () => {
+  assert.equal(todayHint('Fri, Oct 30', 560, 2729, 'Friday'), 'Fri, Oct 30: 560 visitors so far\na whole Friday here is usually about 2,700');
+  assert.equal(todayHint('Fri, Oct 30', 1, 12345, 'Friday'), 'Fri, Oct 30: 1 visitor so far\na whole Friday here is usually about 12,000');
+  assert.equal(todayHint('Fri, Oct 30', 560, null, 'Friday'), 'Fri, Oct 30: 560 visitors so far');
+  assert.equal(todayHint('Fri, Oct 30', 0, 0, 'Friday'), 'Fri, Oct 30: 0 visitors so far');
+});
+
+test('a usual day is the median of the same weekday over the four weeks before today, and needs three of them', () => {
+  // The four weeks before a Friday today, with each earlier Friday given and every other day 9; fewer Fridays, fewer weeks.
+  const days = (...fridays) => { const a = Array(7 * fridays.length).fill(9).concat(5); fridays.forEach((v, k) => { a[a.length - 1 - 7 * (k + 1)] = v; }); return a; };
+  assert.equal(usualDay(days(2577, 2680, 2778, 2834)), 2778);
+  assert.equal(usualDay(days(100, 300, 200)), 200);
+  assert.equal(usualDay(days(100, 300)), null);
+  assert.equal(usualDay([5]), null);
+});
 
 test('a day says its visitors, and how it compares with the same day of the period before, named by its date', () => {
   assert.equal(dayHint('Mon, Oct 26', 1), 'Mon, Oct 26: 1 visitor');

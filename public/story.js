@@ -35,6 +35,15 @@ export const thenLine = (n, before, was, rate) => {
     : rate || n === before ? 'the same as' : 'about the same as'}${d ? ' than' : ''} the ${rate ? fmtPct(before) : fmtInt(before)} on ${was}`;
 };
 export const dayHint = (day, n, before, was) => `${day}: ${visitors(n)}${before == null ? '' : `\n${thenLine(n, before, was)}`}`;
+// A whole day of today's weekday as it usually goes: the median of the same weekday in the four weeks before, from
+// daily counts ending today. Fewer than three of them aren't a usual, so that is null.
+export const usualDay = days => {
+  const past = [7, 14, 21, 28].map(d => days[days.length - 1 - d]).filter(v => v != null);
+  return past.length < 3 ? null : median(past);
+};
+// Today isn't over, so it's never set against a whole day; its usual is rounded, being the median of a few days.
+export const todayHint = (day, n, usual, weekday) =>
+  `${day}: ${visitors(n)} so far${usual ? `\na whole ${weekday} here is usually about ${fmtInt(+usual.toPrecision(2))}` : ''}`;
 export const ribbonHint = (from, to, n) => `${from} → ${to}: ${visitors(n)}`;
 export const sourceHint = (label, n, prev, u = 'visitors') => `${label}: ${many(n, u)}, `
   + (!prev ? 'none before' : n > prev ? `${fmtInt(n - prev)} more than before` : n < prev ? `${fmtInt(prev - n)} fewer than before` : 'the same as before');

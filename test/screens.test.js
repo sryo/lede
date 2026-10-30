@@ -66,6 +66,15 @@ test('day charts draw sharp: gridlines on the half pixel, a day with any visitor
   assert.doesNotMatch(fn('dayBars'), /rx=/);
 });
 
+test('today stands in a flat pale track as tall as a usual day of its weekday, named Today, its hint never a comparison', () => {
+  const f = fn('dayBars');
+  assert.match(f, /u=usualDay\(\[\.\.\.prev\|\|\[\],\.\.\.cur\]\)/);
+  assert.match(f, /if\(i==n-1&&u>v\)s\+=`<rect [^`]*fill="var\(--\$\{subj\}-p\)"/);
+  assert.match(f, /i<n-1\?fmtDay\(dayDate\(start,i\)\):'Today'/);
+  assert.match(f, /todayHint\(/);
+  assert.match(fn('drawMarks'), /i<n-1\?f\(dayDate\(ser\.start,i\)\):'Today'/);
+});
+
 test('the bounce line is a slider: arrows, a week a page, Home and End, Esc hides the day before it goes back', () => {
   const f = fn('lines');
   assert.match(f, /setAttribute\('role','slider'\)/);

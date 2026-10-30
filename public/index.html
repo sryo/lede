@@ -591,7 +591,7 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, thenLine, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  dayHint, thenLine, usualDay, todayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
   ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -839,12 +839,14 @@ function treemap(el,items,{gap=4}={}){
 
 // Bars per day in a subject's colour (time unless `subj` says otherwise), with the previous period as a dashed step line over them.
 // With `hot` days, those stay solid and the rest turn transparent; without, every bar is solid.
+// The last day is today, which isn't over: it stands in a pale track as tall as a usual whole day of its weekday, taken
+// from the two periods shown (so a 7-day chart, with one earlier week, has none).
 // o: {cur, prev?, start, aria, subj?, seg?:{day,top,subj}, hot?:Set, label?:{i,title,sub,swatch}, prevDot?, axis?, scale?, note?}
 function dayBars(el,o){
-  const {cur,start}=o,n=cur.length,prev=o.prev,day=i=>fmtDay(dayDate(start,i)),subj=o.subj||'time';
+  const {cur,start}=o,n=cur.length,prev=o.prev,day=i=>i<n-1?fmtDay(dayDate(start,i)):'Today',subj=o.subj||'time',u=usualDay([...prev||[],...cur]);
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
-    const top=o.label?40:o.scale?10:4,padB=o.axis?20:o.scale?4:0,base=H-padB,padR=o.scale?40:0,peakV=Math.max(maxOf(cur),prev?maxOf(prev):0);
+    const top=o.label?40:o.scale?10:4,padB=o.axis?20:o.scale?4:0,base=H-padB,padR=o.scale?40:0,peakV=Math.max(maxOf(cur),prev?maxOf(prev):0,u);
     // With a scale, the top gridline is a round number just above the tallest bar, and never a fraction of a person.
     const step=o.scale?Math.max(1,nice(peakV||1).step):0,max=o.scale?Math.ceil((peakV||1)/step)*step:peakV*1.04||1;
     if(base<top+8)return;
@@ -857,6 +859,8 @@ function dayBars(el,o){
     if(o.scale)for(let k=1;k*step<=max+1e-9;k++){const v=k*step,y=Y(v)+.5;s+=`<line class="grid-l" x2="${W-padR}" y1="${y}" y2="${y}"/><text x="${W}" y="${y+4}" font-size="12" fill="var(--muted)" text-anchor="end">${v>=1000?`${+(v/1000).toFixed(1)}k`:v}</text>`}
     cur.forEach((v,i)=>{
       const y=v?Math.min(Y(v),base-2):base;
+      // Flat-topped, so the track reads as room still empty rather than as a bar of what today will be.
+      if(i==n-1&&u>v)s+=`<rect x="${x(i)}" y="${Y(u)}" width="${bw}" height="${base-Y(u)}" fill="var(--${subj}-p)"/>`;
       // The spike's two parts are split by a 1px gap taken from the upper part, so the bar's full height stays true.
       if(o.seg&&o.seg.day===i){
         const ym=Y(v-o.seg.top);
@@ -872,7 +876,7 @@ function dayBars(el,o){
     // One strip per day, the full height, so a short bar or an empty day is as easy to point at as a tall one.
     // On a chart that takes notes, a day's hint says so, with the note already on it.
     const noted=i=>o.note&&NOTES.find(x=>x.day===dayKey(dayDate(o.start,i)));
-    cur.forEach((v,i)=>{const nt=noted(i),h=dayHint(fmtDate(dayDate(start,i)),v,prev?.[i],fmtDate(dayDate(start,i-DAYS)))+(o.note?(nt?`\nYour note: ${nt.text}. Click to change it`:'\nClick to add a note'):'');
+    cur.forEach((v,i)=>{const nt=noted(i),d=dayDate(start,i),h=(i<n-1?dayHint(fmtDate(d),v,prev?.[i],fmtDate(dayDate(start,i-DAYS))):todayHint(fmtDate(d),v,u,fmtWeekday(d,'long')))+(o.note?(nt?`\nYour note: ${nt.text}. Click to change it`:'\nClick to add a note'):'');
       s+=`<rect x="${i*cw}" y="${top}" width="${cw}" height="${base-top}" fill="transparent" data-hint="${esc(h)}"/>`});
     if(o.axis){
       // The peak's date shows only where it clears the first and last dates by 8px (a date is about 7px a character).
@@ -2413,10 +2417,10 @@ function eventButton(e,ser,full){
 // Markers under the daily bars, one slot per day, each with a short name when there is room for it.
 // pick: which of home's events these are, so the list they open follows a change of period.
 function drawMarks(el,events,ser,pick=null){
-  const n=ser.cur.visitors.length,byDay=new Map(),day=i=>fmtDay(dayDate(ser.start,i));
+  const n=ser.cur.visitors.length,byDay=new Map(),day=(i,f=fmtDay)=>i<n-1?f(dayDate(ser.start,i)):'Today';
   for(const e of events)if(e.kind!=='week')byDay.set(e.day,[...(byDay.get(e.day)||[]),e]);
   // A week is short enough to name every day; longer periods show their first and last date.
-  el.innerHTML=n<=7?Array.from({length:n},(_,i)=>`<span class="m-day" style="left:${((i+.5)/n*100).toFixed(2)}%">${fmtWeekday(dayDate(ser.start,i))}</span>`).join('')
+  el.innerHTML=n<=7?Array.from({length:n},(_,i)=>`<span class="m-day" style="left:${((i+.5)/n*100).toFixed(2)}%">${day(i,fmtWeekday)}</span>`).join('')
     :`<span class="m-date">${day(0)}</span><span class="m-date end">${day(n-1)}</span>`;
   [...byDay].sort((a,b)=>a[0]-b[0]).forEach(([d,list])=>{
     const b=document.createElement('button');b.type='button';b.className='mark';b.dataset.day=d;
