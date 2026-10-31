@@ -35,20 +35,39 @@ export const thenLine = (n, before, was, rate) => {
     : rate || n === before ? 'the same as' : 'about the same as'}${d ? ' than' : ''} the ${rate ? fmtPct(before) : fmtInt(before)} on ${was}`;
 };
 export const dayHint = (day, n, before, was) => `${day}: ${visitors(n)}${before == null ? '' : `\n${thenLine(n, before, was)}`}`;
-// A day is set against the same weekday a whole number of weeks before, so a Monday is never measured against a
-// Saturday: 7 days back on a week, 28 on 30 days. The weeks never reach past the period before, which is as long as
-// this one, so a period of 7 days or more always has its matches; for one that isn't whole weeks, the last days'
-// matches fall in this period's first days.
-export const weeksBack = n => 7 * Math.floor(n / 7);
-export const sameWeekday = (cur, prev) => { const n = cur.length, k = n - weeksBack(n); return [...prev, ...cur].slice(k, k + n); };
+// The comparison is a window of the same length as the period, gap days before its end. By default it is the
+// whole weeks that clear the period (30 days against the 35 before: five weeks), so a Monday is never measured
+// against a Saturday and the two never overlap. A period of 43 days or more has no such window within the 90
+// days kept, so it is compared with the days just before it.
+// Where the comparison's first day is: gap days before the period's.
+export const prevStart = ser => ser.start - (ser.gap ?? ser.days) * 86400;
+export const alignedGap = (n, back = 0) => { const g = 7 * Math.ceil(n / 7); return back + g + n <= 90 ? g : n; };
 // The last n days of a series and the n before them, cut from a longer one: every unfiltered series is cut from the
 // 45-day answer, whose two periods are the 90 days Lede keeps, so every period, the dashboard's minimap and the
-// second line's sheet share one answer. Cut, the period before ends on a whole day rather than at this time of day;
-// the charts set days against their weekdays, and the sentences' totals come from summary, which still stops there.
-export const cutSeries = (s, n, D = s.days) => {
+// second line's sheet share one answer. The period ended back days ago (within the 45 days that know each day's top
+// source), and the comparison is the window that ended gap days before it did. Cut, the period before ends on a whole
+// day rather than at this time of day; the charts pair days by place in the two windows, and the sentences' totals
+// come from summary, which still stops there.
+export const cutSeries = (s, n, back = 0, gap = n, D = s.days) => {
   const k = 2 * D, part = (a, b) => Object.fromEntries(Object.keys(s.cur).map(m => [m, [...s.prev[m], ...s.cur[m]].slice(a, b)]));
-  return { ...s, days: n, start: s.start + (D - n) * 86400, cur: part(k - n, k), prev: part(k - 2 * n, k - n), top: s.top.slice(D - n), topVisitors: s.topVisitors.slice(D - n) };
+  return { ...s, days: n, back, gap, start: s.start + (D - n - back) * 86400, cur: part(k - back - n, k - back), prev: part(k - back - gap - n, k - back - gap),
+    top: s.top.slice(D - n - back, D - back), topVisitors: s.topVisitors.slice(D - n - back, D - back) };
 };
+// The period and its comparison in words. days is a number everywhere a sentence is told for a bare period; a
+// Span works as that number (valueOf) and carries the words for a period that ended earlier or is compared with
+// days that aren't just before it: dates, in the viewer's time zone.
+export const Span = (days, back = 0, gap = days, now = new Date()) => {
+  const day = k => { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - k); return fmtDay(d); };
+  const first = back + days - 1, last = back, bLast = back + gap;
+  return { days, back, gap, valueOf: () => days, toString: () => String(days),
+    now: back ? `from ${day(first)} to ${day(last)}` : `in the last ${days} days`,
+    over: back ? `from ${day(first)} to ${day(last)}` : `over the last ${days} days`,
+    these: back ? `the ${days} days to ${day(last)}` : `these ${days} days`,
+    before: gap === days ? `the ${days} days before` : `the ${days} days to ${day(bLast)}`,
+    range: `${day(first)} to ${back ? day(last) : 'today'}`, against: `${day(bLast + days - 1)} to ${day(bLast)}` };
+};
+export const nowOf = p => p?.now ?? `in the last ${p} days`;
+export const beforeOf = p => p?.before ?? `the ${p} days before`;
 // A whole day of today's weekday as it usually goes: the median of the same weekday in the four weeks before, from
 // daily counts ending today. Fewer than three of them aren't a usual, so that is null.
 export const usualDay = days => {
@@ -71,7 +90,7 @@ export const fmtPct = x => Math.round(x * 100) + '%';
 export const fmtShare = (n, total) => !total || !n ? '0%' : n / total < .005 ? '<1%' : fmtPct(n / total);
 export const fmtDur = t => { const s = Math.round(t), m = Math.floor(s / 60); return m ? `${m}m ${s % 60}s` : `${s}s`; };
 // What an empty chart says: "yet" only for a site that has never had any.
-export const noneYet = (what, before, days) => before ? `No ${what} in the last ${days} days` : `No ${what} yet`;
+export const noneYet = (what, before, days) => before ? `No ${what} ${nowOf(days)}` : `No ${what} yet`;
 export const fmtDay = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 export const fmtWeekday = (d, style = 'short') => d.toLocaleDateString('en-US', { weekday: style });
 export const fmtDate = (d, style = 'short') => `${fmtWeekday(d, style)}, ${fmtDay(d)}`;
@@ -144,7 +163,7 @@ export function readStory({ totals, ser, pages, refs, flows, notes }) {
       S.page = { key: gains[0][0], isNew: !!row && !row.prev?.visitors };
     }
   }
-  if (diff < 0 && !flat) S.prevSpike = findSpike(ser.prev.visitors, ser.start - ser.days * 86400);
+  if (diff < 0 && !flat) S.prevSpike = findSpike(ser.prev.visitors, prevStart(ser));
   const named = new Set([lead, S.second, S.counter].filter(Boolean));
   const share = s => s.value >= c[u] * .01;
   S.fast = sources.filter(s => !named.has(s) && share(s) && s.prev >= 20 && s.change >= Math.max(10, 2 * Math.sqrt(s.prev)) && s.value >= s.prev * 1.05)
@@ -157,7 +176,7 @@ export function readStory({ totals, ser, pages, refs, flows, notes }) {
 // The sentence, and the set of sources it names. It says who moved the total (and where they landed) and who is
 // growing fastest; the spike and the bounce have tiles of their own, so it leaves them out.
 // span names the two stretches compared: the dashboard's "in the last 7 days" and "the 7 days before", or a message's weeks.
-export function tellStory(S, ser, days, span = { now: `in the last ${days} days`, before: `the ${days} days before` }) {
+export function tellStory(S, ser, days, span = days?.now ? days : { now: `in the last ${days} days`, before: `the ${days} days before` }) {
   const told = new Set();
   const src = s => { told.add(s.key); return `<button type="button" class="link told" data-f="referrer" data-k="${esc(s.key)}">${esc(s.label)}</button>`; };
   const page = k => `<button type="button" class="link told" data-f="path" data-k="${esc(k)}">${k === '/' ? 'the home page' : pathHTML(k)}</button>`;
@@ -182,7 +201,7 @@ export function tellStory(S, ser, days, span = { now: `in the last ${days} days`
     else if (lead.change <= diff * .95) parts.push(`${src(lead)} sent ${n(lead.change)} fewer ${u}, ${lead.change === diff ? 'all' : 'nearly all'} of the drop.`);
     else if (-lead.change >= -diff * .25) parts.push(`${src(lead)} sent ${n(lead.change)} fewer ${u}, out of ${n(diff)} fewer in all.`);
     else parts.push(`The drop was spread across sources; ${src(lead)} sent ${n(lead.change)} fewer ${u}, the most of any.`);
-    if (S.prevSpike >= 0) parts.push(`${span.before[0].toUpperCase()}${span.before.slice(1)} had a big day on ${fmtDate(dayDate(ser.start - ser.days * 86400, S.prevSpike))}.`);
+    if (S.prevSpike >= 0) parts.push(`${span.before[0].toUpperCase()}${span.before.slice(1)} had a big day on ${fmtDate(dayDate(prevStart(ser), S.prevSpike))}.`);
   }
   // The second claim is what the owner did, when the change came right after it; otherwise whichever
   // finding moved the most visitors among those not named yet.
@@ -251,7 +270,7 @@ export function noteChange(S, ser, notes) {
     }
   }
   // A usual day: the same weekday in both periods (unfinished days left out), or any day when there are too few.
-  const days = [...ser.prev.visitors.slice(0, n - 1).map((v, i) => ({ v, d: dayDate(ser.start - n * 86400, i) })),
+  const days = [...ser.prev.visitors.slice(0, n - 1).map((v, i) => ({ v, d: dayDate(prevStart(ser), i) })),
     ...cur.slice(0, n - 1).map((v, i) => ({ v, d: dayDate(ser.start, i), i }))];
   for (let i = 0; i < n - 1; i++) {
     for (const lag of [0, 1]) {
@@ -371,9 +390,9 @@ export function todayPace(hourly, nowSec) {
 // Under the home sentence, when the numbers come with a catch: some views were counted from samples, or only
 // one of the two periods crosses the start of a month (see unitOf).
 export function countNotes(totals, days) {
-  const out = [], cur = totals.sampled, prev = totals.prevSampled;
-  if (cur || prev) out.push(`Some views from ${cur && prev ? `these ${days} days and the ${days} before` : cur ? `these ${days} days` : `the ${days} days before`} are counted from samples, so the numbers are estimates.`);
-  if (unitOf(totals) === 'visits') out.push(`Lede counts each visitor once a month, and ${totals.split.cur ? `these ${days} days cross` : `the ${days} days before cross`} the start of one, so the two are compared on visits instead of visitors.`);
+  const out = [], cur = totals.sampled, prev = totals.prevSampled, these = days?.these ?? `these ${days} days`;
+  if (cur || prev) out.push(`Some views from ${cur && prev ? `${these} and ${days?.gap == null || days.gap === +days ? `the ${days} before` : beforeOf(days)}` : cur ? these : beforeOf(days)} are counted from samples, so the numbers are estimates.`);
+  if (unitOf(totals) === 'visits') out.push(`Lede counts each visitor once a month, and ${totals.split.cur ? these : beforeOf(days)} cross the start of one, so the two are compared on visits instead of visitors.`);
   return out;
 }
 
@@ -818,7 +837,7 @@ export function sourceStory(totals, ser, label, days) {
       burstHTML = `${words} came on <b class="told time">${when}</b>`;
       const k = end - spike + 1, rest = pctChange(daily - burst, sum(ser.prev?.visitors || []));
       if (rest != null) without = `Without ${k === 1 ? 'that day' : k === 2 ? 'those two days' : `those ${k} days`}, ${label} sent `
-        + (rest ? `${Math.abs(rest)}% ${rest > 0 ? 'more' : 'fewer'} visitors than` : 'about as many visitors as') + ` the ${days} days before.`;
+        + (rest ? `${Math.abs(rest)}% ${rest > 0 ? 'more' : 'fewer'} visitors than` : 'about as many visitors as') + ` ${beforeOf(days)}.`;
     }
   }
   parts.push(first + '.');
@@ -985,7 +1004,7 @@ export function pageStory(totals, flows, path, days, site = null) {
   const u = unitOf(totals), c = totals.cur.visitors, pct = pctChange(totals.cur[u], totals.prev[u]);
   const all = site && unitOf(site) === u ? pctChange(site.cur[u], site.prev[u]) : null;
   let s = `<b>${fmtInt(c)}</b> visitors on ${path === '/' ? 'the home page' : pathHTML(path)}`;
-  s += pct == null ? `, none in the ${days} days before` : pct ? `, <b>${u === 'visits' ? 'visits ' : ''}${pct > 0 ? 'up' : 'down'} ${Math.abs(pct)}%</b>` : ', about the same as before';
+  s += pct == null ? `, none in ${beforeOf(days)}` : pct ? `, <b>${u === 'visits' ? 'visits ' : ''}${pct > 0 ? 'up' : 'down'} ${Math.abs(pct)}%</b>` : ', about the same as before';
   if (pct != null && all != null && Math.abs(pct - all) >= 5)
     s += Math.sign(pct) === Math.sign(all) ? `, against ${Math.abs(all)}% for the whole site` : `, while the whole site ${all > 0 ? `rose ${all}%` : all < 0 ? `fell ${-all}%` : 'held'}`;
   s += '.';
@@ -1054,7 +1073,7 @@ export function pictureCaption({ path, days, kind, why }) {
   const what = kind === 'shot' ? `Picture of ${page} taken today. `
     : kind === 'og' ? `This is the picture ${page} shows when shared on social sites, not the page itself. ${later}`
       : kind === 'none' ? (why === 'permission' ? `To show a picture of the page here, ${fix}. ` : why === 'failed' || why === 'busy' ? later : 'No picture of the page yet; Lede takes one tomorrow. ') : '';
-  return what + (days === 1 ? 'Readers counted today.' : `Readers counted over the last ${days} days.`);
+  return what + (days === 1 ? 'Readers counted today.' : `Readers counted ${days?.over ?? `over the last ${days} days`}.`);
 }
 
 // What readers do after a page (from /api/next): the two biggest steps, leaving the site or going on to a
@@ -1082,7 +1101,7 @@ export function nextStory(next, days) {
   const p = next.prev;
   if (p?.views >= 20) {
     const a = c.left / c.views, b = p.left / p.views, se = Math.sqrt(a * (1 - a) / c.views + b * (1 - b) / p.views);
-    if (Math.abs(a - b) >= .05 && Math.abs(a - b) > 2 * se) html += ` In the ${days} days before, ${fmtPct(b)} left.`;
+    if (Math.abs(a - b) >= .05 && Math.abs(a - b) > 2 * se) html += ` In ${beforeOf(days)}, ${fmtPct(b)} left.`;
   }
   return { html, note, told: top?.key ?? null };
 }
@@ -1107,7 +1126,7 @@ export function eventsSentence(events, days, start, kinds = false) {
   const spike = events.find(e => e.kind === 'spike'), told = spike && events.find(e => e.kind === 'note' && e.day === spike.day);
   const found = events.filter(e => e.kind !== 'note'), notes = events.filter(e => e.kind === 'note' && e !== told).length, n = found.length;
   const tail = notes ? ` You left ${notes === 1 ? 'one note' : `${COUNT_WORDS[notes]?.toLowerCase() ?? notes} notes`}.` : '';
-  if (!n) return `Nothing unusual in the last ${days} days.${tail}`;
+  if (!n) return `Nothing unusual ${nowOf(days)}.${tail}`;
   const things = k => `${COUNT_WORDS[k] ?? k} ${k === 1 ? 'thing' : 'things'}`;
   if (kinds) {
     const by = new Map(spike ? [['spike', 0]] : []);
@@ -1242,7 +1261,7 @@ export function stepHint({ steps, cur }, i) {
 // drop: the step most visits never reached (the loss is between drop - 1 and drop), or -1 when none is picked out.
 export function funnelStory({ steps, cur }, days) {
   const first = cur[0], last = cur[cur.length - 1], from = stepName(steps[0]), to = stepName(steps.at(-1));
-  if (!first) return { html: `No visits reached ${from} in the last ${days} days.`, drop: -1 };
+  if (!first) return { html: `No visits reached ${from} ${nowOf(days)}.`, drop: -1 };
   if (first < FUNNEL_MIN) return { html: `<b>${fmtInt(first)}</b> ${first === 1 ? 'visit' : 'visits'} reached ${from} and <b>${fmtInt(last)}</b> got to ${to}, too few yet to say where visits drop off.`, drop: -1 };
   const lost = cur.map((n, i) => i ? cur[i - 1] - n : 0), drop = lost.indexOf(Math.max(...lost));
   const done = last === first ? `all <b>${fmtInt(last)}</b>` : last ? `<b>${fmtInt(last)}</b>` : '<b>none</b>';

@@ -269,5 +269,5 @@ test('the card rows are list rows: key, label, value, last period', () => {
 
 test('keywords have no view of their own; an old link opens the overview, where their card is', () => {
   assert.equal(viewToUrl({ v: 'keywords' }), '/');
-  assert.deepEqual(urlToView('/keywords', '?days=7'), { view: { v: 'overview' }, days: 7, site: null });
+  assert.deepEqual(urlToView('/keywords', '?days=7'), { view: { v: 'overview' }, days: 7, back: 0, gap: null, site: null });
 });

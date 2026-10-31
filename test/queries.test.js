@@ -356,3 +356,36 @@ test('breakdowns read the campaign tags and the new fields, each by a visit’s 
   assert.match(breakdownSql('lede', q, 'language'), /argMin\(blob20, timestamp\) AS key/);
   assert.match(breakdownSql('lede', q, 'screen'), /max\(double9\) AS key/, 'the width a page view sent, never an event’s 0');
 });
+
+test('a period can end days ago and be compared with days that ended gap days before it did', () => {
+  const zone = 'America/New_York', now = Date.UTC(2026, 9, 31, 15); // 11:00 EDT
+  const r = ranges(14, 300, now, zone, 3, 35);
+  assert.equal(local(zone, r.end), '2026-10-29 00:00:00', 'ends at midnight, 3 whole days dropped');
+  assert.equal(local(zone, r.start), '2026-10-15 00:00:00');
+  assert.equal(local(zone, r.prevStart), '2026-09-10 00:00:00');
+  assert.equal(local(zone, r.prevEnd), '2026-09-24 00:00:00', 'a period that is over is compared with whole days');
+  assert.equal(new Date(r.start * 1000).getUTCDay(), new Date(r.prevStart * 1000).getUTCDay(), '35 days is five weeks: the same weekday');
+  assert.equal(local(zone, r.last), '2026-10-28 00:00:00', 'the last day, which the hours count back from');
+  // Ending today, the earlier period stops at this time of day on its own last day, however far back it is.
+  const today = ranges(14, 300, now, zone, 0, 35);
+  assert.equal(local(zone, today.prevEnd), '2026-09-26 11:00:00');
+  assert.deepEqual(ranges(14, 300, now, zone, 0, 14), ranges(14, 300, now, zone), 'the defaults are the days just before');
+});
+
+test('back and gap stay inside the 90 days kept, and a comparison never overlaps its period', () => {
+  const now = Date.UTC(2026, 9, 31, 15);
+  const q = s => parseQuery(url(`summary?${s}`), SITES, now);
+  assert.deepEqual([q('days=30&back=99&gap=99').back, q('days=30&back=99&gap=99').gap], [30, 30], 'back at most 90 - 2 * days; gap then has no room');
+  assert.equal(q('days=14&gap=3').gap, 14, 'at least the period\'s own length');
+  assert.equal(q('days=14&back=10&gap=999').gap, 66, '90 - back - days');
+  assert.equal(q('days=14&back=-4').back, 0);
+  assert.deepEqual([q('days=14').back, q('days=14').gap], [0, 14], 'omitted, they are today and the days before');
+  const s = parseQuery(url('series?days=14&gap=42'), SITES, now);
+  assert.equal(s.gap, 42);
+  const sql = seriesSql('lede', { ...s, site: 'example.com', filters: {} });
+  assert.match(sql, /if\(p = 1, 14 \+ intDiv\(t0 - \d+, 86400\), intDiv\(t0 - \d+, 86400\)\) AS d/, 'each period\'s days counted from its own start');
+  assert.equal(s.prevDays.length, 14);
+  assert.equal(s.prevDays[0], s.prevStart);
+  assert.match(seriesSql('lede', { ...parseQuery(url('series?days=14'), SITES, now), site: 'example.com', filters: {} }), /intDiv\(t0 - \d+, 86400\) AS d/);
+  assert.equal(q('days=14&back=5&gap=28').prevEnd, ranges(14, 0, now, undefined, 5, 28).prevEnd);
+});

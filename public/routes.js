@@ -4,14 +4,16 @@
 //   /sources/google.com        one source (/sources/direct for visits with no referrer)
 //   /channels/ai               one channel
 //   /page/docs/install         one page (/page/ is the site's home page)
-// Extra filters, a period other than 30 days and the site (when there is more than one) go in the query string.
+// Extra filters, a period other than the last 30 days (?days=7, ?back=3 for one that ended 3 days ago), a comparison the
+// owner placed (?gap=28) and the site (when there is more than one) go in the query string.
 
 import { displayHost } from './hosts.js';
+import { alignedGap } from './story.js';
 
 const SIMPLE = ['overview', 'bounce', 'online', 'sources', 'pages', 'events'];
 const DIRECT = 'direct';
 
-export function viewToUrl(view, { days = 30, site = null } = {}) {
+export function viewToUrl(view, { days = 30, back = 0, gap = null, site = null } = {}) {
   let path = '/';
   const q = new URLSearchParams();
   if (view && SIMPLE.includes(view.v)) path = `/${view.v}`;
@@ -27,6 +29,8 @@ export function viewToUrl(view, { days = 30, site = null } = {}) {
     } else if (channel != null) path = `/channels/${encodeURIComponent(channel)}`;
   }
   if (days !== 30) q.set('days', days);
+  if (back) q.set('back', back);
+  if (gap != null) q.set('gap', gap);
   if (site) q.set('site', displayHost(site));
   const qs = q.toString();
   return qs ? `${path}?${qs}` : path;
@@ -42,6 +46,10 @@ export function urlToView(pathname, search) {
   // Sites are saved in ASCII (xn--…); the address shows them as typed, so it's turned back here.
   // A period is 7 to 45 days: fewer is too few to find a big or quiet day, and the API's longest is 45.
   const d = +q.get('days'), days = Number.isInteger(d) && d >= 7 && d <= 45 && d !== 30 ? d : null, site = asciiHost(q.get('site'));
+  // The period lies within the 45 days that know each day's top source; its comparison within the 90 kept, never
+  // overlapping it. A gap that is the default one is no choice at all.
+  const n = days || 30, b = +q.get('back'), back = Number.isInteger(b) && b > 0 && b + n <= 45 ? b : 0;
+  const g = +q.get('gap'), gap = q.has('gap') && Number.isInteger(g) && g >= n && back + g + n <= 90 && g !== alignedGap(n, back) ? g : null;
   const parts = pathname.split('/');
   let view = null;
   if (parts.length === 2 && SIMPLE.includes(parts[1])) view = { v: parts[1] };
@@ -60,5 +68,5 @@ export function urlToView(pathname, search) {
   } else if (parts[1] === 'channels' && parts.length === 3 && parts[2]) {
     view = { v: 'filter', f: { channel: decodeURIComponent(parts[2]) } };
   }
-  return { view, days, site };
+  return { view, days, back, gap, site };
 }

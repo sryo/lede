@@ -5,7 +5,7 @@ import { HttpError } from './errors.js';
 import { demoStore, demoNotes, DEMO_FUNNEL, DEMO_INSIGHT } from './demo.js';
 import { channelFor } from './channels.js';
 import { factSheet, lineFor, MIN_VISITORS } from './insight.js';
-import { readStory, tellStory, cutSeries } from '../public/story.js';
+import { readStory, tellStory, cutSeries, alignedGap, fmtDay, dayDate } from '../public/story.js';
 import { watch } from './live.js';
 
 export { HttpError };
@@ -23,6 +23,10 @@ export function parseQuery(url, sites, nowMs = Date.now()) {
   const site = (url.searchParams.get('site') || sites[0]).toLowerCase();
   if (!sites.includes(site)) throw new HttpError(400, `Lede isn’t counting ${site}. Open the dashboard without ?site=.`);
   const days = int(url.searchParams.get('days'), 30, 1, MAX_DAYS);
+  // The period may have ended back days ago, and is compared with the days that ended gap days before it did
+  // (at least its own length: the two never overlap). Both periods lie within the 90 days Analytics Engine keeps.
+  const back = int(url.searchParams.get('back'), 0, 0, 2 * MAX_DAYS - 2 * days);
+  const gap = int(url.searchParams.get('gap'), days, days, 2 * MAX_DAYS - back - days);
   const tz = int(url.searchParams.get('tz'), 0, -840, 840);
   // The viewer's IANA zone, such as America/New_York. ranges() falls back to tz when it isn't one.
   const tzName = url.searchParams.get('tzName');
@@ -33,7 +37,7 @@ export function parseQuery(url, sites, nowMs = Date.now()) {
     if (v.length > 512) throw new HttpError(400, `The ${name} filter is too long.`);
     filters[name] = v;
   }
-  return { site, days, tz, filters, all: url.searchParams.has('all'), ...Q.ranges(days, tz, nowMs, tzName) };
+  return { site, days, tz, filters, all: url.searchParams.has('all'), ...Q.ranges(days, tz, nowMs, tzName, back, gap) };
 }
 
 // The SQL API answers 429 when queried too often and 503 when busy; one more try, after the wait it
@@ -105,7 +109,7 @@ export function sqlStore(env, fetchImpl = fetch) {
     },
     async series(q) {
       const [days, top] = await Promise.all([run(Q.seriesSql(ds, q)), run(Q.topSourceSql(ds, q))]);
-      return { start: q.start, days: q.days, ...toSeriesBoth(days, q.days), ...topByDay(top, q.days) };
+      return { start: q.start, days: q.days, back: q.back, gap: q.gap, ...toSeriesBoth(days, q.days), ...topByDay(top, q.days) };
     },
     async breakdown(q, dim) {
       const { cur, prev, cut } = await lists(only => Q.breakdownSql(ds, q, dim, only), Q.capsOf(q, Q.LISTS.breakdown));
@@ -322,15 +326,18 @@ async function sitesFor(url, env) {
 // times, page speeds and search words the line's best links need, which home doesn't ask for: 2 queries at
 // most once an hour per site and period, none when a view asked for them in the last minute.
 async function insightFor(q, env, ask) {
+  // Its words say "the last N days", which a period that ended earlier or a comparison the owner moved isn't.
+  if (q.back || (q.gap !== q.days && q.gap !== alignedGap(q.days))) return null;
   return lineFor(env, `insight:${q.site}:${q.days}`, async () => {
     // Home just asked for the totals, so this costs nothing, and a small site stops here before the 2 queries.
     if ((await ask.stat('summary')).cur.visitors < MIN_VISITORS) return null;
-    const [totals, ser, pages, refs, flows, saved, engagement, keywords] = await Promise.all([ask.stat('summary'), ask.stat('series', { days: 45 }).then(s => cutSeries(s, q.days)),
+    const [totals, ser, pages, refs, flows, saved, engagement, keywords] = await Promise.all([ask.stat('summary'), ask.stat('series', { days: 45 }).then(s => cutSeries(s, q.days, q.back, q.gap)),
       ask.stat('breakdown', { dim: 'path' }), ask.stat('breakdown', { dim: 'referrer' }), ask.stat('flows'), getSettings(env, q.site),
       ask.stat('engagement').catch(() => null), ask.stat('keywords').catch(() => null)]);
     const notes = settingsOf(saved, q, false).notes;
-    const S = readStory({ totals, ser, pages, refs, flows, notes }), T = tellStory(S, ser, q.days);
-    return factSheet({ site: q.site, span: { now: `in the last ${q.days} days`, before: `the ${q.days} days before` },
+    const before = q.gap === q.days ? `the ${q.days} days before` : `the ${q.days} days to ${fmtDay(dayDate(q.prevStart, q.days - 1))}`;
+    const S = readStory({ totals, ser, pages, refs, flows, notes }), T = tellStory(S, ser, q.days, { now: `in the last ${q.days} days`, before });
+    return factSheet({ site: q.site, span: { now: `in the last ${q.days} days`, before },
       S, T, ser, pages, flows, notes, engagement, keywords });
   });
 }

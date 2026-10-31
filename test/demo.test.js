@@ -33,7 +33,7 @@ test('the sample under a base path keeps every address under it', () => {
   assert.equal(r.urlToView('/lede', '').view, null);
   for (const v of VIEWS) {
     const u = new URL(r.viewToUrl(v, { days: 7 }), ORIGIN);
-    assert.deepEqual(r.urlToView(u.pathname, u.search), { view: v, days: 7, site: null });
+    assert.deepEqual(r.urlToView(u.pathname, u.search), { view: v, days: 7, back: 0, gap: null, site: null });
   }
 });
 

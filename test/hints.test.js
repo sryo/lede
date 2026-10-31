@@ -1,18 +1,36 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cutSeries, dayHint, thenLine, usualDay, todayHint, weeksBack, sameWeekday, ribbonHint, sourceHint, pageHint, rowLabel } from '../public/story.js';
+import { cutSeries, dayHint, thenLine, usualDay, todayHint, alignedGap, Span, prevStart, ribbonHint, sourceHint, pageHint, rowLabel } from '../public/story.js';
 
-test('a day is set against the same weekday a whole number of weeks before: 7 days on a week, 28 on 30 days', () => {
-  assert.equal(weeksBack(7), 7);
-  assert.equal(weeksBack(30), 28);
-  assert.equal(weeksBack(13), 7);
-  assert.equal(weeksBack(45), 42);
-  const prev = Array.from({ length: 30 }, (_, i) => `p${i}`), cur = Array.from({ length: 30 }, (_, i) => `c${i}`);
-  const m = sameWeekday(cur, prev);
-  assert.equal(m[0], 'p2');
-  assert.equal(m[27], 'p29');
-  assert.deepEqual(m.slice(28), ['c0', 'c1']);
-  assert.deepEqual(sameWeekday(['a', 'b', 'c', 'd', 'e', 'f', 'g'], [1, 2, 3, 4, 5, 6, 7]), [1, 2, 3, 4, 5, 6, 7]);
+test('the comparison is the whole weeks that clear the period: 7 days on a week, 35 on 30 days, just before from 43', () => {
+  assert.equal(alignedGap(7), 7);
+  assert.equal(alignedGap(30), 35);
+  assert.equal(alignedGap(13), 14);
+  assert.equal(alignedGap(42), 42);
+  assert.equal(alignedGap(43), 43, 'no whole week of 43 days fits in the 90 kept, so the days just before');
+  assert.equal(alignedGap(45), 45);
+  assert.equal(alignedGap(30, 25), 35, 'ending 25 days ago the 35 fit: 90 days exactly');
+  assert.equal(alignedGap(30, 26), 30, 'one day further, 35 would reach past the 90 days kept');
+});
+
+test('a Span says the period and its comparison in dates once either is not the days just before', () => {
+  const now = new Date(2026, 9, 31);
+  const plain = Span(30, 0, 30, now);
+  assert.equal(+plain, 30);
+  assert.equal(`${plain}`, '30');
+  assert.equal(plain.now, 'in the last 30 days');
+  assert.equal(plain.before, 'the 30 days before');
+  const aligned = Span(30, 0, 35, now);
+  assert.equal(aligned.before, 'the 30 days to Sep 26');
+  assert.equal(aligned.against, 'Aug 28 to Sep 26');
+  assert.equal(aligned.range, 'Oct 2 to today');
+  const earlier = Span(14, 3, 28, now);
+  assert.equal(earlier.now, 'from Oct 15 to Oct 28');
+  assert.equal(earlier.over, 'from Oct 15 to Oct 28');
+  assert.equal(earlier.these, 'the 14 days to Oct 28');
+  assert.equal(earlier.before, 'the 14 days to Sep 30');
+  assert.equal(earlier.against, 'Sep 17 to Sep 30');
+  assert.equal(earlier.range, 'Oct 15 to Oct 28');
 });
 
 test('today says its visitors so far and a usual whole day of its weekday, rounded, never a comparison', () => {
@@ -84,7 +102,7 @@ test('a list row read out says its share and its change, as the columns show the
   assert.equal(rowLabel('t.co', 3, undefined, 0), 't.co: 3 visitors, new');
 });
 
-test('a period is cut from the 45-day series: its last days, and as many before them', () => {
+test('a period is cut from the 45-day series: its days, and a window of the same length where the comparison sits', () => {
   const D = 45, all = Array.from({ length: 2 * D }, (_, i) => i), ser = { start: 1000, days: D,
     prev: { visitors: all.slice(0, D), visits: all.slice(0, D) }, cur: { visitors: all.slice(D), visits: all.slice(D) },
     top: all.slice(D).map(String), topVisitors: all.slice(D) };
@@ -95,4 +113,14 @@ test('a period is cut from the 45-day series: its last days, and as many before 
   assert.deepEqual(s.prev.visits, [76, 77, 78, 79, 80, 81, 82]);
   assert.deepEqual(s.top, ['83', '84', '85', '86', '87', '88', '89']);
   assert.deepEqual(cutSeries(ser, 45).prev.visitors, all.slice(0, 45));
+  // The period ended 3 days ago and is compared with the days that ended 14 before that, so a day sits over its weekday.
+  const m = cutSeries(ser, 7, 3, 14);
+  assert.deepEqual(m.cur.visitors, [80, 81, 82, 83, 84, 85, 86]);
+  assert.deepEqual(m.prev.visitors, [66, 67, 68, 69, 70, 71, 72]);
+  assert.equal(m.start, 1000 + 35 * 86400, 'its first day, 35 days into the 45');
+  assert.deepEqual(m.top, ['80', '81', '82', '83', '84', '85', '86']);
+  assert.equal(m.back, 3);
+  assert.equal(m.gap, 14);
+  assert.equal(prevStart(m), m.start - 14 * 86400, 'the comparison starts gap days before the period');
+  assert.equal(prevStart(cutSeries(ser, 7)), s.start - 7 * 86400, 'by default, the days just before');
 });

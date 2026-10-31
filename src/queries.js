@@ -68,15 +68,22 @@ function midnight(off, wall) {
 // 23 or 25 hours long (23.5 or 24.5 on Lord Howe Island) are as long as they really were.
 // tzName is the viewer's IANA zone; without a valid one, tz (Date#getTimezoneOffset(): minutes behind
 // UTC) is applied to the whole window, as older dashboards expect.
-// Today is only partly over, so the previous period stops at the same time of day (to the minute):
-// both periods then cover the same span and their totals can be compared.
-export function ranges(days, tz, nowMs = Date.now(), tzName) {
+// The period ends today unless back says it ended that many days ago, and the one it is compared with
+// ends gap days before it does (days, the period just before, unless said otherwise). Today is only
+// partly over, so a previous period that stands in for it stops at the same time of day (to the minute):
+// both periods then cover the same span and their totals can be compared. bounds is the days
+// of both periods end to end, which they are only when gap is days; every other query reads the two
+// spans and nothing else.
+export function ranges(days, tz, nowMs = Date.now(), tzName, back = 0, gap = days) {
   const off = zoneOffset(tzName) || (() => -tz * 60);
   const now = Math.floor(nowMs / 60000) * 60;
   const today = Math.floor((now + off(now)) / DAY) * DAY;
-  const bounds = Array.from({ length: 2 * days + 1 }, (_, k) => midnight(off, today + (k - 2 * days + 1) * DAY));
-  const start = bounds[days], todayStart = bounds[2 * days - 1];
-  return { start, end: bounds[2 * days], prevStart: bounds[0], prevEnd: Math.min(start, bounds[days - 1] + now - todayStart), bounds };
+  const at = k => midnight(off, today + (k - back) * DAY);
+  const bounds = Array.from({ length: 2 * days + 1 }, (_, k) => at(k - 2 * days + 1));
+  const start = at(1 - days), end = at(1), prevStart = at(1 - days - gap), prevFull = at(1 - gap);
+  const prevEnd = back ? prevFull : Math.min(prevFull, at(-gap) + now - at(0));
+  const prevDays = Array.from({ length: days }, (_, k) => at(1 - days - gap + k));
+  return { start, end, prevStart, prevEnd, bounds, prevDays, last: at(0), todayStart: midnight(off, today), back, gap };
 }
 
 // Which day an instant t (a SQL expression in unix seconds) falls in, counted from bounds[0], given the
@@ -157,9 +164,11 @@ const FLAT = 'countIf(w > n) AS sampled, countIf(k0 > 0 OR w = n) + sumIf(k1, k0
 export const summarySql = (ds, q) =>
   `SELECT p, ${METRICS}, ${FLAT} FROM ${visits(ds, within(q), STEPS, PERIOD(q))} GROUP BY p`;
 
-// d counts days from the start of the previous period, by the day each visit started.
+// d counts days from the start of the previous period, by the day each visit started. Apart from the period,
+// the previous one's days are counted from its own start and the period's follow them.
+const seriesDay = q => q.gap == null || q.gap === q.days ? dayOf('t0', bothDays(q)) : `if(p = 1, ${q.days} + ${dayOf('t0', curDays(q))}, ${dayOf('t0', q.prevDays)})`;
 export const seriesSql = (ds, q) =>
-  `SELECT p, ${dayOf('t0', bothDays(q))} AS d, ${METRICS}, ${FLAT} FROM ${visits(ds, within(q), `, toUnixTimestamp(min(timestamp)) AS t0${STEPS}`, PERIOD(q))} `
+  `SELECT p, ${seriesDay(q)} AS d, ${METRICS}, ${FLAT} FROM ${visits(ds, within(q), `, toUnixTimestamp(min(timestamp)) AS t0${STEPS}`, PERIOD(q))} `
   + 'GROUP BY p, d ORDER BY p, d';
 
 // Whether the site has had any page view at all, whatever the filters: Analytics Engine keeps 90 days.
@@ -242,12 +251,12 @@ export const flowSql = (ds, q, only, landing) =>
   `SELECT p, src, landing, count(DISTINCT visitor) AS visitors, count() AS visits, countIf(n = 1) AS bounces FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS.referrer} AS src, ${VISIT_KEYS.entry} AS landing`, PERIOD(q))} `
   + `${landing == null ? '' : `WHERE hex(landing) = '${hexOf(landing)}' `}GROUP BY p, src, landing ORDER BY visitors DESC ${limit(LISTS.flows, only)}`;
 
-// Where the hourly answer's hour 0 sits: whole days of 24 hours back from today's local midnight, so
-// today's hour k is the hour starting k hours after midnight, whatever the clocks did earlier in the
+// Where the hourly answer's hour 0 sits: whole days of 24 hours back from the period's last local midnight
+// (today's), so that day's hour k is the hour starting k hours after midnight, whatever the clocks did earlier in the
 // window, and the answer is exactly days * 24 hours long. Days before a daylight-saving change come out an
 // hour off their own midnight instead (the answer starts an hour into the period, or an hour before it):
 // the dashboard places each hour by its real time where that matters.
-export const hourlyStart = q => q.bounds[2 * q.days - 1] - (q.days - 1) * DAY;
+export const hourlyStart = q => (q.last ?? q.bounds[2 * q.days - 1]) - (q.days - 1) * DAY;
 
 // Visitors per hour since from (hourlyStart for the period).
 export const hourlySql = (ds, q, from, to) =>

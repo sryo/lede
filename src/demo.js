@@ -232,7 +232,7 @@ const REF_URLS = {
   'facebook.com': [['https://www.facebook.com/groups/birdwatchers/', 1]],
 };
 
-const windows = q => ({ cur: [N - q.days, N], prev: [N - 2 * q.days, N - q.days] });
+const windows = ({ days, back = 0, gap = days }) => ({ cur: [N - back - days, N - back], prev: [N - back - gap - days, N - back - gap] });
 
 // Each period's rows for some of SHARES' fields, a row per key of one field, as systemsSql and campaignsSql
 // answer them; screen widths go into their bands.
@@ -296,7 +296,7 @@ function demoFlows(f, [d0, d1]) {
 // The note the owner left on the busy day, dated in the viewer's time zone: noon of that day, N-1-BUSY
 // days before today's midnight there.
 export function demoNotes(q) {
-  const noon = q.bounds[2 * q.days - 1] - (N - 1 - BUSY) * 86400 + 43200;
+  const noon = (q.todayStart ?? q.bounds[2 * q.days - 1]) - (N - 1 - BUSY) * 86400 + 43200;
   const day = new Date((noon - q.tz * 60) * 1000).toISOString().slice(0, 10);
   return [{ day, text: 'Shared /owls in a Facebook birding group' }];
 }
@@ -320,7 +320,7 @@ export const demoStore = {
       top.push(best);
       topVisitors.push(Math.round(most));
     }
-    return { start: q.start, days: q.days, cur: toSeries(days(w.cur[0]), q.days), prev: toSeries(days(w.prev[0]), q.days), top, topVisitors };
+    return { start: q.start, days: q.days, back: q.back, gap: q.gap, cur: toSeries(days(w.cur[0]), q.days), prev: toSeries(days(w.prev[0]), q.days), top, topVisitors };
   },
   async breakdown(q, dim) {
     const w = windows(q);

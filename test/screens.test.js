@@ -33,7 +33,7 @@ test('links people clicked lead with a sentence', () => {
 });
 
 test('What happened leads with its biggest item', () => {
-  assert.match(fn('renderEvents'), /eventsSentence\(events,DAYS,ser\.start,true\)/);
+  assert.match(fn('renderEvents'), /eventsSentence\(events,PER\(\),ser\.start,true\)/);
 });
 
 test('home’s treemap highlights the page its caption names, as well as the sentence’s', () => {
@@ -66,27 +66,29 @@ test('day charts draw sharp: gridlines on the half pixel, a day with any visitor
   assert.doesNotMatch(fn('dayBars'), /rx=/);
 });
 
-test('today stands in a flat pale track as tall as a usual day of its weekday, named Today, its hint never a comparison', () => {
+test('today, when the period ends today, stands in a flat pale track as tall as a usual day of its weekday, named Today, its hint never a comparison', () => {
   const f = fn('dayBars');
-  assert.match(f, /u=usualDay\(\[\.\.\.o\.prev\|\|\[\],\.\.\.cur\]\)/);
-  assert.match(f, /if\(i==n-1&&u>v\)s\+=`<rect [^`]*fill="var\(--\$\{subj\}-p\)"/);
-  assert.match(f, /i<n-1\?fmtDay\(dayDate\(start,i\)\):'Today'/);
+  assert.match(f, /last=\(o\.live\?\?!AGO\)\?n-1:n/);
+  // A day d before today is in the period, or in the comparison place for place.
+  assert.match(f, /u=last<n\?usualDay\(Array\.from\(\{length:29\},\(_,k\)=>\{const d=28-k;return d<n\?cur\[n-1-d\]:prev&&d-gp>=0&&d-gp<n\?prev\[n-1-\(d-gp\)\]:null\}\)\):0/);
+  assert.match(f, /if\(i==last&&u>v\)s\+=`<rect [^`]*fill="var\(--\$\{subj\}-p\)"/);
+  assert.match(f, /i<last\?fmtDay\(dayDate\(start,i\)\):'Today'/);
   assert.match(f, /todayHint\(/);
-  assert.match(fn('drawMarks'), /i<n-1\?f\(dayDate\(ser\.start,i\)\):'Today'/);
+  assert.match(fn('drawMarks'), /i<n-1\|\|ser\.back\?f\(dayDate\(ser\.start,i\)\):'Today'/);
 });
 
-test('the daily charts set each day against the same weekday before, in the dashed line, the hint and the titles', () => {
-  assert.match(fn('dayBars'), /prev=o\.prev&&sameWeekday\(cur,o\.prev\)/);
-  assert.match(fn('lines'), /prev=prev&&sameWeekday\(cur,prev\)/);
-  for (const f of ['dayBars', 'lines']) {
-    assert.match(fn(f), /dayDate\(start,i-weeksBack\(n\)\)/);
-    assert.doesNotMatch(fn(f), /i-DAYS/);
-  }
-  // The period before's big day sits over the day matching its weekday, and is left off when it isn't on the line.
-  assert.match(fn('drawDays'), /col=was-n\+weeksBack\(n\)/);
+test('the daily charts set each day against the day in the same place of the comparison window, in the dashed line, the hint and the titles', () => {
+  assert.doesNotMatch(html, /sameWeekday|weeksBack/);
+  assert.match(fn('dayBars'), /gp=o\.gap\?\?gapNow\(\)/);
+  assert.match(fn('lines'), /gap=gapNow\(\)/);
+  assert.match(fn('dayBars'), /dayDate\(start,i-gp\)/);
+  assert.match(fn('lines'), /dayDate\(start,i-gap\)/);
+  // The comparison's big day sits over the day it is paired with, which is the same place.
+  assert.match(fn('drawDays'), /col=was\b/);
   assert.match(fn('drawDays'), /:col>=0\?\{i:col,/);
   assert.match(fn('drawDays'), /prevDot:col,/);
-  assert.match(html, /const AGAINST=\(k=weeksBack\(DAYS\)\/7\)=>DAYS%7\?`the same weekday \$\{k>1\?k\+' weeks':'a week'\} before`:`the \$\{DAYS\} days before`/);
+  assert.match(html, /const AGAINST=\(\)=>PER\(\)\.against;/);
+  assert.match(html, /const gapNow=\(d=DAYS,b=AGO\)=>GAP\?\?alignedGap\(d,b\);/);
   assert.doesNotMatch(html, /per day\$\{[^}]*\?`, against the \$\{DAYS\} days before/);
 });
 
@@ -134,7 +136,7 @@ test('a note can be written from home’s chart; a click on a day stays there ra
 
 test('the overview leads with what happened in the period, not home’s sentence again', () => {
   const r = fn('renderFilter');
-  assert.match(r, /overview\?eventsSentence\(H\?\.events\|\|\[\],DAYS,ser\.start\)/);
+  assert.match(r, /overview\?eventsSentence\(H\?\.events\|\|\[\],PER\(\),ser\.start\)/);
   assert.doesNotMatch(r, /overview\?\(H\?\.T\.html/);
 });
 
@@ -193,7 +195,7 @@ test('a page’s view asks where its readers went with the goals, says if they r
   assert.match(r, /api\('next',\{\.\.\.p,goal:GOALS\.length\?GOALS:null\}\)/);
   assert.match(r, /goalFromPage\(n\.cur,/);
   assert.match(r, /pageVerdict\(S\)/);
-  assert.match(r, /pageStory\(totals,into,f\.path,DAYS,/);
+  assert.match(r, /pageStory\(totals,into,f\.path,PER\(\),/);
   assert.match(r, /f\.path!=null&&f\.path!=='\/'\?'<section class="card goal-card"/, 'the home page is no goal');
 });
 
@@ -319,7 +321,7 @@ test('a page’s goal reach is a number beside the others', () => {
 });
 
 test('What happened’s own screen names the kinds, not the first item again', () => {
-  assert.match(fn('renderEvents'), /eventsSentence\(events,DAYS,ser\.start,true\)/);
+  assert.match(fn('renderEvents'), /eventsSentence\(events,PER\(\),ser\.start,true\)/);
 });
 
 
@@ -403,13 +405,22 @@ test('the overview reads campaign tags and the readers’ OS, language, screen a
   assert.match(html, /<section class="card camp" hidden><\/section>/);
 });
 
-test('the overview\'s minimap chooses the period through setDays, and a drag fetches nothing until it ends', () => {
+test('the overview\'s minimap places a period and its comparison through setPeriod, and a drag fetches nothing until it ends', () => {
   const f = fn('drawPeriod');
-  assert.match(html, /api\('series',\{days:45\}\)/);
+  assert.match(html, /api\('series',\{days:45,back:0\}\)/);
   assert.match(html, /<div class="marks"><\/div><div class="mm"><\/div>/);
-  assert.match(f, /setAttribute\('role','slider'\)/);
-  assert.match(f, /lo=Math\.min\(N-7,Math\.max\(counted,N-45\)\)/);
-  assert.match(f, /r=setDays\(N-a\)/);
+  // One slider each for the period and the comparison, for the keyboard.
+  assert.match(f, /role="slider" tabindex="0" data-k="p" aria-label="Period"/);
+  assert.match(f, /role="slider" tabindex="0" data-k="b" aria-label="Compared with"/);
+  // The period stays within the last 45 days, which know each day's top source; the comparison clears it and the first day.
+  assert.match(f, /ae=Math\.max\(N-45\+L-1,Math\.min\(N-1,ae\)\)/);
+  assert.match(f, /if\(as\(\)-off<0\)/);
+  // The comparison steps by whole weeks, or sits just before the period; Alt places it anywhere.
+  assert.match(f, /const c=\[L\];for\(let k=7\*Math\.ceil\(\(L\+1\)\/7\);k<=N;k\+=7\)c\.push\(k\)/);
+  assert.match(f, /alt\?Math\.max\(L,Math\.min\(as\(\),o\)\):nearest\(o\)/);
+  assert.match(f, /r=setPeriod\(L,N-1-ae,manual&&off!==alignedGap\(L,N-1-ae\)\?off:null\)/);
   assert.doesNotMatch(f, /api\(/);
   assert.match(fn('bindPeriod'), /setDays\(/);
+  // A period button means the last N days with the weeks that clear it.
+  assert.match(html, /const setDays=d=>setPeriod\(d\);/);
 });

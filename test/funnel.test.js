@@ -268,6 +268,6 @@ test('the dashboard has no funnels view: funnels are a card on the Overview', ()
 /* ---------- address ---------- */
 
 test('an old /funnels link opens the Overview', () => {
-  assert.deepEqual(urlToView('/funnels', '?days=7'), { view: { v: 'overview' }, days: 7, site: null });
+  assert.deepEqual(urlToView('/funnels', '?days=7'), { view: { v: 'overview' }, days: 7, back: 0, gap: null, site: null });
   assert.equal(viewToUrl({ v: 'funnels' }), '/');
 });

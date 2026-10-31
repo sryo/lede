@@ -221,7 +221,7 @@ button.tile-title:hover{color:var(--ink)}
 .marks{position:relative;height:28px;flex:none}
 /* under a chart with a scale, the markers leave out the scale's 40px column (dayBars' padR), so each sits under its bar */
 .chart+.marks{margin-right:40px}
-.mm{cursor:ew-resize;outline:0;flex:none} .mm .ring{opacity:0} .mm:focus-visible .ring{opacity:1} .moving .marks{visibility:hidden}
+.mm{flex:none} .mmk{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap} .mmk span{font-size:var(--fs-xs);color:var(--muted);padding:3px 8px;border:1px solid var(--line);border-radius:6px;outline:0} .mmk span:focus-visible{outline:2px solid var(--focus);outline-offset:1px} .mmk .warn{color:var(--ink)} .moving .marks{visibility:hidden}
 .mark{all:unset;position:absolute;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;border-radius:4px;padding:0 4px}
 .mark .g{display:flex;gap:4px}
 .mark:hover .tag{color:var(--ink)}
@@ -592,7 +592,7 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, thenLine, usualDay, todayHint, weeksBack, sameWeekday, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  dayHint, thenLine, usualDay, todayHint, Span, alignedGap, prevStart, nowOf, beforeOf, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
   ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX, cutSeries } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -603,12 +603,15 @@ const TZ=new Date().getTimezoneOffset(),TZNAME=Intl.DateTimeFormat().resolvedOpt
 const store={get(k){try{return localStorage.getItem(k)}catch{return null}},set(k,v){try{localStorage.setItem(k,v)}catch{}}};
 // INSIGHT: home may get Workers AI's line under its sentence. SHARED: opened from a read-only link, so nothing
 // can be changed and sharing is left out.
-let SITE='',SITES=[],DEMO=false,INSIGHT=false,SHARED=false,MESSAGES=false,PASSWORD=false,DAYS=30;
+let SITE='',SITES=[],DEMO=false,INSIGHT=false,SHARED=false,MESSAGES=false,PASSWORD=false,DAYS=30,AGO=0,GAP=null;
 // What the home screen worked out, for the views that open from it. homeDrawn settles when the latest home
 // draw has: views fetch their own data first and wait for it only to read HOME.
 let HOME=null,homeDrawn=Promise.resolve(false);
-// A week's days already fall on the same weekday, so its titles keep saying the 7 days before.
-const AGAINST=(k=weeksBack(DAYS)/7)=>DAYS%7?`the same weekday ${k>1?k+' weeks':'a week'} before`:`the ${DAYS} days before`;
+// The period ends today unless AGO says it ended that many days ago. The comparison is the window that ended
+// gapNow() days before it did: GAP once the owner has placed it, else the whole weeks that clear the period.
+const gapNow=(d=DAYS,b=AGO)=>GAP??alignedGap(d,b);
+const PER=()=>Span(DAYS,AGO,gapNow());
+const AGAINST=()=>PER().against;
 const home=()=>HOME&&!HOME.empty?HOME:null;
 
 /* ---------- API ---------- */
@@ -617,8 +620,10 @@ const memo=new Map(),MEMO_MS=5*60e3;
 // Every unfiltered series is cut from the 45-day one, so any period and the overview's minimap share one answer.
 function api(route,params={},fresh=false){
   if(route==='series'&&params.days==null&&params.path==null&&params.referrer==null&&params.channel==null)
-    return api(route,{...params,days:45},fresh).then(s=>cutSeries(s,DAYS));
+    return api(route,{...params,days:45,back:0},fresh).then(s=>cutSeries(s,DAYS,AGO,gapNow()));
   const qs=new URLSearchParams({site:SITE,days:DAYS,tz:TZ,tzName:TZNAME});
+  // A request that names its own days (the 45-day series, the 30 hours) isn't about the period and takes neither.
+  if(params.days==null){if(AGO)qs.set('back',AGO);if(gapNow()!==DAYS)qs.set('gap',gapNow())}
   for(const [k,v] of Object.entries(params))if(Array.isArray(v))v.forEach(x=>qs.append(k,x));else if(v!=null)qs.set(k,v);
   const url=`/api/${route}?${qs}`;
   const hit=memo.get(url);
@@ -636,7 +641,7 @@ function api(route,params={},fresh=false){
 }
 // Visitors per hour always cover 30 days, so today's pace and the usual crowd don't change with the period;
 // the overview's hours card takes the period's days from the end (lastDays). One answer serves all three.
-const HOURS={days:30};
+const HOURS={days:30,back:0,gap:30};
 const lastDays=(h,days)=>h&&h.days>days?{...h,start:h.start+(h.days-days)*86400,days,visitors:h.visitors.slice((h.days-days)*24)}:h;
 const filterParams=f=>({path:f.path,referrer:f.referrer,channel:f.channel});
 const FILTER_OF={path:'path',entry:'path',exit:'path',referrer:'referrer',channel:'channel'};
@@ -843,14 +848,16 @@ function treemap(el,items,{gap=4}={}){
   });
 }
 
-// Bars per day in a subject's colour (time unless `subj` says otherwise), with the same weekday before
-// as a dashed step line over them.
+// Bars per day in a subject's colour (time unless `subj` says otherwise), with the comparison's days (prev, the same
+// length, gap days earlier) as a dashed step line over them.
 // With `hot` days, those stay solid and the rest turn transparent; without, every bar is solid.
-// The last day is today, which isn't over: it stands in a pale track as tall as a usual whole day of its weekday, taken
-// from the two periods shown (so a 7-day chart, with one earlier week, has none).
-// o: {cur, prev?, start, aria, subj?, seg?:{day,top,subj}, hot?:Set, label?:{i,title,sub,swatch}, prevDot?, axis?, scale?, note?}
+// The last day is today when the period ends today (live), and it isn't over: it stands in a pale track as tall as a usual
+// whole day of its weekday, taken from the days shown that fall on it (so a 7-day chart, with one earlier week, has none).
+// o: {cur, prev?, start, gap?, live?, aria, subj?, seg?:{day,top,subj}, hot?:Set, label?:{i,title,sub,swatch}, prevDot?, axis?, scale?, note?}
 function dayBars(el,o){
-  const {cur,start}=o,n=cur.length,prev=o.prev&&sameWeekday(cur,o.prev),day=i=>i<n-1?fmtDay(dayDate(start,i)):'Today',subj=o.subj||'time',u=usualDay([...o.prev||[],...cur]);
+  const {cur,start,prev}=o,n=cur.length,gp=o.gap??gapNow(),last=(o.live??!AGO)?n-1:n,day=i=>i<last?fmtDay(dayDate(start,i)):'Today',subj=o.subj||'time';
+  // The same weekday in the four weeks before today: a day d before today is in the period, or in the comparison.
+  const u=last<n?usualDay(Array.from({length:29},(_,k)=>{const d=28-k;return d<n?cur[n-1-d]:prev&&d-gp>=0&&d-gp<n?prev[n-1-(d-gp)]:null})):0;
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
     const top=o.label?40:o.scale?10:4,padB=o.axis?20:o.scale?4:0,base=H-padB,padR=o.scale?40:0,peakV=Math.max(maxOf(cur),prev?maxOf(prev):0,u);
@@ -867,7 +874,7 @@ function dayBars(el,o){
     cur.forEach((v,i)=>{
       const y=v?Math.min(Y(v),base-2):base;
       // Flat-topped, so the track reads as room still empty rather than as a bar of what today will be.
-      if(i==n-1&&u>v)s+=`<rect x="${x(i)}" y="${Y(u)}" width="${bw}" height="${base-Y(u)}" fill="var(--${subj}-p)"/>`;
+      if(i==last&&u>v)s+=`<rect x="${x(i)}" y="${Y(u)}" width="${bw}" height="${base-Y(u)}" fill="var(--${subj}-p)"/>`;
       // The spike's two parts are split by a 1px gap taken from the upper part, so the bar's full height stays true.
       if(o.seg&&o.seg.day===i){
         const ym=Y(v-o.seg.top);
@@ -883,7 +890,7 @@ function dayBars(el,o){
     // One strip per day, the full height, so a short bar or an empty day is as easy to point at as a tall one.
     // On a chart that takes notes, a day's hint says so, with the note already on it.
     const noted=i=>o.note&&NOTES.find(x=>x.day===dayKey(dayDate(o.start,i)));
-    cur.forEach((v,i)=>{const nt=noted(i),d=dayDate(start,i),h=(i<n-1?dayHint(fmtDate(d),v,prev?.[i],fmtDate(dayDate(start,i-weeksBack(n)))):todayHint(fmtDate(d),v,u,fmtWeekday(d,'long')))+(o.note?(nt?`\nYour note: ${nt.text}. Click to change it`:'\nClick to add a note'):'');
+    cur.forEach((v,i)=>{const nt=noted(i),d=dayDate(start,i),h=(i<last?dayHint(fmtDate(d),v,prev?.[i],fmtDate(dayDate(start,i-gp))):todayHint(fmtDate(d),v,u,fmtWeekday(d,'long')))+(o.note?(nt?`\nYour note: ${nt.text}. Click to change it`:'\nClick to add a note'):'');
       s+=`<rect x="${i*cw}" y="${top}" width="${cw}" height="${base-top}" fill="transparent" data-hint="${esc(h)}"/>`});
     if(o.axis){
       // The peak's date shows only where it clears the first and last dates by 8px (a date is about 7px a character).
@@ -899,11 +906,10 @@ function dayBars(el,o){
   });
 }
 
-// A line per day against the same weekday before (dashed), with the peak labelled. A null day has no value: the line
+// A line per day against the comparison's days (dashed), with the peak labelled. A null day has no value: the line
 // breaks there, and a day alone between two gaps is a dot.
 // span: the least the axis covers, so a small wobble isn't drawn as a big swing.
-function lines(el,{cur,prev,fmt,axis,start,peak,span=0}){
-  prev=prev&&sameWeekday(cur,prev);
+function lines(el,{cur,prev,fmt,axis,start,peak,span=0,gap=gapNow()}){
   const day=i=>fmtDay(dayDate(start,i)),vals=[...cur,...(prev||[])].filter(v=>v!=null);
   if(!vals.length){el.innerHTML='<div class="empty">No visits yet</div>';return}
   // The picked day outlives a redraw, so a resize doesn't send the keyboard back to the latest day.
@@ -940,7 +946,7 @@ function lines(el,{cur,prev,fmt,axis,start,peak,span=0}){
     // The pointer and the keyboard show a day the same way; a screen reader hears the tip's words as the slider's value.
     const show=i=>{
       i=Math.max(0,Math.min(n-1,i));on=i;
-      const v=cur[i],y=Y(v??(prev?.[i]??lo)),w=v==null?'no visits':fmt(v),d=fmtDate(dayDate(start,i)),th=prev&&thenLine(v,prev[i],fmtDate(dayDate(start,i-weeksBack(n))),1);
+      const v=cur[i],y=Y(v??(prev?.[i]??lo)),w=v==null?'no visits':fmt(v),d=fmtDate(dayDate(start,i)),th=prev&&thenLine(v,prev[i],fmtDate(dayDate(start,i-gap)),1);
       g.setAttribute('opacity',1);g.querySelector('line').setAttribute('x1',X(i));g.querySelector('line').setAttribute('x2',X(i));
       const c=g.querySelector('circle');c.setAttribute('cx',X(i));c.setAttribute('cy',y);c.setAttribute('opacity',v==null?0:1);
       t.hidden=false;t.innerHTML=`${d}: <b>${w}</b>${th?`<br><span class="muted">${th}</span>`:''}`;
@@ -1050,13 +1056,17 @@ let animating=false,skipMotion=false,pendingPop=false;
 
 // Every period switch, from the buttons on home and each sub-page or the overview's minimap, does the same: every
 // open view redraws for the new period. False when the period is already showing, else the redraw's promise.
-const markPeriods=()=>document.querySelectorAll('.period button').forEach(b=>b.setAttribute('aria-pressed',Number(b.dataset.days)===DAYS));
-function setDays(d){
-  if(d===DAYS)return false;
-  DAYS=d;markPeriods();
+const markPeriods=()=>document.querySelectorAll('.period button').forEach(b=>b.setAttribute('aria-pressed',!AGO&&GAP==null&&Number(b.dataset.days)===DAYS));
+// The period is days long, ended back days ago, and is compared with the window that ended gap days before it did
+// (null: the whole weeks that clear it). A gap that is the default one is kept as null, so the address stays short.
+function setPeriod(d,b=0,g=null){
+  if(g===alignedGap(d,b))g=null;
+  if(d===DAYS&&b===AGO&&g===GAP)return false;
+  DAYS=d;AGO=b;GAP=g;markPeriods();
   history.replaceState(history.state,'',urlFor(stack[stack.length-1].vw||null));
-  return redrawAll(`Showing the last ${DAYS} days`);
+  return redrawAll(`Showing ${AGO?PER().range:`the last ${DAYS} days`}`);
 }
+const setDays=d=>setPeriod(d);
 function bindPeriod(el){
   el.querySelectorAll('button').forEach(b=>b.onclick=()=>setDays(Number(b.dataset.days)));
   markPeriods();
@@ -1299,7 +1309,7 @@ function openView(vw,src,opts={}){
   if(vw.v==='filter'&&vw.f.path==null&&vw.f.referrer!=null&&vw.f.channel!=null)vw={...vw,f:{referrer:vw.f.referrer}};
   const o=viewOptions(vw);if(o)zoom(src,{...o,vw,...opts});
 }
-const urlFor=vw=>viewToUrl(vw,{days:DAYS,site:SITES.length>1?SITE:null});
+const urlFor=vw=>viewToUrl(vw,{days:DAYS,back:AGO,gap:GAP,site:SITES.length>1?SITE:null});
 const openFilter=(f,label,src)=>openView({v:'filter',f,label},src);
 const openOverview=src=>openView({v:'overview'},src);
 const openBounce=src=>openView({v:'bounce'},src);
@@ -1369,7 +1379,7 @@ function bindLinks(root){
 async function renderFilter(body,f){
   const gen=body._gen,p=filterParams(f),overview=f.path==null&&f.referrer==null&&f.channel==null;
   // The hours are one card of many, so the overview draws without them.
-  const [totals,ser,hourly,flows,all,strip]=await Promise.all([api('summary',p),api('series',p),overview?api('hourly',DAYS>30?{days:DAYS}:HOURS).catch(()=>null):null,f.path!=null?api('flows',{referrer:f.referrer,channel:f.channel}):null,f.channel!=null?api('summary'):null,overview?api('series',{days:45}).catch(()=>null):null,homeDrawn]);
+  const [totals,ser,hourly,flows,all,strip]=await Promise.all([api('summary',p),api('series',p),overview?api('hourly',DAYS>30||AGO?{days:DAYS,back:AGO}:HOURS).catch(()=>null):null,f.path!=null?api('flows',{referrer:f.referrer,channel:f.channel}):null,f.channel!=null?api('summary'):null,overview?api('series',{days:45,back:0}).catch(()=>null):null,homeDrawn]);
   if(stale(body,gen))return;
   const H=home();
   const c=totals.cur,pr=totals.prev;
@@ -1377,11 +1387,11 @@ async function renderFilter(body,f){
   // A single page's chart marks the events about that page, the way the overview marks all of them.
   const pick=e=>e.kind==='page'&&e.key===f.path,own=H&&f.path!=null&&f.referrer==null&&f.channel==null?H.events.filter(pick):[];
   // The overview's own lead is what stood out in the period, the list just under the chart; home already told its sentence.
-  const say=overview?eventsSentence(H?.events||[],DAYS,ser.start):f.path!=null?pageStory(totals,into,f.path,DAYS,f.referrer==null&&f.channel==null&&H?{cur:H.S.c,prev:H.S.p}:null)
-    :sourceStory(totals,ser,labelOf('channel',f.channel),DAYS).html+(all?' '+(channelShare(totals,all,labelOf('channel',f.channel))||''):'');
+  const say=overview?eventsSentence(H?.events||[],PER(),ser.start):f.path!=null?pageStory(totals,into,f.path,PER(),f.referrer==null&&f.channel==null&&H?{cur:H.S.c,prev:H.S.p}:null)
+    :sourceStory(totals,ser,labelOf('channel',f.channel),PER()).html+(all?' '+(channelShare(totals,all,labelOf('channel',f.channel))||''):'');
   body.innerHTML=`<p class="say">${say}${f.path!=null?' <span class="verdict"></span>':''}</p>${heroHTML(totals)}
     <section class="card"><div class="card-head"><div class="card-title">Visitors per day${pr.visitors?`, against ${AGAINST()}`:''}</div></div><div class="chart"></div>${overview&&H?'<div class="marks"></div><div class="mm"></div>':own.length?'<div class="marks own"></div>':''}</section>
-    ${overview&&H?`<section class="card"><div class="card-title">What happened</div>${H.events.length?'<div class="events-list"></div>':`<p class="muted" style="margin:0">Nothing unusual in the last ${DAYS} days.</p>`}</section>`:''}
+    ${overview&&H?`<section class="card"><div class="card-title">What happened</div>${H.events.length?'<div class="events-list"></div>':`<p class="muted" style="margin:0">Nothing unusual ${PER().now}.</p>`}</section>`:''}
     ${overview&&H?'<section class="card also-card" hidden><div class="card-title">What else changed</div><ul class="also"></ul></section>':''}
     ${overview&&H?'<section class="card inout"></section>':''}
     ${f.path!=null?'<section class="card"><div class="card-title">Where readers came from, and where they went next</div><p class="cross-say"></p><div class="cross-k" aria-hidden="true"><span>visitors</span><span></span></div><div class="landed cross"></div><p class="say-sub landed-note"></p></section>':''}
@@ -1414,7 +1424,7 @@ async function renderFilter(body,f){
     drawMarks(marks,H.events,H.ser);
     body.querySelector('.events-list')?.replaceChildren(...H.events.map(e=>eventButton(e,H.ser,true)));
     // Every other finding, the ones no sentence above has room for.
-    const more=moreFindings(H.S,H.T.told,`the ${DAYS} days before`),also=body.querySelector('.also-card');
+    const more=moreFindings(H.S,H.T.told,PER().before),also=body.querySelector('.also-card');
     if(also&&more.length){also.querySelector('.also').innerHTML=more.map(f=>`<li>${f.html}</li>`).join('');bindLinks(also);also.hidden=false}
     drawInOut(body.querySelector('.inout'),H);
   }
@@ -1433,7 +1443,7 @@ async function renderFilter(body,f){
     // Two queries, so it comes in after the rest.
     api('next',{...p,goal:GOALS.length?GOALS:null}).then(n=>{
       if(stale(body,gen))return;
-      const st=nextStory(n,DAYS);
+      const st=nextStory(n,PER());
       if(!st)return;
       // Whether readers of this page go on to a goal, against all visits: the same rows, and home's conversions.
       if(n.cur.reached!=null)api('conversions',{goal:GOALS}).then(conv=>{
@@ -1478,7 +1488,7 @@ const GLYPHS4=['diag','dots','back','squiggle'];
 const shadeSeg=(subj,i)=>i?`class="${subj}-h hatch-${GLYPHS4[Math.min(4,i)-1]} w${Math.min(4,i)}"`:`class="${subj}-s"`;
 const keySw=(subj,i)=>`<span ${shadeSeg(subj,i).replace('class="','class="sw hk ')}></span>`;
 function drawInOut(sec,H){
-  const src=findings(H.S,H.T.told,`the ${DAYS} days before`)[0],pg=pagesFinding(H.pageRows,H.T.page);
+  const src=findings(H.S,H.T.told,PER().before)[0],pg=pagesFinding(H.pageRows,H.T.page);
   const said=[src,pg].filter(Boolean).map(x=>x.html.replace(/\.?$/,'.')).join(' ');
   sec.innerHTML=`<div class="card-title">Where readers came from, and what they read</div>${said?`<p class="card-say">${said}</p>`:''}<div class="io"></div>`;
   if(said)bindLinks(sec.querySelector('.card-say'));
@@ -1511,7 +1521,7 @@ function drawReach(body,r,path){
     <div class="reach-nums">${N.map(x=>`<div class="num"><span class="v${x.drop?' t-drop':''}">${x.value}</span><span class="k">${x.label}</span></div>`).join('')}</div>
     <div class="shotwrap" hidden><div class="shot" role="img" aria-label="${esc(P.aria)}"><div class="shade" style="background:${shade}"></div>${P.bands.map((t,i)=>`<i style="top:${i*10}%" title="${t}"></i>`).join('')}${P.drop?`<b style="top:${P.drop.at*100}%"></b>`:''}</div>
       <div class="ticks" aria-hidden="true"><span class="t-top" style="top:0">${P.top}</span>${P.drop?`<span class="t-drop" style="top:${P.drop.at*100}%">${P.drop.label}</span>`:''}<span class="t-end" style="top:100%">${P.end}</span></div></div>
-    <figcaption class="say-sub">${pictureCaption({path,days:DAYS,kind:'wait'})}</figcaption></figure>`}</div>`;
+    <figcaption class="say-sub">${pictureCaption({path,days:PER(),kind:'wait'})}</figcaption></figure>`}</div>`;
   body.querySelector('.nums').after(sec);
   if(P)showPicture(sec,path);
 }
@@ -1533,7 +1543,7 @@ function drawSpeed(body,S,path){
 // column, or, for a short page, as wide as it may be.
 async function showPicture(sec,path){
   const shot=sec.querySelector('.shot'),cap=sec.querySelector('figcaption'),site=SITE;
-  const say=(kind,why)=>{cap.innerHTML=pictureCaption({path,days:DAYS,kind,why})};
+  const say=(kind,why)=>{cap.innerHTML=pictureCaption({path,days:PER(),kind,why})};
   const place=(src,kind,why,failed)=>{
     const img=new Image();img.alt='';
     img.onload=()=>{
@@ -1661,7 +1671,7 @@ async function renderDim(body,group){
   if(stale(body,gen))return;
   // The steps are the biggest movers, not only what home's sentence named, so "everyone else" is never the biggest.
   const H=home(),W=group==='sources'&&H?waterfallMovers(H.S):null;
-  body.innerHTML=`<div><p class="say"></p><p class="say-sub" hidden></p></div>${W?`<section class="card"><div class="card-title">Change in ${H.S.unit}, against the ${DAYS} days before</div><div class="steps"></div></section>`:''}${speed?'<section class="card read-card" hidden><div class="card-title">Read or skimmed</div><p class="card-say"></p><div class="rmap svgc"></div><p class="say-sub read-key"></p></section>':''}<section></section>`;
+  body.innerHTML=`<div><p class="say"></p><p class="say-sub" hidden></p></div>${W?`<section class="card"><div class="card-title">Change in ${H.S.unit}, against ${PER().before}</div><div class="steps"></div></section>`:''}${speed?'<section class="card read-card" hidden><div class="card-title">Read or skimmed</div><p class="card-say"></p><div class="rmap svgc"></div><p class="say-sub read-key"></p></section>':''}<section></section>`;
   const say=body.querySelector('.say');
   const cap=W?waterfallCaption(W,H.S):group==='pages'&&H?pagesFinding(H.pageRows)??pagesCaption(H.pageRows.slice(0,6)):null;
   if(cap?.html)say.innerHTML=cap.html+'.';else say.remove();
@@ -1693,7 +1703,7 @@ async function drawFunnels(body,gen){
   if(SHARED&&!funnels.length){sec.hidden=true;return}
   try{data=await Promise.all(funnels.map(steps=>api('funnel',{steps})))}catch{return}
   if(stale(body,gen))return;
-  const stories=data.map(f=>funnelStory(f,DAYS));
+  const stories=data.map(f=>funnelStory(f,PER()));
   sec.innerHTML=`<div class="card-title">Funnels</div><p class="card-say">${stories[0]?.html||FUNNEL_EMPTY}</p>
     ${data.map((f,i)=>`<div class="card-head fun-head"><span class="goal-text">${esc(funnelName(f.steps))}</span>${SHARED?'':'<button type="button" class="link goal-text">Remove</button>'}</div>${i?`<p class="goal-text">${stories[i].html}</p>`:''}<div class="steps"></div>`).join('')}
     ${funnels.length<5&&!SHARED?`<form novalidate><div class="add"><input name="steps" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="/pricing, /signup, /thanks" aria-label="Pages, in order"><button class="retry">Save</button></div><span class="err" role="alert"></span></form>`:''}`;
@@ -1760,7 +1770,7 @@ async function renderSource(body,f){
   const c=totals.cur,pr=totals.prev;
   // Emphasis follows this page's own sentence, not the home one.
   const bouncy=c.visits>=100&&c.bounce>=all.cur.bounce+.08;
-  const st=sourceStory(totals,ser,label,DAYS);
+  const st=sourceStory(totals,ser,label,PER());
   if(GOALS.length)api('conversions',{goal:GOALS}).then(conv=>{
     if(stale(body,gen))return;
     const mine=conv.rows.filter(x=>inside(x.key)),r={visits:sum(mine.map(x=>x.visits)),reached:sum(mine.map(x=>x.reached))};if(!r.visits||!conv.visits)return;
@@ -2063,8 +2073,8 @@ async function renderBounce(body){
   const H=home(),S=readStory({totals,ser,pages,refs,flows}),B=bounceSplit(S),told=H?.T.told||new Set();
   const c=totals.cur.bounce,p=totals.prev.bounce;
   let say,standout=null;
-  if(!totals.cur.visits)say=`No visits in the last ${DAYS} days.`;
-  else if(!B)say=`There were no visits in the ${DAYS} days before, so there’s nothing to compare with yet.`;
+  if(!totals.cur.visits)say=`No visits ${PER().now}.`;
+  else if(!B)say=`There were no visits in ${PER().before}, so there’s nothing to compare with yet.`;
   else if(B.cause==='same'){
     // Nothing moved, so the sentence says what stands out instead: who bounces most beyond the site's rate.
     const rows=[['referrer',refs],['entry',entry]].flatMap(([dim,d])=>d.rows.filter(r=>r.bounce!=null).map(r=>({dim,key:r.key,label:labelOf(dim,r.key),visits:r.visits,bounce:r.bounce})));
@@ -2179,8 +2189,8 @@ function renderStory(S,T,live){
   const {c,p,diff}=S,u=S.unit||'visitors',el=$('#story');
   const pct=p[u]?Math.round(Math.abs(diff)/p[u]*100):0;
   const sub=p[u]
-    ?`${u} <b>${diff>=0?'+':'−'}${pct}%</b><span class="sr">, ${fmtInt(Math.abs(diff))} ${diff>=0?'more':'fewer'} than the ${DAYS} days before</span>`
-    :`${u} in the last ${DAYS} days`;
+    ?`${u} <b>${diff>=0?'+':'−'}${pct}%</b><span class="sr">, ${fmtInt(Math.abs(diff))} ${diff>=0?'more':'fewer'} than ${PER().before}</span>`
+    :`${u} ${PER().now}`;
   el.innerHTML=`<button type="button" class="headline"><b>${fmtInt(c[u])}</b><span>${sub}</span></button>
     <div class="say-col"><p class="sentence">${T.html}</p><p class="goal-line" id="goal-line" hidden></p></div>
     <button type="button" class="now" id="now"></button>`;
@@ -2222,76 +2232,120 @@ function tile(cls,title,caption,onOpen,key){
 }
 
 function drawDays(el,S,ser,{scale=false,note=false}={}){
-  // The dashed line holds each day's same weekday before it, so the period before's big day sits over the day
-  // matching its weekday; on 30 days its first two days aren't on the line, and the sentence alone names one there.
-  const cur=ser.cur.visitors,prev=ser.prev.visitors,n=cur.length,seg=spikeSegment(S,ser),was=S.prevSpike,col=was-n+weeksBack(n);
-  const prevStart=ser.start-ser.days*86400,busiest=cur.indexOf(maxOf(cur));
+  // The dashed line holds the comparison's days place for place, so its big day sits over the day it is paired with.
+  const cur=ser.cur.visitors,prev=ser.prev.visitors,n=cur.length,seg=spikeSegment(S,ser),was=S.prevSpike,col=was;
+  const pStart=prevStart(ser),busiest=cur.indexOf(maxOf(cur));
   const label=seg?{i:seg.day,title:`${fmtDate(dayDate(ser.start,seg.day))} · ${fmtInt(seg.total)}`,sub:`${fmtInt(seg.top)} from ${labelOf('referrer',seg.source)}`,swatch:'var(--src)'}
-    :col>=0?{i:col,title:`${fmtDate(dayDate(prevStart,was))} · ${fmtInt(prev[was])}`,sub:`big day in the ${DAYS} days before`}:null;
-  dayBars(el,{cur,prev:S.p.visitors?prev:null,start:ser.start,seg:seg&&{...seg,subj:'src'},label,prevDot:col,scale,note,
+    :col>=0?{i:col,title:`${fmtDate(dayDate(pStart,was))} · ${fmtInt(prev[was])}`,sub:`big day in ${PER().before}`}:null;
+  dayBars(el,{cur,prev:S.p.visitors?prev:null,start:ser.start,gap:ser.gap,live:!ser.back,seg:seg&&{...seg,subj:'src'},label,prevDot:col,scale,note,
     aria:`Visitors per day from ${fmtDay(dayDate(ser.start,0))} to ${fmtDay(dayDate(ser.start,n-1))}. Busiest: ${fmtDate(dayDate(ser.start,busiest))} with ${fmtInt(cur[busiest])}`
       +(seg?`, ${fmtInt(seg.top)} of them from ${labelOf('referrer',seg.source)}.`:'.')});
 }
-// The period's minimap: every day Lede keeps (the 45-day series and its 45 days before), the period solid and the
-// rest pale, with the days it's measured against dashed under it. The period ends today; the start handle sets how
-// many days it holds, 7 to 45. Dragging, or a key, redraws the chart above from the strip's own days with nothing
-// fetched, and the dashboard loads the period once the handle is let go or the keys rest. A press anywhere on the
-// strip moves the handle there, so a finger needn't land on the dot.
+// The period's minimap: every day Lede keeps (the 45-day series and its 45 days before) as bars, with two windows of
+// the same length on them. The period is solid; the days it is measured against are hatched. A window moves by its
+// body and resizes by its edges, and a resize changes both. The period stays within the last 45 days, which are the ones
+// that know each day's top source, and ends today when it is let go within 3 days of it. The comparison steps by whole
+// weeks (a day is then set against its own weekday), or sits just before the period; Alt places it anywhere. Dragging
+// redraws the chart above from the strip's own days with nothing fetched, and the dashboard loads the period once the
+// window is let go or the keys rest. Each window has a slider of its own for the keyboard.
 function drawPeriod(el,ser,chart,restore){
   const all=[...ser.prev.visitors,...ser.cur.visitors],N=all.length,s0=ser.start-ser.days*86400,date=i=>dayDate(s0,i),day=i=>fmtDay(date(i));
-  const counted=all.findIndex(v=>v>0),lo=Math.min(N-7,Math.max(counted,N-45));
+  const counted=all.findIndex(v=>v>0);
   if(counted<0)return;
-  let a=N-DAYS,busy=false,t;
-  el.tabIndex=0;el.setAttribute('role','slider');el.setAttribute('aria-valuemin',lo);el.setAttribute('aria-valuemax',N-7);
-  el.setAttribute('aria-label','The period, which ends today. Move its first day with the arrow keys.');
-  observe(el,()=>{
-    const W=el.clientWidth-40;if(W<=0)return;
-    const first=Math.min(counted,a),cw=W/N,bw=Math.max(1,Math.round(cw-1)),x=i=>Math.round(i*cw),max=maxOf(all.slice(first)),e=x(N-1)+bw;
-    const lab=(x,s,at,ink)=>`<text x="${x}" y="40" font-size="12" text-anchor="${at}" fill="var(--${ink?'ink)" font-weight="600':'muted)'}">${s}</text>`;
-    const knob=(x,ring)=>`<line x1="${x}" x2="${x}" y1="0" y2="22" stroke="var(--muted)"/><circle cx="${x}" cy="13" r="5" fill="var(--time)" stroke="var(--tile)" stroke-width="2"/>${ring?`<circle class="ring" cx="${x}" cy="13" r="9" fill="none" stroke="var(--focus)" stroke-width="2"/>`:''}`;
+  const MIN=7,MAX=45,TOP=18,BAR=20,BASE=TOP+BAR,HIT=12;
+  let ae=N-1-AGO,L=DAYS,off=gapNow(),manual=GAP!=null,alt=false,busy=false,drag=null,chip=null,t;
+  const as=()=>ae-L+1,endsToday=()=>ae===N-1;
+  // Where the comparison can rest: just before the period, or whole weeks earlier, wherever it fits in the 90 days.
+  const steps=()=>{const c=[L];for(let k=7*Math.ceil((L+1)/7);k<=N;k+=7)c.push(k);return c.filter(o=>as()-o>=0)};
+  const nearest=o=>{const c=steps();return c.length?c.reduce((x,y)=>Math.abs(y-o)<Math.abs(x-o)?y:x):L};
+  const place=o=>alt?Math.max(L,Math.min(as(),o)):nearest(o);
+  // Keeps the windows inside the days there are: the period within the last 45 and the comparison after the first.
+  const fit=()=>{
+    L=Math.max(MIN,Math.min(MAX,L));
+    ae=Math.max(N-45+L-1,Math.min(N-1,ae));
+    off=manual?place(Math.max(L,off)):alignedGap(L,N-1-ae);
+    if(as()-off<0){L=Math.max(MIN,ae+1-off);if(as()-off<0)off=Math.max(L,as())}
+  };
+  el.innerHTML='<div class="mmv"></div><div class="mmk"><span role="slider" tabindex="0" data-k="p" aria-label="Period"></span><span role="slider" tabindex="0" data-k="b" aria-label="Compared with"></span></div>';
+  const view=el.firstChild,chips=[...el.lastChild.children];
+  observe(view,()=>{
+    const W=view.clientWidth;if(W<=0)return;
+    const first=Math.min(counted,as()-off),cw=W/N,x=i=>i*cw,max=maxOf(all.slice(first));
+    const lab=(x,y,s,at,ink)=>`<text x="${x}" y="${y}" font-size="12" text-anchor="${at}" fill="var(--${ink?'ink)" font-weight="600':'muted)'}">${s}</text>`;
+    const knob=x=>`<rect x="${x-3}" y="${TOP+4}" width="6" height="${BAR-8}" rx="3" fill="var(--time)" stroke="var(--tile)" stroke-width="1.5"/>`;
     const draw=()=>{
-      // Two dates closer than 90px become one, "Oct 24 to today".
-      const n=N-a,wb=weeksBack(n),hx=x(a),near=e-hx<90;
-      let s=`<svg width="${W}" height="44">${first?`<text x="${x(first)-6}" y="18" font-size="12" fill="var(--muted)" text-anchor="end">Nothing counted yet</text>`:''}`;
-      for(let i=first;i<N;i++){const h=all[i]?Math.max(2,Math.round(18*all[i]/max)):0;s+=`<rect x="${x(i)}" y="${22-h}" width="${bw}" height="${h}" fill="var(--time${i<a?'-p':''})"/>`}
-      s+=`<line class="grid-l" x1="${x(first)}" x2="${W}" y1="22.5" y2="22.5"/>`;
-      if(a-wb>=first)s+=`<line x1="${x(a-wb)}" x2="${x(N-wb)-1}" y1="26" y2="26" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="3 3"/>`;
-      // Month names on their first day, left out where they'd touch the first label or the period's dates.
-      for(let i=first+1;i<N;i++){const tx=x(i);if(date(i).getDate()===1&&tx-x(first)>=48&&tx<hx-(near?130:64))s+=lab(tx,date(i).toLocaleString('en-US',{month:'short'}),'start')}
-      s+=(hx-x(first)>=64?lab(x(first),day(first),'start'):'')+knob(hx,1)+knob(e);
-      s+=busy?(near?lab(e,`${day(a)} · ${n} days`,'end',1):lab(hx,`${day(a)} · ${n} days`,'middle',1)+lab(e,'Today','end'))
-        :near?lab(e,`${day(a)} to today`,'end'):lab(hx,day(a),'middle')+lab(e,'Today','end');
-      el.innerHTML=s+'</svg>';
-      el.setAttribute('aria-valuenow',a);
-      el.setAttribute('aria-valuetext',`${day(a)} to today, ${n} days${a-wb>=first?`, measured against ${day(a-wb)} to ${day(N-1-wb)}`:''}`);
+      const a=as(),b=a-off,be=ae-off,n=L,wd=i=>fmtWeekday(date(i),'long'),k=off%7===0?`the same weekday ${off===7?'a week':off/7+' weeks'} earlier`:`just before`;
+      let svg=`<svg width="${W}" height="64" style="overflow:visible"><defs><pattern id="mmh" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.6" height="4" fill="var(--time)"/></pattern></defs>`;
+      for(let i=first;i<N;i++){const h=all[i]?Math.max(2,Math.round(BAR*all[i]/max)):0,inA=i>=a&&i<=ae,inB=i>=b&&i<=be;
+        svg+=`<rect x="${x(i).toFixed(1)}" y="${BASE-h}" width="${Math.max(1,cw-1).toFixed(1)}" height="${h}" fill="${inB?'url(#mmh)':'var(--time)'}" opacity="${inA||inB?1:.2}"/>`}
+      svg+=`<line class="grid-l" x1="${x(first)}" x2="${W}" y1="${BASE+.5}" y2="${BASE+.5}"/>`;
+      for(let i=first;i<N;i++)if(date(i).getDay()===1)svg+=`<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${BASE+1}" y2="${BASE+4}" stroke="var(--muted)" opacity=".5"/>`;
+      svg+=`<rect x="${x(b)}" y="${TOP-4}" width="${n*cw}" height="${BAR+8}" rx="2" fill="none" stroke="var(--time)" stroke-width="1.5" stroke-dasharray="4 3"/>`
+        +`<rect x="${x(a)}" y="${TOP-4}" width="${n*cw}" height="${BAR+8}" rx="2" fill="var(--time)" fill-opacity=".08" stroke="var(--time)" stroke-width="2"/>`
+        +knob(x(a))+knob(x(ae+1))+knob(x(b))+knob(x(be+1));
+      const al=`${day(a)} to ${endsToday()?'today':day(ae)}`;
+      svg+=lab(Math.min(Math.max(x(a),0),W-al.length*6.5),60,al,'start',1)+lab(Math.max(x(b),0),12,`${day(b)} to ${day(be)}`,'start');
+      if(first)svg+=lab(x(first)-6,BASE-2,'Nothing counted yet','end');
+      view.innerHTML=svg+'</svg>';
+      const word=off%7===0||off===L?(off%7===0?k:`${k}: a ${wd(a)} is set against a ${wd(b)}`):`${off} days earlier: a ${wd(a)} is set against a ${wd(b)}`;
+      chips[0].textContent=`Period ${n} days to ${endsToday()?'today':day(ae)}`;
+      chips[1].textContent=`Compared with ${off%7===0?k:off===L?`${n} days just before`:`${off} days earlier`}`;
+      chips[0].setAttribute('aria-valuetext',`${n} days, ${al}`);
+      chips[1].setAttribute('aria-valuetext',`${day(b)} to ${day(be)}, ${word}`);
+      chips[1].title=word;
+      chips[1].classList.toggle('warn',off%7!==0);
     };
-    const move=i=>{
-      a=Math.max(lo,Math.min(N-7,i));busy=true;draw();el.parentNode.classList.add('moving');
-      dayBars(chart,{cur:all.slice(a),prev:all.slice(2*a-N,a),start:s0+a*86400,scale:true,aria:`Visitors per day from ${day(a)} to today.`});
+    const show=()=>{
+      busy=true;draw();el.parentNode.classList.add('moving');
+      dayBars(chart,{cur:all.slice(as(),ae+1),prev:all.slice(as()-off,ae-off+1),start:s0+as()*86400,gap:off,live:endsToday(),scale:true,aria:`Visitors per day from ${day(as())} to ${endsToday()?'today':day(ae)}.`});
     };
-    // The redraw replaces the minimap, so one that had focus hands it to the new one.
+    // The redraw replaces the strip, so a slider that had focus hands it to the new one.
     const end=()=>{
       clearTimeout(t);if(!busy)return;busy=false;el.parentNode.classList.remove('moving');
-      const f=document.activeElement===el,r=setDays(N-a);
-      if(r)r.then(()=>f&&$('.mm')?.focus());else{draw();restore()}
+      const f=chip,r=setPeriod(L,N-1-ae,manual&&off!==alignedGap(L,N-1-ae)?off:null);
+      if(r)r.then(()=>f&&$(`.mm [data-k=${f}]`)?.focus());else{draw();restore()}
     };
-    el.style.touchAction='pan-y pinch-zoom';
-    el.onpointerdown=p=>{
-      el.setPointerCapture(p.pointerId);
-      const f=p=>move(Math.round((p.clientX-el.getBoundingClientRect().left)/cw));f(p);el.onpointermove=f;
+    // The nearest edge within reach wins, the period's before the comparison's; else whichever body is under the finger.
+    const pick=px=>{
+      const a=as(),b=a-off,be=ae-off,reach=Math.min(HIT,L*cw/4);
+      const edges=[['a-start',x(a)],['a-end',x(ae+1)],['b-start',x(b)],['b-end',x(be+1)]].map(([m,v])=>[m,Math.abs(px-v)]).filter(e=>e[1]<=reach).sort((p,q)=>p[1]-q[1]||(p[0][0]==='a'?-1:1));
+      if(edges.length)return edges[0][0];
+      const i=px/cw;return i>=a&&i<=ae+1?'a-body':i>=b&&i<=be+1?'b-body':null;
     };
-    el.onpointerup=el.onpointercancel=()=>{if(el.onpointermove){el.onpointermove=null;end()}};
-    el.onkeydown=k=>{
-      const d={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1,PageDown:-7,PageUp:7,Home:-N,End:N}[k.key];
-      if(d){k.preventDefault();move(a+d);clearTimeout(t);t=setTimeout(end,800)}
+    const at=p=>p.clientX-view.getBoundingClientRect().left;
+    view.style.touchAction='pan-y pinch-zoom';
+    view.onpointerdown=p=>{const m=pick(at(p));if(!m)return;view.setPointerCapture(p.pointerId);drag={m,x0:at(p),ae0:ae,L0:L,off0:off}};
+    view.onpointermove=p=>{
+      alt=p.altKey;
+      if(!drag){const m=pick(at(p));view.style.cursor=!m?'':m.endsWith('body')?'grab':'ew-resize';return}
+      const d=drag,dd=Math.round((at(p)-d.x0)/cw);
+      if(d.m==='a-body'){ae=d.ae0+dd;if(!alt&&N-1-ae<=3)ae=N-1}
+      else if(d.m==='b-body'){off=d.off0-dd;manual=true}
+      else if(d.m.endsWith('start')){L=d.L0-dd;ae=d.ae0;off=d.off0}
+      else{L=d.L0+dd;ae=d.ae0+(L-d.L0);off=d.off0}
+      fit();show();
     };
-    el.onblur=end;
+    view.onpointerup=view.onpointercancel=()=>{if(drag){drag=null;end()}};
+    const keys=k=>{
+      const kind=k.target.dataset.k;chip=kind;let d;
+      if(kind==='p'){
+        d={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1,PageDown:-7,PageUp:7}[k.key];
+        if(d==null)return;
+        if(k.shiftKey)L+=d;else ae+=d;
+      }else{
+        const c=steps(),i=c.indexOf(off),to={ArrowLeft:1,ArrowDown:1,PageDown:1,ArrowRight:-1,ArrowUp:-1,PageUp:-1}[k.key];
+        if(to==null)return;
+        off=c[Math.max(0,Math.min(c.length-1,(i<0?c.indexOf(nearest(off)):i)+to))];manual=true;
+      }
+      k.preventDefault();fit();show();clearTimeout(t);t=setTimeout(end,800);
+    };
+    chips.forEach(c=>{c.onkeydown=keys;c.onblur=end;c.onfocus=()=>{chip=c.dataset.k}});
     draw();
   });
 }
 
 function drawFlow(el,S,T,flows,flowsPrev,pageRows){
-  if(!flows.length){el.innerHTML=`<div class="empty">${noneYet('visitors',S.p.visitors>0,DAYS)}</div>`;return}
+  if(!flows.length){el.innerHTML=`<div class="empty">${noneYet('visitors',S.p.visitors>0,PER())}</div>`;return}
   // Left: the sources the sentence names and those that moved the total most, in order of change; named ones are bold.
   const live=S.sources.filter(s=>s.value>0);
   const named=live.filter(s=>T.told.has(s.key));
@@ -2320,7 +2374,7 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
   const at=(list,k)=>{const i=list.findIndex(s=>s.key===k);return i>=0?i:list.findIndex(s=>s.key==null)};
   const m=left.map(()=>right.map(()=>0));
   for(const f of flows){const i=at(left,f.source),j=at(right,f.page);if(i>=0&&j>=0)m[i][j]+=f.visitors}
-  const total=sum(m.flat());if(!total){el.innerHTML=`<div class="empty">${noneYet('visitors',S.p.visitors>0,DAYS)}</div>`;return}
+  const total=sum(m.flat());if(!total){el.innerHTML=`<div class="empty">${noneYet('visitors',S.p.visitors>0,PER())}</div>`;return}
 
   // Each side has its own gaps, so each gets its own scale; a ribbon is v*kL tall on the left and v*kR on the right.
   const gap=3,scaleOf=n=>(100-gap*(n-1))/total,kL=scaleOf(left.length),kR=scaleOf(right.length);
@@ -2374,7 +2428,7 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
 
 function drawGrowth(el,W){
   if(!W){el.innerHTML='<div class="empty">Nothing to compare with yet</div>';return}
-  const aria=`Change in ${HOME?.S?.unit||'visitors'}, against the ${DAYS} days before: `+W.steps.map(s=>`${s.label} ${fmtSigned(s.value)}`).join(', ')+'.';
+  const aria=`Change in ${HOME?.S?.unit||'visitors'}, against ${PER().before}: `+W.steps.map(s=>`${s.label} ${fmtSigned(s.value)}`).join(', ')+'.';
   drawSteps(el,W.steps,{fmt:v=>fmtSigned(v),aria,colorOf:s=>s.kind==='total'?'var(--ink)':s.kind==='else'?'var(--src-t)':'var(--src)',
     openOf:s=>s.kind==='total'?openOverview:s.channel?b=>openFilter({channel:s.channel},s.label,b):s.key!==null&&s.kind!=='else'?b=>openFilter({referrer:s.key},s.label,b):null});
 }
@@ -2386,15 +2440,15 @@ const stayCaption=(S,B)=>B?.cause==='same'?bounceHeld(S.c.bounce,stayStandout(S,
 // that bounces most. With neither, the period before, unless bounce held. Under them, how long a visit lasts.
 function drawStay(el,S,B){
   const {c,p}=S;
-  if(!c.visits){el.innerHTML=`<div class="empty">${noneYet('visits',p.visits>0,DAYS)}</div>`;return}
+  if(!c.visits){el.innerHTML=`<div class="empty">${noneYet('visits',p.visits>0,PER())}</div>`;return}
   const rows=[{pct:c.bounce,label:`all visits${p.visits?` · ${pts(c.bounce,p.bounce)}`:''}`,story:false,
     aria:`All visits: ${fmtPct(c.bounce)} bounce${p.visits?`, was ${fmtPct(p.bounce)}`:''}. Open`,open:openBounce}];
   const s=B?.cause==='source'?S.sources.find(x=>x.key===B.top.key):stayStandout(S,B);
   if(s&&s.bounce!=null)rows.push({pct:s.bounce,label:s.label,story:true,
     aria:`${s.label}: ${fmtPct(s.bounce)} bounce. Open`,open:b=>openFilter({referrer:s.key},s.label,b)});
   // When bounce held, "same" already says it; a second row would only repeat it, rounded differently (37% beside 36%).
-  else if(p.visits&&B?.cause!=='same')rows.push({pct:p.bounce,label:`the ${DAYS} days before`,fill:'var(--bnc)',
-    aria:`The ${DAYS} days before: ${fmtPct(p.bounce)} bounce. Open`,open:openBounce});
+  else if(p.visits&&B?.cause!=='same')rows.push({pct:p.bounce,label:PER().before,fill:'var(--bnc)',
+    aria:`${PER().before[0].toUpperCase()+PER().before.slice(1)}: ${fmtPct(p.bounce)} bounce. Open`,open:openBounce});
   // As tall as its rows need, so the visit's length sits right under them.
   el.style.flex=`0 0 ${rows.length*52}px`;
   drawSquares(el,rows);
@@ -2466,8 +2520,9 @@ function findEvents(S,T,ser,firsts,pageRows){
     if(note)ev.push({day:i,kind:'note',told:S.note?.note===note,name:'Your note',title:note.text,tag:note.text.length>16?note.text.slice(0,15).trimEnd()+'…':note.text,
       short:note.text,detail:'your note',open:b=>editNote(i,b)});
   });
-  // The last full week against the one before, unless a spike sits in either (it has its own event).
-  if(n>=15){
+  // The last full week against the one before, unless a spike sits in either (it has its own event). It is about now,
+  // so a period that ended earlier has none.
+  if(n>=15&&!ser.back){
     const a=sum(cur.slice(n-8,n-1)),b=sum(cur.slice(n-15,n-8)),pct=b?Math.round((a-b)/b*100):0;
     const sp=findSpike(cur,ser.start);
     if(Math.abs(pct)>=10&&!(sp>=n-15&&sp<n-1))ev.push({day:n-2,kind:'week',told:false,name:'Last 7 days',title:`Visitors ${pct>0?'up':'down'} ${Math.abs(pct)}% from the 7 days before`,
@@ -2489,7 +2544,7 @@ function eventButton(e,ser,full){
 // Markers under the daily bars, one slot per day, each with a short name when there is room for it.
 // pick: which of home's events these are, so the list they open follows a change of period.
 function drawMarks(el,events,ser,pick=null){
-  const n=ser.cur.visitors.length,byDay=new Map(),day=(i,f=fmtDay)=>i<n-1?f(dayDate(ser.start,i)):'Today';
+  const n=ser.cur.visitors.length,byDay=new Map(),day=(i,f=fmtDay)=>i<n-1||ser.back?f(dayDate(ser.start,i)):'Today';
   for(const e of events)if(e.kind!=='week')byDay.set(e.day,[...(byDay.get(e.day)||[]),e]);
   // A week is short enough to name every day; longer periods show their first and last date.
   el.innerHTML=n<=7?Array.from({length:n},(_,i)=>`<span class="m-day" style="left:${((i+.5)/n*100).toFixed(2)}%">${day(i,fmtWeekday)}</span>`).join('')
@@ -2607,7 +2662,7 @@ function editNote(i,anchor,at){
 }
 
 function renderEvents(body,events,ser){
-  body.innerHTML=`<p class="say">${eventsSentence(events,DAYS,ser.start,true)}</p>${events.length?'<section class="card"><div class="events-list"></div></section>':''}`;
+  body.innerHTML=`<p class="say">${eventsSentence(events,PER(),ser.start,true)}</p>${events.length?'<section class="card"><div class="events-list"></div></section>':''}`;
   if(events.length)body.querySelector('.events-list').replaceChildren(...events.map(e=>eventButton(e,ser,true)));
 }
 
@@ -2838,12 +2893,12 @@ async function drawHome(message){
   // answer without it is read as never). A site gone quiet gets its home, which says so.
   if(sumR.cur.views===0&&sumR.prev.views===0&&!sumR.ever){HOME={empty:true};showOnboarding();return true}
   $('#period').hidden=false;
-  const S=readStory({totals:sumR,ser,pages,refs,flows,notes:NOTES}),T=tellStory(S,ser,DAYS);
+  const S=readStory({totals:sumR,ser,pages,refs,flows,notes:NOTES}),T=tellStory(S,ser,PER());
   if(!S.c.visitors&&!S.p.visitors)T.html+=' Check that Lede’s line is still on every page.';
   HOME={S,T,ser,hourly,pace:todayPace(hourly,Date.now()/1000)};
   renderStory(S,T,live);
   // At very high volume Analytics Engine keeps only some of the views; views are scaled back up, visitors aren't.
-  for(const note of countNotes(sumR,DAYS))$('#story .say-col').insertAdjacentHTML('beforeend',`<p class="sampled">${note}</p>`);
+  for(const note of countNotes(sumR,PER()))$('#story .say-col').insertAdjacentHTML('beforeend',`<p class="sampled">${note}</p>`);
   const pageRows=pages.rows.map(r=>({key:r.key,label:labelOf('path',r.key),value:r.visitors,prev:r.prev?.visitors}));
   const openDim=g=>t=>openView({v:g},t);
   // The day each page and source was first seen comes with the breakdowns.
@@ -2857,7 +2912,7 @@ async function drawHome(message){
   const days=tile('t-days',`Visitors per day${S.p.visitors?`, against ${AGAINST()}`:''}`,null,openOverview);
   const marks=document.createElement('div');marks.className='marks';
   days.querySelector('.viz').after(marks);
-  const flow=tile('t-flow','Where visitors came from, and the pages they landed on',flowCaption(S,T,flows.flows,DAYS),openDim('sources'));
+  const flow=tile('t-flow','Where visitors came from, and the pages they landed on',flowCaption(S,T,flows.flows,PER()),openDim('sources'));
   const stay=tile('t-stay','Did they stay',stayCaption(S,B),openBounce);
   const pg=tile('t-pages','Pages by visitors','',openDim('pages'));
   grid.replaceChildren(days,flow,stay,pg);
@@ -2926,13 +2981,13 @@ async function boot(){
   // The address wins over what this browser remembers: a refresh or a shared link opens the same view.
   const route=urlToView(location.pathname,location.search),saved=store.get('lede_site');
   const sites=api('sites',{},true);
-  if(route.site||saved){SITE=route.site||saved;DAYS=route.days||30;prefetchHome()}
+  if(route.site||saved){SITE=route.site||saved;DAYS=route.days||30;AGO=route.back;GAP=route.gap;prefetchHome()}
   try{({sites:SITES,demo:DEMO,insight:INSIGHT,shared:SHARED=false,messages:MESSAGES=false,password:PASSWORD=false}=await sites)}catch(e){showError($('#grid'),e,boot);return}
   if(!SITES.length){askForSite();return}
   SITE=SITES.includes(route.site)?route.site:SITES.includes(saved)?saved:SITES[0];
   store.set('lede_site',SITE);
   // The period is in the address too (?days=7), so a shared link shows the same numbers to everyone.
-  DAYS=route.days||30;
+  DAYS=route.days||30;AGO=route.back;GAP=route.gap;
   document.title=`${displayHost(SITE)} · Lede`;setIcon();
   renderTopbar();
   loadGoals();
