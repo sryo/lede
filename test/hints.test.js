@@ -21,14 +21,15 @@ test('a Span says the period and its comparison in dates once either is not the 
   assert.equal(plain.now, 'in the last 30 days');
   assert.equal(plain.before, 'the 30 days before');
   const aligned = Span(30, 0, 35, now);
-  assert.equal(aligned.before, 'the 30 days to Sep 26');
+  assert.equal(aligned.before, 'the 30 days 5 weeks earlier');
   assert.equal(aligned.against, 'Aug 28 to Sep 26');
   assert.equal(aligned.range, 'Oct 2 to today');
   const earlier = Span(14, 3, 28, now);
   assert.equal(earlier.now, 'from Oct 15 to Oct 28');
   assert.equal(earlier.over, 'from Oct 15 to Oct 28');
   assert.equal(earlier.these, 'the 14 days to Oct 28');
-  assert.equal(earlier.before, 'the 14 days to Sep 30');
+  assert.equal(earlier.before, 'the 14 days 4 weeks earlier');
+  assert.equal(Span(10, 0, 12, now).before, 'the 10 days to Oct 19', 'not whole weeks: the dates');
   assert.equal(earlier.against, 'Sep 17 to Sep 30');
   assert.equal(earlier.range, 'Oct 15 to Oct 28');
 });

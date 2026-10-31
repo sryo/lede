@@ -77,6 +77,8 @@ export const cutSeries = (s, n, back = 0, gap = n, D = s.days) => {
 // The period and its comparison in words. days is a number everywhere a sentence is told for a bare period; a
 // Span works as that number (valueOf) and carries the words for a period that ended earlier or is compared with
 // days that aren't just before it: dates, in the viewer's time zone.
+// The comparison in words: the days just before, whole weeks earlier (the usual), or else its last day.
+export const beforeWords = (days, gap, until) => gap === days ? `the ${days} days before` : gap % 7 === 0 ? `the ${days} days ${gap / 7} weeks earlier` : `the ${days} days to ${until}`;
 export const Span = (days, back = 0, gap = days, now = new Date()) => {
   const day = k => { const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - k); return fmtDay(d); };
   const first = back + days - 1, last = back, bLast = back + gap;
@@ -84,7 +86,7 @@ export const Span = (days, back = 0, gap = days, now = new Date()) => {
     now: back ? `from ${day(first)} to ${day(last)}` : `in the last ${days} days`,
     over: back ? `from ${day(first)} to ${day(last)}` : `over the last ${days} days`,
     these: back ? `the ${days} days to ${day(last)}` : `these ${days} days`,
-    before: gap === days ? `the ${days} days before` : `the ${days} days to ${day(bLast)}`,
+    before: beforeWords(days, gap, day(bLast)),
     range: `${day(first)} to ${back ? day(last) : 'today'}`, against: `${day(bLast + days - 1)} to ${day(bLast)}` };
 };
 export const nowOf = p => p?.now ?? `in the last ${p} days`;

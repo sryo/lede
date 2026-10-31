@@ -5,7 +5,7 @@ import { HttpError } from './errors.js';
 import { demoStore, demoNotes, DEMO_FUNNEL, DEMO_INSIGHT } from './demo.js';
 import { channelFor } from './channels.js';
 import { factSheet, lineFor, MIN_VISITORS } from './insight.js';
-import { readStory, tellStory, cutSeries, alignedGap, fmtDay, dayDate } from '../public/story.js';
+import { readStory, tellStory, cutSeries, alignedGap, beforeWords, fmtDay, dayDate } from '../public/story.js';
 import { watch } from './live.js';
 
 export { HttpError };
@@ -335,7 +335,7 @@ async function insightFor(q, env, ask) {
       ask.stat('breakdown', { dim: 'path' }), ask.stat('breakdown', { dim: 'referrer' }), ask.stat('flows'), getSettings(env, q.site),
       ask.stat('engagement').catch(() => null), ask.stat('keywords').catch(() => null)]);
     const notes = settingsOf(saved, q, false).notes;
-    const before = q.gap === q.days ? `the ${q.days} days before` : `the ${q.days} days to ${fmtDay(dayDate(q.prevStart, q.days - 1))}`;
+    const before = beforeWords(q.days, q.gap, fmtDay(dayDate(q.prevStart, q.days - 1)));
     const S = readStory({ totals, ser, pages, refs, flows, notes }), T = tellStory(S, ser, q.days, { now: `in the last ${q.days} days`, before });
     return factSheet({ site: q.site, span: { now: `in the last ${q.days} days`, before },
       S, T, ser, pages, flows, notes, engagement, keywords });
