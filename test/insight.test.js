@@ -110,7 +110,9 @@ async function withSql(k, fn) {
 }
 const ENV = () => ({ ACCOUNT_ID: 'acc', ANALYTICS_TOKEN: 'tok', STORE: memoryKV({ sites: '["example.com"]' }) });
 const get = (path, env) => handleApi(new Request(`https://worker.test/api/${path}`), env, { waitUntil() {} });
+// Home cuts its period's series from the 45-day one, so that is the one it asks for.
 const HOME = ['summary', 'series', 'breakdown&dim=path', 'breakdown&dim=referrer', 'flows'];
+const homeUrl = (r, qs) => r === 'series' ? `series?${qs.replace(/days=\d+/, 'days=45')}` : `${r.replace('&', `?${qs}&`)}${r.includes('&') ? '' : `?${qs}`}`;
 
 test('without Workers AI there is no line: 204, no query, and the dashboard isn’t told to ask', async () => {
   await withSql(1, async calls => {
@@ -135,7 +137,7 @@ test('after home, the line adds only the reading, speed and search-word queries;
     let runs = 0;
     const env = { ...ENV(), AI: { run: async (model, { messages }) => { runs++; assert.match(messages[1].content, /Hacker News/); return { response: 'Hacker News sent 40 visitors to /blog. Worth checking: /blog.' }; } } };
     const qs = 'site=example.com&days=7&tz=0&tzName=UTC';
-    await Promise.all(HOME.map(r => get(`${r.replace('&', `?${qs}&`)}${r.includes('&') ? '' : `?${qs}`}`, env)));
+    await Promise.all(HOME.map(r => get(homeUrl(r, qs), env)));
     const home = calls.length;
     const res = await get(`insight?${qs}`, env);
     assert.equal(res.status, 200);

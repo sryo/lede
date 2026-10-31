@@ -5,7 +5,7 @@ import { HttpError } from './errors.js';
 import { demoStore, demoNotes, DEMO_FUNNEL, DEMO_INSIGHT } from './demo.js';
 import { channelFor } from './channels.js';
 import { factSheet, lineFor, MIN_VISITORS } from './insight.js';
-import { readStory, tellStory } from '../public/story.js';
+import { readStory, tellStory, cutSeries } from '../public/story.js';
 import { watch } from './live.js';
 
 export { HttpError };
@@ -325,7 +325,7 @@ async function insightFor(q, env, ask) {
   return lineFor(env, `insight:${q.site}:${q.days}`, async () => {
     // Home just asked for the totals, so this costs nothing, and a small site stops here before the 2 queries.
     if ((await ask.stat('summary')).cur.visitors < MIN_VISITORS) return null;
-    const [totals, ser, pages, refs, flows, saved, engagement, keywords] = await Promise.all([ask.stat('summary'), ask.stat('series'),
+    const [totals, ser, pages, refs, flows, saved, engagement, keywords] = await Promise.all([ask.stat('summary'), ask.stat('series', { days: 45 }).then(s => cutSeries(s, q.days)),
       ask.stat('breakdown', { dim: 'path' }), ask.stat('breakdown', { dim: 'referrer' }), ask.stat('flows'), getSettings(env, q.site),
       ask.stat('engagement').catch(() => null), ask.stat('keywords').catch(() => null)]);
     const notes = settingsOf(saved, q, false).notes;

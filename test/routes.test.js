@@ -28,6 +28,7 @@ test('the period and site ride along only when they differ from the default', ()
   assert.equal(viewToUrl({ v: 'bounce' }, { days: 7 }), '/bounce?days=7');
   assert.equal(viewToUrl({ v: 'bounce' }, { days: 30 }), '/bounce');
   assert.equal(viewToUrl(null, { days: 7, site: 'b.example' }), '/?days=7&site=b.example');
+  assert.equal(viewToUrl({ v: 'overview' }, { days: 14 }), '/overview?days=14');
 });
 
 test('an address opens the view it names, so a refresh lands in the same place', () => {
@@ -47,6 +48,8 @@ test('a site with accents reads as typed in the address and opens the same site'
 test('an unknown address opens home', () => {
   assert.deepEqual(urlToView('/nope/x', ''), { view: null, days: null, site: null });
   assert.deepEqual(urlToView('/bounce', '?days=99'), { view: { v: 'bounce' }, days: null, site: null });
+  for (const d of ['6', '46', '12.5', 'x']) assert.equal(urlToView('/', `?days=${d}`).days, null, d);
+  assert.equal(urlToView('/', '?days=12').days, 12);
 });
 
 test('an old /funnels link opens the Overview, where the funnels are', () => {

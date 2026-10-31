@@ -1,6 +1,19 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dayHint, thenLine, usualDay, todayHint, ribbonHint, sourceHint, pageHint, rowLabel } from '../public/story.js';
+import { cutSeries, dayHint, thenLine, usualDay, todayHint, weeksBack, sameWeekday, ribbonHint, sourceHint, pageHint, rowLabel } from '../public/story.js';
+
+test('a day is set against the same weekday a whole number of weeks before: 7 days on a week, 28 on 30 days', () => {
+  assert.equal(weeksBack(7), 7);
+  assert.equal(weeksBack(30), 28);
+  assert.equal(weeksBack(13), 7);
+  assert.equal(weeksBack(45), 42);
+  const prev = Array.from({ length: 30 }, (_, i) => `p${i}`), cur = Array.from({ length: 30 }, (_, i) => `c${i}`);
+  const m = sameWeekday(cur, prev);
+  assert.equal(m[0], 'p2');
+  assert.equal(m[27], 'p29');
+  assert.deepEqual(m.slice(28), ['c0', 'c1']);
+  assert.deepEqual(sameWeekday(['a', 'b', 'c', 'd', 'e', 'f', 'g'], [1, 2, 3, 4, 5, 6, 7]), [1, 2, 3, 4, 5, 6, 7]);
+});
 
 test('today says its visitors so far and a usual whole day of its weekday, rounded, never a comparison', () => {
   assert.equal(todayHint('Fri, Oct 30', 560, 2729, 'Friday'), 'Fri, Oct 30: 560 visitors so far\na whole Friday here is usually about 2,700');
@@ -69,4 +82,17 @@ test('a list row read out says its share and its change, as the columns show the
   assert.equal(rowLabel('/docs', 100, 100, 1000), '/docs: 100 visitors, 10% of the total, the same as before');
   assert.equal(rowLabel('t.co', 1, null, 10), 't.co: 1 visitor, 10% of the total, new');
   assert.equal(rowLabel('t.co', 3, undefined, 0), 't.co: 3 visitors, new');
+});
+
+test('a period is cut from the 45-day series: its last days, and as many before them', () => {
+  const D = 45, all = Array.from({ length: 2 * D }, (_, i) => i), ser = { start: 1000, days: D,
+    prev: { visitors: all.slice(0, D), visits: all.slice(0, D) }, cur: { visitors: all.slice(D), visits: all.slice(D) },
+    top: all.slice(D).map(String), topVisitors: all.slice(D) };
+  const s = cutSeries(ser, 7);
+  assert.equal(s.days, 7);
+  assert.equal(s.start, 1000 + 38 * 86400);
+  assert.deepEqual(s.cur.visitors, [83, 84, 85, 86, 87, 88, 89]);
+  assert.deepEqual(s.prev.visits, [76, 77, 78, 79, 80, 81, 82]);
+  assert.deepEqual(s.top, ['83', '84', '85', '86', '87', '88', '89']);
+  assert.deepEqual(cutSeries(ser, 45).prev.visitors, all.slice(0, 45));
 });

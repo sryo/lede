@@ -221,6 +221,7 @@ button.tile-title:hover{color:var(--ink)}
 .marks{position:relative;height:28px;flex:none}
 /* under a chart with a scale, the markers leave out the scale's 40px column (dayBars' padR), so each sits under its bar */
 .chart+.marks{margin-right:40px}
+.mm{cursor:ew-resize;outline:0;flex:none} .mm .ring{opacity:0} .mm:focus-visible .ring{opacity:1} .moving .marks{visibility:hidden}
 .mark{all:unset;position:absolute;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;border-radius:4px;padding:0 4px}
 .mark .g{display:flex;gap:4px}
 .mark:hover .tag{color:var(--ink)}
@@ -591,8 +592,8 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, thenLine, usualDay, todayHint, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
-  ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX } from '/story.js';
+  dayHint, thenLine, usualDay, todayHint, weeksBack, sameWeekday, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX, cutSeries } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
 
@@ -606,12 +607,17 @@ let SITE='',SITES=[],DEMO=false,INSIGHT=false,SHARED=false,MESSAGES=false,PASSWO
 // What the home screen worked out, for the views that open from it. homeDrawn settles when the latest home
 // draw has: views fetch their own data first and wait for it only to read HOME.
 let HOME=null,homeDrawn=Promise.resolve(false);
+// A week's days already fall on the same weekday, so its titles keep saying the 7 days before.
+const AGAINST=(k=weeksBack(DAYS)/7)=>DAYS%7?`the same weekday ${k>1?k+' weeks':'a week'} before`:`the ${DAYS} days before`;
 const home=()=>HOME&&!HOME.empty?HOME:null;
 
 /* ---------- API ---------- */
 // Answers are reused for five minutes, so a tab left open still moves on to new data.
 const memo=new Map(),MEMO_MS=5*60e3;
+// Every unfiltered series is cut from the 45-day one, so any period and the overview's minimap share one answer.
 function api(route,params={},fresh=false){
+  if(route==='series'&&params.days==null&&params.path==null&&params.referrer==null&&params.channel==null)
+    return api(route,{...params,days:45},fresh).then(s=>cutSeries(s,DAYS));
   const qs=new URLSearchParams({site:SITE,days:DAYS,tz:TZ,tzName:TZNAME});
   for(const [k,v] of Object.entries(params))if(Array.isArray(v))v.forEach(x=>qs.append(k,x));else if(v!=null)qs.set(k,v);
   const url=`/api/${route}?${qs}`;
@@ -837,13 +843,14 @@ function treemap(el,items,{gap=4}={}){
   });
 }
 
-// Bars per day in a subject's colour (time unless `subj` says otherwise), with the previous period as a dashed step line over them.
+// Bars per day in a subject's colour (time unless `subj` says otherwise), with the same weekday before
+// as a dashed step line over them.
 // With `hot` days, those stay solid and the rest turn transparent; without, every bar is solid.
 // The last day is today, which isn't over: it stands in a pale track as tall as a usual whole day of its weekday, taken
 // from the two periods shown (so a 7-day chart, with one earlier week, has none).
 // o: {cur, prev?, start, aria, subj?, seg?:{day,top,subj}, hot?:Set, label?:{i,title,sub,swatch}, prevDot?, axis?, scale?, note?}
 function dayBars(el,o){
-  const {cur,start}=o,n=cur.length,prev=o.prev,day=i=>i<n-1?fmtDay(dayDate(start,i)):'Today',subj=o.subj||'time',u=usualDay([...prev||[],...cur]);
+  const {cur,start}=o,n=cur.length,prev=o.prev&&sameWeekday(cur,o.prev),day=i=>i<n-1?fmtDay(dayDate(start,i)):'Today',subj=o.subj||'time',u=usualDay([...o.prev||[],...cur]);
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
     const top=o.label?40:o.scale?10:4,padB=o.axis?20:o.scale?4:0,base=H-padB,padR=o.scale?40:0,peakV=Math.max(maxOf(cur),prev?maxOf(prev):0,u);
@@ -876,7 +883,7 @@ function dayBars(el,o){
     // One strip per day, the full height, so a short bar or an empty day is as easy to point at as a tall one.
     // On a chart that takes notes, a day's hint says so, with the note already on it.
     const noted=i=>o.note&&NOTES.find(x=>x.day===dayKey(dayDate(o.start,i)));
-    cur.forEach((v,i)=>{const nt=noted(i),d=dayDate(start,i),h=(i<n-1?dayHint(fmtDate(d),v,prev?.[i],fmtDate(dayDate(start,i-DAYS))):todayHint(fmtDate(d),v,u,fmtWeekday(d,'long')))+(o.note?(nt?`\nYour note: ${nt.text}. Click to change it`:'\nClick to add a note'):'');
+    cur.forEach((v,i)=>{const nt=noted(i),d=dayDate(start,i),h=(i<n-1?dayHint(fmtDate(d),v,prev?.[i],fmtDate(dayDate(start,i-weeksBack(n)))):todayHint(fmtDate(d),v,u,fmtWeekday(d,'long')))+(o.note?(nt?`\nYour note: ${nt.text}. Click to change it`:'\nClick to add a note'):'');
       s+=`<rect x="${i*cw}" y="${top}" width="${cw}" height="${base-top}" fill="transparent" data-hint="${esc(h)}"/>`});
     if(o.axis){
       // The peak's date shows only where it clears the first and last dates by 8px (a date is about 7px a character).
@@ -892,10 +899,11 @@ function dayBars(el,o){
   });
 }
 
-// A line per day against the previous period (dashed), with the peak labelled. A null day has no value: the line
+// A line per day against the same weekday before (dashed), with the peak labelled. A null day has no value: the line
 // breaks there, and a day alone between two gaps is a dot.
 // span: the least the axis covers, so a small wobble isn't drawn as a big swing.
 function lines(el,{cur,prev,fmt,axis,start,peak,span=0}){
+  prev=prev&&sameWeekday(cur,prev);
   const day=i=>fmtDay(dayDate(start,i)),vals=[...cur,...(prev||[])].filter(v=>v!=null);
   if(!vals.length){el.innerHTML='<div class="empty">No visits yet</div>';return}
   // The picked day outlives a redraw, so a resize doesn't send the keyboard back to the latest day.
@@ -932,7 +940,7 @@ function lines(el,{cur,prev,fmt,axis,start,peak,span=0}){
     // The pointer and the keyboard show a day the same way; a screen reader hears the tip's words as the slider's value.
     const show=i=>{
       i=Math.max(0,Math.min(n-1,i));on=i;
-      const v=cur[i],y=Y(v??(prev?.[i]??lo)),w=v==null?'no visits':fmt(v),d=fmtDate(dayDate(start,i)),th=prev&&thenLine(v,prev[i],fmtDate(dayDate(start,i-DAYS)),1);
+      const v=cur[i],y=Y(v??(prev?.[i]??lo)),w=v==null?'no visits':fmt(v),d=fmtDate(dayDate(start,i)),th=prev&&thenLine(v,prev[i],fmtDate(dayDate(start,i-weeksBack(n))),1);
       g.setAttribute('opacity',1);g.querySelector('line').setAttribute('x1',X(i));g.querySelector('line').setAttribute('x2',X(i));
       const c=g.querySelector('circle');c.setAttribute('cx',X(i));c.setAttribute('cy',y);c.setAttribute('opacity',v==null?0:1);
       t.hidden=false;t.innerHTML=`${d}: <b>${w}</b>${th?`<br><span class="muted">${th}</span>`:''}`;
@@ -1040,15 +1048,17 @@ const win=$('#win');
 const stack=[{el:$('#home'),title:''}];
 let animating=false,skipMotion=false,pendingPop=false;
 
-// Every period switch, on home and on each sub-page, does the same: every open view redraws for the new period.
+// Every period switch, from the buttons on home and each sub-page or the overview's minimap, does the same: every
+// open view redraws for the new period. False when the period is already showing, else the redraw's promise.
 const markPeriods=()=>document.querySelectorAll('.period button').forEach(b=>b.setAttribute('aria-pressed',Number(b.dataset.days)===DAYS));
+function setDays(d){
+  if(d===DAYS)return false;
+  DAYS=d;markPeriods();
+  history.replaceState(history.state,'',urlFor(stack[stack.length-1].vw||null));
+  return redrawAll(`Showing the last ${DAYS} days`);
+}
 function bindPeriod(el){
-  el.querySelectorAll('button').forEach(b=>b.onclick=()=>{
-    const d=Number(b.dataset.days);if(d===DAYS)return;
-    DAYS=d;markPeriods();
-    history.replaceState(history.state,'',urlFor(stack[stack.length-1].vw||null));
-    redrawAll(`Showing the last ${DAYS} days`);
-  });
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>setDays(Number(b.dataset.days)));
   markPeriods();
 }
 // Sub-pages read what home worked out (its story, its events), so they redraw once home has.
@@ -1359,7 +1369,7 @@ function bindLinks(root){
 async function renderFilter(body,f){
   const gen=body._gen,p=filterParams(f),overview=f.path==null&&f.referrer==null&&f.channel==null;
   // The hours are one card of many, so the overview draws without them.
-  const [totals,ser,hourly,flows,all]=await Promise.all([api('summary',p),api('series',p),overview?api('hourly',HOURS).catch(()=>null):null,f.path!=null?api('flows',{referrer:f.referrer,channel:f.channel}):null,f.channel!=null?api('summary'):null,homeDrawn]);
+  const [totals,ser,hourly,flows,all,strip]=await Promise.all([api('summary',p),api('series',p),overview?api('hourly',DAYS>30?{days:DAYS}:HOURS).catch(()=>null):null,f.path!=null?api('flows',{referrer:f.referrer,channel:f.channel}):null,f.channel!=null?api('summary'):null,overview?api('series',{days:45}).catch(()=>null):null,homeDrawn]);
   if(stale(body,gen))return;
   const H=home();
   const c=totals.cur,pr=totals.prev;
@@ -1370,7 +1380,7 @@ async function renderFilter(body,f){
   const say=overview?eventsSentence(H?.events||[],DAYS,ser.start):f.path!=null?pageStory(totals,into,f.path,DAYS,f.referrer==null&&f.channel==null&&H?{cur:H.S.c,prev:H.S.p}:null)
     :sourceStory(totals,ser,labelOf('channel',f.channel),DAYS).html+(all?' '+(channelShare(totals,all,labelOf('channel',f.channel))||''):'');
   body.innerHTML=`<p class="say">${say}${f.path!=null?' <span class="verdict"></span>':''}</p>${heroHTML(totals)}
-    <section class="card"><div class="card-head"><div class="card-title">Visitors per day${pr.visitors?`, against the ${DAYS} days before`:''}</div></div><div class="chart"></div>${overview&&H?'<div class="marks"></div>':own.length?'<div class="marks own"></div>':''}</section>
+    <section class="card"><div class="card-head"><div class="card-title">Visitors per day${pr.visitors?`, against ${AGAINST()}`:''}</div></div><div class="chart"></div>${overview&&H?'<div class="marks"></div><div class="mm"></div>':own.length?'<div class="marks own"></div>':''}</section>
     ${overview&&H?`<section class="card"><div class="card-title">What happened</div>${H.events.length?'<div class="events-list"></div>':`<p class="muted" style="margin:0">Nothing unusual in the last ${DAYS} days.</p>`}</section>`:''}
     ${overview&&H?'<section class="card also-card" hidden><div class="card-title">What else changed</div><ul class="also"></ul></section>':''}
     ${overview&&H?'<section class="card inout"></section>':''}
@@ -1383,7 +1393,10 @@ async function renderFilter(body,f){
   const cur=ser.cur.visitors,busiest=cur.indexOf(maxOf(cur));
   // On the overview the markers row carries the dates, as on home.
   const marks=body.querySelector('.marks:not(.own)'),ownMarks=body.querySelector('.marks.own');
-  if(marks){drawDays(body.querySelector('.chart'),H.S,H.ser,{scale:true,note:!SHARED});noteDays(body.querySelector('.chart'),H.ser)}
+  if(marks){
+    const chart=body.querySelector('.chart'),days=()=>{drawDays(chart,H.S,H.ser,{scale:true,note:!SHARED});noteDays(chart,H.ser)};
+    days();if(strip)drawPeriod(body.querySelector('.mm'),strip,chart,days);
+  }
   else{
     const spike=findSpike(cur,ser.start),usual=median(cur);
     const label=spike>=0?{i:spike,title:`${fmtDate(dayDate(ser.start,spike))} · ${fmtInt(cur[spike])}`,sub:`${Math.round(cur[spike]/(usual||1))}× a usual day`}:null;
@@ -1761,7 +1774,7 @@ async function renderSource(body,f){
   const pick=e=>e.kind==='source'&&inside(e.key),evs=H?H.events.filter(pick):[];
   body.innerHTML=`<div><p class="say">${st.html}${share?' '+share:''}</p>${st.without?`<p class="say-sub">${esc(st.without)}</p>`:''}${sub?`<p class="say-sub">${sub}</p>`:''}${f.referrer===''?`<p class="say-sub">${DIRECT_MEANS}</p>`:''}</div>
     <div class="nums"><div class="hero"><span class="big">${fmtInt(c.visitors)}</span><span>${heroSub(totals)}</span></div>${numsHTML(c,pr,{story:bouncy})}</div>
-    <section class="card"><div class="card-title">Visitors per day${pr.visitors?`, against the ${DAYS} days before`:''}</div><div class="chart"></div>${evs.length?'<div class="marks"></div>':''}</section>
+    <section class="card"><div class="card-title">Visitors per day${pr.visitors?`, against ${AGAINST()}`:''}</div><div class="chart"></div>${evs.length?'<div class="marks"></div>':''}</section>
     ${channel?'<section class="card"><div class="card-title">Sources in this channel</div><div class="members"></div></section>':''}
     <div class="two">
       <section class="card"><div class="card-title">Where they landed</div><div class="landed"></div></section>
@@ -2067,7 +2080,7 @@ async function renderBounce(body){
     ${B&&B.cause!=='same'?`<section class="card"><div class="card-title">Why it ${B.total>0?'rose':'fell'} · in percentage points</div><div class="steps"></div>
       <div class="legend"><span>${fmtPct(c)} now</span><span>${fmtPct(p)} before</span></div></section>`:''}
     <section class="card"><div class="card-title">Where visits came from, the page they landed on, and who left after it</div><p class="card-say oc-say"></p><div class="landed outcome"></div></section>
-    <section class="card"><div class="card-title">Bounce per day${totals.prev.visits?`, against the ${DAYS} days before`:''}</div><div class="chart"></div></section>
+    <section class="card"><div class="card-title">Bounce per day${totals.prev.visits?`, against ${AGAINST()}`:''}</div><div class="chart"></div></section>
     <section class="card"><div class="card-title">Sources</div><div data-dim="referrer"></div></section>
     <section class="card"><div class="card-title">Pages they landed on</div><div data-dim="entry"></div></section>`;
   if(B&&B.cause!=='same'){
@@ -2209,13 +2222,72 @@ function tile(cls,title,caption,onOpen,key){
 }
 
 function drawDays(el,S,ser,{scale=false,note=false}={}){
-  const cur=ser.cur.visitors,prev=ser.prev.visitors,n=cur.length,seg=spikeSegment(S,ser),was=S.prevSpike;
+  // The dashed line holds each day's same weekday before it, so the period before's big day sits over the day
+  // matching its weekday; on 30 days its first two days aren't on the line, and the sentence alone names one there.
+  const cur=ser.cur.visitors,prev=ser.prev.visitors,n=cur.length,seg=spikeSegment(S,ser),was=S.prevSpike,col=was-n+weeksBack(n);
   const prevStart=ser.start-ser.days*86400,busiest=cur.indexOf(maxOf(cur));
   const label=seg?{i:seg.day,title:`${fmtDate(dayDate(ser.start,seg.day))} · ${fmtInt(seg.total)}`,sub:`${fmtInt(seg.top)} from ${labelOf('referrer',seg.source)}`,swatch:'var(--src)'}
-    :was>=0?{i:was,title:`${fmtDate(dayDate(prevStart,was))} · ${fmtInt(prev[was])}`,sub:`big day in the ${DAYS} days before`}:null;
-  dayBars(el,{cur,prev:S.p.visitors?prev:null,start:ser.start,seg:seg&&{...seg,subj:'src'},label,prevDot:was,scale,note,
+    :col>=0?{i:col,title:`${fmtDate(dayDate(prevStart,was))} · ${fmtInt(prev[was])}`,sub:`big day in the ${DAYS} days before`}:null;
+  dayBars(el,{cur,prev:S.p.visitors?prev:null,start:ser.start,seg:seg&&{...seg,subj:'src'},label,prevDot:col,scale,note,
     aria:`Visitors per day from ${fmtDay(dayDate(ser.start,0))} to ${fmtDay(dayDate(ser.start,n-1))}. Busiest: ${fmtDate(dayDate(ser.start,busiest))} with ${fmtInt(cur[busiest])}`
       +(seg?`, ${fmtInt(seg.top)} of them from ${labelOf('referrer',seg.source)}.`:'.')});
+}
+// The period's minimap: every day Lede keeps (the 45-day series and its 45 days before), the period solid and the
+// rest pale, with the days it's measured against dashed under it. The period ends today; the start handle sets how
+// many days it holds, 7 to 45. Dragging, or a key, redraws the chart above from the strip's own days with nothing
+// fetched, and the dashboard loads the period once the handle is let go or the keys rest. A press anywhere on the
+// strip moves the handle there, so a finger needn't land on the dot.
+function drawPeriod(el,ser,chart,restore){
+  const all=[...ser.prev.visitors,...ser.cur.visitors],N=all.length,s0=ser.start-ser.days*86400,date=i=>dayDate(s0,i),day=i=>fmtDay(date(i));
+  const counted=all.findIndex(v=>v>0),lo=Math.min(N-7,Math.max(counted,N-45));
+  if(counted<0)return;
+  let a=N-DAYS,busy=false,t;
+  el.tabIndex=0;el.setAttribute('role','slider');el.setAttribute('aria-valuemin',lo);el.setAttribute('aria-valuemax',N-7);
+  el.setAttribute('aria-label','The period, which ends today. Move its first day with the arrow keys.');
+  observe(el,()=>{
+    const W=el.clientWidth-40;if(W<=0)return;
+    const first=Math.min(counted,a),cw=W/N,bw=Math.max(1,Math.round(cw-1)),x=i=>Math.round(i*cw),max=maxOf(all.slice(first)),e=x(N-1)+bw;
+    const lab=(x,s,at,ink)=>`<text x="${x}" y="40" font-size="12" text-anchor="${at}" fill="var(--${ink?'ink)" font-weight="600':'muted)'}">${s}</text>`;
+    const knob=(x,ring)=>`<line x1="${x}" x2="${x}" y1="0" y2="22" stroke="var(--muted)"/><circle cx="${x}" cy="13" r="5" fill="var(--time)" stroke="var(--tile)" stroke-width="2"/>${ring?`<circle class="ring" cx="${x}" cy="13" r="9" fill="none" stroke="var(--focus)" stroke-width="2"/>`:''}`;
+    const draw=()=>{
+      // Two dates closer than 90px become one, "Oct 24 to today".
+      const n=N-a,wb=weeksBack(n),hx=x(a),near=e-hx<90;
+      let s=`<svg width="${W}" height="44">${first?`<text x="${x(first)-6}" y="18" font-size="12" fill="var(--muted)" text-anchor="end">Nothing counted yet</text>`:''}`;
+      for(let i=first;i<N;i++){const h=all[i]?Math.max(2,Math.round(18*all[i]/max)):0;s+=`<rect x="${x(i)}" y="${22-h}" width="${bw}" height="${h}" fill="var(--time${i<a?'-p':''})"/>`}
+      s+=`<line class="grid-l" x1="${x(first)}" x2="${W}" y1="22.5" y2="22.5"/>`;
+      if(a-wb>=first)s+=`<line x1="${x(a-wb)}" x2="${x(N-wb)-1}" y1="26" y2="26" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+      // Month names on their first day, left out where they'd touch the first label or the period's dates.
+      for(let i=first+1;i<N;i++){const tx=x(i);if(date(i).getDate()===1&&tx-x(first)>=48&&tx<hx-(near?130:64))s+=lab(tx,date(i).toLocaleString('en-US',{month:'short'}),'start')}
+      s+=(hx-x(first)>=64?lab(x(first),day(first),'start'):'')+knob(hx,1)+knob(e);
+      s+=busy?(near?lab(e,`${day(a)} · ${n} days`,'end',1):lab(hx,`${day(a)} · ${n} days`,'middle',1)+lab(e,'Today','end'))
+        :near?lab(e,`${day(a)} to today`,'end'):lab(hx,day(a),'middle')+lab(e,'Today','end');
+      el.innerHTML=s+'</svg>';
+      el.setAttribute('aria-valuenow',a);
+      el.setAttribute('aria-valuetext',`${day(a)} to today, ${n} days${a-wb>=first?`, measured against ${day(a-wb)} to ${day(N-1-wb)}`:''}`);
+    };
+    const move=i=>{
+      a=Math.max(lo,Math.min(N-7,i));busy=true;draw();el.parentNode.classList.add('moving');
+      dayBars(chart,{cur:all.slice(a),prev:all.slice(2*a-N,a),start:s0+a*86400,scale:true,aria:`Visitors per day from ${day(a)} to today.`});
+    };
+    // The redraw replaces the minimap, so one that had focus hands it to the new one.
+    const end=()=>{
+      clearTimeout(t);if(!busy)return;busy=false;el.parentNode.classList.remove('moving');
+      const f=document.activeElement===el,r=setDays(N-a);
+      if(r)r.then(()=>f&&$('.mm')?.focus());else{draw();restore()}
+    };
+    el.style.touchAction='pan-y pinch-zoom';
+    el.onpointerdown=p=>{
+      el.setPointerCapture(p.pointerId);
+      const f=p=>move(Math.round((p.clientX-el.getBoundingClientRect().left)/cw));f(p);el.onpointermove=f;
+    };
+    el.onpointerup=el.onpointercancel=()=>{if(el.onpointermove){el.onpointermove=null;end()}};
+    el.onkeydown=k=>{
+      const d={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1,PageDown:-7,PageUp:7,Home:-N,End:N}[k.key];
+      if(d){k.preventDefault();move(a+d);clearTimeout(t);t=setTimeout(end,800)}
+    };
+    el.onblur=end;
+    draw();
+  });
 }
 
 function drawFlow(el,S,T,flows,flowsPrev,pageRows){
@@ -2782,7 +2854,7 @@ async function drawHome(message){
 
   // Four tiles, one question each: when, from where to where, did they stay, what they read.
   // A caption only where it adds a fact the chart doesn't show by itself.
-  const days=tile('t-days',`Visitors per day${S.p.visitors?`, against the ${DAYS} days before`:''}`,null,openOverview);
+  const days=tile('t-days',`Visitors per day${S.p.visitors?`, against ${AGAINST()}`:''}`,null,openOverview);
   const marks=document.createElement('div');marks.className='marks';
   days.querySelector('.viz').after(marks);
   const flow=tile('t-flow','Where visitors came from, and the pages they landed on',flowCaption(S,T,flows.flows,DAYS),openDim('sources'));

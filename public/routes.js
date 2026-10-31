@@ -4,7 +4,7 @@
 //   /sources/google.com        one source (/sources/direct for visits with no referrer)
 //   /channels/ai               one channel
 //   /page/docs/install         one page (/page/ is the site's home page)
-// Extra filters, the 7-day period and the site (when there is more than one) go in the query string.
+// Extra filters, a period other than 30 days and the site (when there is more than one) go in the query string.
 
 import { displayHost } from './hosts.js';
 
@@ -26,7 +26,7 @@ export function viewToUrl(view, { days = 30, site = null } = {}) {
       if (channel != null) q.set('channel', channel);
     } else if (channel != null) path = `/channels/${encodeURIComponent(channel)}`;
   }
-  if (days === 7) q.set('days', '7');
+  if (days !== 30) q.set('days', days);
   if (site) q.set('site', displayHost(site));
   const qs = q.toString();
   return qs ? `${path}?${qs}` : path;
@@ -40,7 +40,8 @@ const asciiHost = host => {
 export function urlToView(pathname, search) {
   const q = new URLSearchParams(search);
   // Sites are saved in ASCII (xn--…); the address shows them as typed, so it's turned back here.
-  const days = q.get('days') === '7' ? 7 : null, site = asciiHost(q.get('site'));
+  // A period is 7 to 45 days: fewer is too few to find a big or quiet day, and the API's longest is 45.
+  const d = +q.get('days'), days = Number.isInteger(d) && d >= 7 && d <= 45 && d !== 30 ? d : null, site = asciiHost(q.get('site'));
   const parts = pathname.split('/');
   let view = null;
   if (parts.length === 2 && SIMPLE.includes(parts[1])) view = { v: parts[1] };

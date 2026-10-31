@@ -68,11 +68,26 @@ test('day charts draw sharp: gridlines on the half pixel, a day with any visitor
 
 test('today stands in a flat pale track as tall as a usual day of its weekday, named Today, its hint never a comparison', () => {
   const f = fn('dayBars');
-  assert.match(f, /u=usualDay\(\[\.\.\.prev\|\|\[\],\.\.\.cur\]\)/);
+  assert.match(f, /u=usualDay\(\[\.\.\.o\.prev\|\|\[\],\.\.\.cur\]\)/);
   assert.match(f, /if\(i==n-1&&u>v\)s\+=`<rect [^`]*fill="var\(--\$\{subj\}-p\)"/);
   assert.match(f, /i<n-1\?fmtDay\(dayDate\(start,i\)\):'Today'/);
   assert.match(f, /todayHint\(/);
   assert.match(fn('drawMarks'), /i<n-1\?f\(dayDate\(ser\.start,i\)\):'Today'/);
+});
+
+test('the daily charts set each day against the same weekday before, in the dashed line, the hint and the titles', () => {
+  assert.match(fn('dayBars'), /prev=o\.prev&&sameWeekday\(cur,o\.prev\)/);
+  assert.match(fn('lines'), /prev=prev&&sameWeekday\(cur,prev\)/);
+  for (const f of ['dayBars', 'lines']) {
+    assert.match(fn(f), /dayDate\(start,i-weeksBack\(n\)\)/);
+    assert.doesNotMatch(fn(f), /i-DAYS/);
+  }
+  // The period before's big day sits over the day matching its weekday, and is left off when it isn't on the line.
+  assert.match(fn('drawDays'), /col=was-n\+weeksBack\(n\)/);
+  assert.match(fn('drawDays'), /:col>=0\?\{i:col,/);
+  assert.match(fn('drawDays'), /prevDot:col,/);
+  assert.match(html, /const AGAINST=\(k=weeksBack\(DAYS\)\/7\)=>DAYS%7\?`the same weekday \$\{k>1\?k\+' weeks':'a week'\} before`:`the \$\{DAYS\} days before`/);
+  assert.doesNotMatch(html, /per day\$\{[^}]*\?`, against the \$\{DAYS\} days before/);
 });
 
 test('the bounce line is a slider: arrows, a week a page, Home and End, Esc hides the day before it goes back', () => {
@@ -386,4 +401,15 @@ test('the overview reads campaign tags and the readers’ OS, language, screen a
   assert.match(fn('drawAudienceMore'), /api\('systems'\)[\s\S]*api\('breakdown',\{dim:'place'\}\)/);
   assert.match(fn('renderSource'), /dim:'refUrl'/);
   assert.match(html, /<section class="card camp" hidden><\/section>/);
+});
+
+test('the overview\'s minimap chooses the period through setDays, and a drag fetches nothing until it ends', () => {
+  const f = fn('drawPeriod');
+  assert.match(html, /api\('series',\{days:45\}\)/);
+  assert.match(html, /<div class="marks"><\/div><div class="mm"><\/div>/);
+  assert.match(f, /setAttribute\('role','slider'\)/);
+  assert.match(f, /lo=Math\.min\(N-7,Math\.max\(counted,N-45\)\)/);
+  assert.match(f, /r=setDays\(N-a\)/);
+  assert.doesNotMatch(f, /api\(/);
+  assert.match(fn('bindPeriod'), /setDays\(/);
 });

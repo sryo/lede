@@ -35,6 +35,20 @@ export const thenLine = (n, before, was, rate) => {
     : rate || n === before ? 'the same as' : 'about the same as'}${d ? ' than' : ''} the ${rate ? fmtPct(before) : fmtInt(before)} on ${was}`;
 };
 export const dayHint = (day, n, before, was) => `${day}: ${visitors(n)}${before == null ? '' : `\n${thenLine(n, before, was)}`}`;
+// A day is set against the same weekday a whole number of weeks before, so a Monday is never measured against a
+// Saturday: 7 days back on a week, 28 on 30 days. The weeks never reach past the period before, which is as long as
+// this one, so a period of 7 days or more always has its matches; for one that isn't whole weeks, the last days'
+// matches fall in this period's first days.
+export const weeksBack = n => 7 * Math.floor(n / 7);
+export const sameWeekday = (cur, prev) => { const n = cur.length, k = n - weeksBack(n); return [...prev, ...cur].slice(k, k + n); };
+// The last n days of a series and the n before them, cut from a longer one: every unfiltered series is cut from the
+// 45-day answer, whose two periods are the 90 days Lede keeps, so every period, the dashboard's minimap and the
+// second line's sheet share one answer. Cut, the period before ends on a whole day rather than at this time of day;
+// the charts set days against their weekdays, and the sentences' totals come from summary, which still stops there.
+export const cutSeries = (s, n, D = s.days) => {
+  const k = 2 * D, part = (a, b) => Object.fromEntries(Object.keys(s.cur).map(m => [m, [...s.prev[m], ...s.cur[m]].slice(a, b)]));
+  return { ...s, days: n, start: s.start + (D - n) * 86400, cur: part(k - n, k), prev: part(k - 2 * n, k - n), top: s.top.slice(D - n), topVisitors: s.topVisitors.slice(D - n) };
+};
 // A whole day of today's weekday as it usually goes: the median of the same weekday in the four weeks before, from
 // daily counts ending today. Fewer than three of them aren't a usual, so that is null.
 export const usualDay = days => {
