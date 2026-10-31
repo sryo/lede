@@ -500,7 +500,7 @@ button.lrow:hover{background:var(--line)}
 /* who is here, by page */
 .lrow.online{grid-template-columns:minmax(0,1fr) 110px minmax(0,1fr) minmax(0,120px) 88px 10px;row-gap:4px;align-items:baseline}
 .lrow.online>.name,.lrow.online>.ppl{align-self:center}
-.lrow.online .ppl{font-size:24px;line-height:1;letter-spacing:-.3em}
+.lrow.online .ppl{font-size:24px;line-height:1;letter-spacing:-.3em;overflow:hidden}
 .lrow.online .num{font-weight:600}
 .lrow.online .cty{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lrow.online .num.muted{font-weight:400}
@@ -592,7 +592,7 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, thenLine, usualDay, todayHint, Span, alignedGap, prevStart, fitWindows, windowSteps, nowOf, beforeOf, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  dayHint, thenLine, usualDay, todayHint, Span, alignedGap, prevStart, fitWindows, windowSteps, tableUnit, nowOf, beforeOf, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
   ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX, cutSeries } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -2149,33 +2149,43 @@ async function renderOnline(body){
   body.innerHTML=`<p class="say">${onlineStory(live,told,page)}${pace?` ${pace.html}`:''}</p>
     ${rows.length?`<section class="card"><div class="card-title">Where they are, and how long they’ve been there</div>${LN.html?`<p class="card-say">${LN.html}</p>`:''}<div class="lanes svgc"></div>
       <p class="crowd-key"><span><i class="sw here"></i><b>${fmtInt(live.now)}${plus}</b> here now</span>${earlier>0?`<span><i class="sw gone"></i><b>${fmtInt(earlier)}${plus}</b> left in the last 30 minutes</span>`:''}${named.length?`<span><i class="sw here" style="background:var(--src)"></i>from ${named.map(esc).join(' or ')}</span>`:''}<span class="lane-unit" hidden></span></p></section>`:''}
-    <section class="card">${rows.length?`<div class="people list"><div class="lrow lhead online"><span>Page</span><span>People</span><span>Source</span><span class="cty">Country</span><span>Time on site</span><span></span></div></div>`:'<div class="muted">No one in the last 30 minutes.</div>'}</section>
+    <section class="card">${rows.length?`<div class="people list"><div class="lrow lhead online"><span>Page</span><span>People</span><span>Source</span><span class="cty">Country</span><span>Time on site</span><span></span></div></div><p class="say-sub table-unit" hidden></p>`:'<div class="muted">No one in the last 30 minutes.</div>'}</section>
     ${rows.length?'<p class="credit">Figures: Wee People, ProPublica</p>':''}`;
   if(rows.length)drawLanes(body.querySelector('.lanes'),LN,named);
   const list=body.querySelector('.people');
-  // Figures beside a page are one a person while the list names them all; else each stands for unit people, the same
-  // in every row, so rows compare.
-  const unit=LN.complete?1:figureScale(Math.max(1,...rows.map(r=>r.here+r.gone)),10);
+  // Figures beside a page are one a person while the busiest row's people fit their column, else each stands for unit
+  // people, the same in every row, so rows compare. The column's width sets that, so it is measured and redrawn.
   const top3=(list,more)=>list.slice(0,3).map(([l,k])=>`${esc(l)} ${fmtInt(k)}`).join(', ')+(more>0?` and ${more} more`:'');
-  for(const r of rows){
-    const {path,people}=r,name=path??`${r.pages} other pages`,lines=(people?people.length:r.here?1:0)+(r.earlier.length?1:0),n=Math.max(1,lines);
-    const named=sum(r.row.bands.map(b=>b.named));
-    const figs=unit===1?r.row.people.map(p=>`<span class="${p.named?'named':p.here?'':'gone'}">${p.letter}</span>`).join('')
-      :apportion([named,r.here-named,r.gone],unit).map((k,s)=>Array.from({length:k},(_,i)=>`<span class="${['named','','gone'][s]}">${figureLetter(i+s*11)}</span>`).join('')).join('');
-    const b=document.createElement('button');b.type='button';b.className='lrow online';if(path!=null)b.dataset.path=path;
-    b.innerHTML=`<span class="name${path!=null&&path===page&&r.here?' told-page':''}" style="grid-row:span ${n}">${esc(name)}</span>
-      <span class="ppl small" style="grid-row:span ${n}" aria-hidden="true">${figs}</span>`
-      +(people?people.map(p=>{
-        const src=labelOf('referrer',p.v.referrer);
-        return `<span class="src">${p.named?`<b>${esc(src)}</b>`:esc(src)}</span><span class="cty">${p.v.country?esc(labelOf('country',p.v.country)):''}</span><span class="num">${fmtDur(p.v.seconds)}</span>`;
-      }).join(''):r.here?`<span class="tally"><b>${fmtInt(r.here)} here</b> · ${top3(r.sources,r.more)}</span>`:'')
-      +(r.earlier.length?`<span class="earlier muted">${fmtInt(r.gone)} earlier · ${top3(r.earlier,r.earlier.length-3)}</span>`:'')
-      +`<span class="chevc" style="grid-row:1/span ${n}">${CHEV}</span>`;
-    b.setAttribute('aria-label',`${name}: ${fmtInt(r.here)} here now, ${fmtInt(r.gone)} left in the last 30 minutes. `
-      +(people?people.map(p=>`From ${labelOf('referrer',p.v.referrer)}${p.v.country?`, ${labelOf('country',p.v.country)}`:''}, ${fmtDur(p.v.seconds)}`).join('; '):r.here?`Here now from ${top3(r.sources,r.more)}`:'')+'. Open');
-    b.onclick=()=>path!=null?openFilter({path},path,b):openView({v:'pages'},b);
-    list.append(b);
-  }
+  const note=body.querySelector('.table-unit');
+  const fill=unit=>{
+    list.querySelectorAll('.lrow:not(.lhead)').forEach(b=>b.remove());
+    for(const r of rows){
+      const {path,people}=r,name=path??`${r.pages} other pages`,lines=(people?people.length:r.here?1:0)+(r.earlier.length?1:0),n=Math.max(1,lines);
+      const named=sum(r.row.bands.map(b=>b.named));
+      const figs=unit===1?r.row.people.map(p=>`<span class="${p.named?'named':p.here?'':'gone'}">${p.letter}</span>`).join('')
+        :apportion([named,r.here-named,r.gone],unit).map((k,s)=>Array.from({length:k},(_,i)=>`<span class="${['named','','gone'][s]}">${figureLetter(i+s*11)}</span>`).join('')).join('');
+      const b=document.createElement('button');b.type='button';b.className='lrow online';b.dataset.key=path??'';if(path!=null)b.dataset.path=path;
+      b.innerHTML=`<span class="name${path!=null&&path===page&&r.here?' told-page':''}" style="grid-row:span ${n}">${esc(name)}</span>
+        <span class="ppl small" style="grid-row:span ${n}" aria-hidden="true">${figs}</span>`
+        +(people?people.map(p=>{
+          const src=labelOf('referrer',p.v.referrer);
+          return `<span class="src">${p.named?`<b>${esc(src)}</b>`:esc(src)}</span><span class="cty">${p.v.country?esc(labelOf('country',p.v.country)):''}</span><span class="num">${fmtDur(p.v.seconds)}</span>`;
+        }).join(''):r.here?`<span class="tally"><b>${fmtInt(r.here)} here</b> · ${top3(r.sources,r.more)}</span>`:'')
+        +(r.earlier.length?`<span class="earlier muted">${fmtInt(r.gone)} earlier · ${top3(r.earlier,r.earlier.length-3)}</span>`:'')
+        +`<span class="chevc" style="grid-row:1/span ${n}">${CHEV}</span>`;
+      b.setAttribute('aria-label',`${name}: ${fmtInt(r.here)} here now, ${fmtInt(r.gone)} left in the last 30 minutes. `
+        +(people?people.map(p=>`From ${labelOf('referrer',p.v.referrer)}${p.v.country?`, ${labelOf('country',p.v.country)}`:''}, ${fmtDur(p.v.seconds)}`).join('; '):r.here?`Here now from ${top3(r.sources,r.more)}`:'')+'. Open');
+      b.onclick=()=>path!=null?openFilter({path},path,b):openView({v:'pages'},b);
+      list.append(b);
+    }
+    note.hidden=unit===1;note.textContent=`a figure is ${fmtInt(unit)} people`;
+  };
+  observe(list,()=>{
+    fill(1);
+    const ppl=[...list.querySelectorAll('.ppl')],widest=ppl.reduce((a,x)=>x.children.length>(a?.children.length||0)?x:a,null),pitch=widest?widest.scrollWidth/widest.children.length:7;
+    const width=ppl[0]?.clientWidth,unit=tableUnit(rows,width?Math.floor(width/pitch):Infinity);
+    if(unit>1)fill(unit);
+  });
 }
 
 // Redraws the Online view in place, without the loading state in between, and keeps focus on the row it was on.

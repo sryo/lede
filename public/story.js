@@ -688,6 +688,10 @@ export function laneScale(L, cell) {
   return { unit, bands: unit > 1 || L.complete === false || most > cell };
 }
 
+// How many people each figure beside a page stands for, the same in every row so rows compare: one while the busiest
+// row's people fit the column's capacity, else the smallest round number that does.
+export const tableUnit = (rows, capacity) => figureScale(Math.max(1, ...rows.map(r => r.here + r.gone)), capacity);
+
 // How many people a figure stands for: one while n fit in capacity, then the smallest of 2, 5, 10, 20, 50… that fits.
 export function figureScale(n, capacity) {
   for (let e = 1; ; e *= 10) for (const m of [1, 2, 5]) if (Math.ceil(n / (m * e)) <= Math.max(1, capacity)) return m * e;

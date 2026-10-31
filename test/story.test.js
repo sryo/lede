@@ -1433,3 +1433,15 @@ test('the notes about samples and partial recording say the period and its compa
   assert.equal(audienceNote({ partial: 'cur' }, Span(30, 5, 35)), `Lede began recording devices and browsers during ${Span(30, 5, 35).these}, so they cover only the visits since then and show no change yet.`);
   assert.equal(audienceNote(part, 7), 'Lede began recording devices and browsers during the 7 days before, so they show no change yet.');
 });
+
+test('the figures beside each page are one a person while the busiest row fits its column, else each stands for the same number of people in every row', async () => {
+  const { tableUnit } = await import('../public/story.js');
+  const row = (here, gone) => ({ here, gone });
+  assert.equal(tableUnit([row(2, 5), row(1, 3)], 15), 1);
+  assert.equal(tableUnit([row(2, 5), row(0, 15)], 15), 1, '15 fit exactly');
+  assert.equal(tableUnit([row(2, 5), row(3, 17)], 15), 2, '20 would run past the column');
+  assert.equal(tableUnit([row(2, 5), row(3, 17)], 20), 1);
+  assert.equal(tableUnit([row(2, 78), row(0, 1)], 15), 10, 'round numbers: 5 a figure would still need 16');
+  assert.equal(tableUnit([], 15), 1);
+  assert.equal(tableUnit([row(0, 0)], 0), 1, 'a column too narrow to measure still draws one figure');
+});
