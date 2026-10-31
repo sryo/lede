@@ -226,7 +226,7 @@ The `Live` object (`src/live.js`) keeps one SQLite table of who was seen in the 
 - **signin**, **headers**, **settings:** the password, read-only links and cross-site checks through the whole Worker; `public/_headers`; the KV keys.
 - **live:** the Durable Object, with `node:sqlite` standing in for its storage.
 - **shot**, **insight**, **alerts:** pictures, the second line and the messages, with the fakes from `bench/fakes.mjs`.
-- **demo**, **bench:** the demo build, and the bench's judge.
+- **demo**, **bench:** the demo build, and the bench's house format, floors and noise.
 
 ## Measuring changes
 
@@ -234,20 +234,20 @@ Every change is measured before it goes in. Performance work must improve the nu
 
 ```sh
 npm run bench            # this working copy against the commit in bench/baseline.json
-npm run bench:compare    # judges it; exits 1 on a regression or a floor, 3 when a timing needs a rerun
+npm run bench:compare    # judges it with house; exits 1 on a regression or a floor, 3 when a timing needs a rerun
 npm run bench:since      # what changed since main's baseline, and the prices accepted for it (or: -- <ref>)
 ```
 
-`scripts/bench.mjs` runs both versions without Cloudflare: the Worker in Node with stand-ins for Analytics Engine and KV that count every query and write (`bench/fakes.mjs`, `bench/server.mjs`), and the dashboard and tracker in headless Chrome Canary with the CPU slowed 4x. It records:
+`scripts/bench.mjs` measures and `house price compare` judges (house's RULES.md K2, at `~/Documents/house` or `$HOUSE`; the bench writes each run in its format beside the run, `<out>.house.json` and `<out>.house-base.json`). The bench runs both versions without Cloudflare: the Worker in Node with stand-ins for Analytics Engine and KV that count every query and write (`bench/fakes.mjs`, `bench/server.mjs`), and the dashboard and tracker in headless Chrome Canary with the CPU slowed 4x. It records:
 
 - **Bytes**: `t.js` as sites receive it (`public/t.js`, so run `npm run tracker` first), and everything the dashboard can load, raw, gzip and brotli. Any increase is a regression.
 - **Counts**: Analytics Engine queries, `/api` calls, page pictures and their browser time, KV reads, writes and lists, and Workers AI asks and the tokens they send (a token for about every 4 characters; Neurons follow tokens) per dashboard page, with the second line's sheet counted apart, since it's built at most once an hour per period; requests, writes and KV use per visit, and the `Live` object's requests per visit while no dashboard watches, plus requests and writes for a visit that leaves the tab and comes back, and one through a single-page app; and the same for one spike check and one week's story, run with an alert webhook set (`bench/cron.mjs`). These are what the free limits count, they don't vary between runs, and any increase is a regression. The judge also prints what the schedules take a day (96 spike checks and a seventh of the week's story), and how much a day the rest leaves room for.
-- **Timings**: the Worker per visit and per stats answer, what `t.js` adds to a page, and how long the dashboard home takes to draw and how long it blocks. The two versions run in turn, rep after rep, and the judge looks at the ratio of each pair. A timing is worse when the bootstrap 95% range of the median ratio sits wholly above the threshold for that metric (in `bench/noise.json`, twice what unchanged code swings, at least 5%) and the medians differ by more than 0.05 ms. A range that crosses the threshold is inconclusive: rerun before believing it. A Worker answer over 5 ms fails on its own, to stay well under the 10 ms of CPU free Workers get.
+- **Timings**: the Worker per visit and per stats answer, what `t.js` adds to a page, and how long the dashboard home takes to draw and how long it blocks. The two versions run in turn, rep after rep, and the judge looks at the ratio of each pair. A timing is worse when the bootstrap 95% range of the median ratio sits wholly above the threshold for that metric (`rel` in `bench/noise.json`, twice what unchanged code swings, at least 5%) and the medians differ by more than its `abs`, 0.05 ms. A range that crosses the threshold is inconclusive: rerun before believing it. A Worker answer over 5 ms fails on its own, to stay well under the 10 ms of CPU free Workers get.
 
-- **Floors**: GOALS.md's floors, as `FLOORS` and `CEILING_MS` in `scripts/compare.mjs`: visits a day before the free writes and Worker requests, home loads a day before the free queries, and a small site's Worker answer under 5 ms. A run below one fails whatever the base did, and no price lets it through.
-- **Since**: `npm run bench:since` compares `main`'s `bench/baseline.json` with this one, metric by metric (bytes and counts only, since timings compare only within one run), and reads every `Bench-Accepted:` trailer in between. Growth that the prices for its metric don't add up to is shown as unpriced. The owner reads it before `next` is merged into `main`.
+- **Floors**: GOALS.md's floors, as `FLOORS` and `CEILING_MS` in `scripts/headroom.mjs`, written as house limits: visits a day before the free writes and Worker requests, home loads a day before the free queries, and a small site's Worker answer under 5 ms. A run below one fails whatever the base did, and no price lets it through.
+- **Since**: `npm run bench:since` compares `main`'s `bench/baseline.json` with this one, metric by metric (bytes and counts only, since timings compare only within one run), and reads every `Bench-Accepted:` trailer in between. Growth that the prices for its metric don't add up to is worse; growth they cover is priced. The owner reads it before `next` is merged into `main`.
 
-A regression blocks the change until it pays for itself or the owner accepts its price, as GOALS.md says; an inconclusive timing is rerun first. Put the before and after numbers that changed in the commit message. A new baseline, whether the change made Lede smaller, cheaper or faster or the owner accepted a price, is recorded with `node scripts/bench.mjs --save-baseline` in a commit of its own, which carries a `Bench-Accepted:` trailer for each price. After a Chrome Canary update or a move to another machine, measure the noise again: `node scripts/bench.mjs --aa` then `node scripts/compare.mjs --noise bench/runs/aa.json`. Runs land in `bench/runs/`, which git ignores. `node scripts/bench.mjs --house <out.json>` also writes a run in house's format (an A/B run's base side to `<out>.base.json`), and `--from <run.json> --house <out.json>` converts a run already made, for `house price compare <out>.base.json <out.json> --noise bench/noise.json --since <base>`, which gives the same verdicts as `scripts/compare.mjs`. `bench/house-baseline.json` is `bench/baseline.json` in that format.
+A regression blocks the change until it pays for itself or the owner accepts its price, as GOALS.md says; an inconclusive timing is rerun first. Put the before and after numbers that changed in the commit message. A new baseline, whether the change made Lede smaller, cheaper or faster or the owner accepted a price, is recorded with `node scripts/bench.mjs --save-baseline` in a commit of its own, which carries a `Bench-Accepted:` trailer for each price. After a Chrome Canary update or a move to another machine, measure the noise again: `node scripts/bench.mjs --aa` then `node scripts/bench.mjs --noise`. Runs land in `bench/runs/`, which git ignores. `npm run bench:compare` also reads the `Bench-Accepted:` trailers since the run's base, so a number the owner priced shows as priced, not worse. `node scripts/bench.mjs --from <run.json>` writes a run already made in house's format. `--save-baseline` writes `bench/house-baseline.json` beside `bench/baseline.json`, the same numbers in house's format.
 
 ## API
 
@@ -299,6 +299,6 @@ Days run from local midnight to local midnight in `tzName`, so the day the clock
 | Dashboard | `public/index.html`, `public/story.js`, `public/routes.js`, `public/hosts.js`. The crowd's figures are [Wee People](https://github.com/propublica/weepeople) by ProPublica (CC BY-NC-ND 3.0), in `public/weepeople.woff2`. |
 | Static files | `public/_headers`, `public/robots.txt`, the icons |
 | Demo site | `demo/`, `scripts/build-demo.mjs`, `.github/workflows/demo.yml` |
-| Bench | `scripts/bench.mjs`, `scripts/compare.mjs`, `bench/` |
+| Bench | `scripts/bench.mjs`, `scripts/headroom.mjs`, `bench/`, and house's `price compare` |
 | Analytics Engine's delay | `scripts/ae-lag.mjs` |
 | Tests | `test/` |

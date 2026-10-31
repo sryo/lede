@@ -1,38 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { compare, timing, noiseFrom, headroom, scheduleDay, sheetDay, limits, floors, exitCode, parseAccepted, since } from '../scripts/compare.mjs';
+import { noiseFrom, headroom, scheduleDay, sheetDay, limits, floors } from '../scripts/headroom.mjs';
 import { counters, fakeAI, fakeFetch, WEBHOOK } from '../bench/fakes.mjs';
-import { baselineRef, houseOf } from '../scripts/bench.mjs';
+import { baselineRef, houseOf, houseFiles, parseArgs } from '../scripts/bench.mjs';
 
-const side = (times, extra = {}) => ({ rev: 'x', bytes: { 't.js gzip': 100 }, counts: { 'queries: /': 10 }, times, ...extra });
 const reps = (v, n = 15, jitter = 0.01) => Array.from({ length: n }, (_, i) => v * (1 + (i % 3 - 1) * jitter));
-
-test('a timing is worse only when its whole range is past the threshold and the gap is real', () => {
-  assert.equal(timing(reps(10), reps(13)).verdict, 'worse');
-  assert.equal(timing(reps(10), reps(7)).verdict, 'better');
-  assert.equal(timing(reps(10), reps(10.3)).verdict, 'same');
-  assert.equal(timing(reps(0.01), reps(0.03)).verdict, 'same', 'a tiny absolute gap is noise');
-});
-
-test('a timing that swings across the threshold is inconclusive, not a pass or a fail', () => {
-  const base = reps(10, 15, 0), run = Array.from({ length: 15 }, (_, i) => (i % 2 ? 13 : 9.6));
-  assert.equal(timing(base, run).verdict, 'inconclusive');
-});
-
-test('any byte or count increase is a regression, and a Worker answer over 5 ms is below a floor', () => {
-  const rows = compare({
-    base: side({ 'worker: summary': reps(4), 'browser: home drawn': reps(100) }),
-    run: side({ 'worker: summary': reps(5.5), 'browser: home drawn': reps(100) }, { bytes: { 't.js gzip': 101 }, counts: { 'queries: /': 9 } }),
-  });
-  const v = Object.fromEntries(rows.map(r => [r.metric, r.verdict]));
-  assert.deepEqual(v, { 't.js gzip': 'worse', 'queries: /': 'better', 'worker: summary': 'floor', 'browser: home drawn': 'same' });
-});
 
 test('a run below a floor fails even when the base was just as low', () => {
   const counts = { 'queries: /': 8, 'visit: writes': 3, 'visit: requests': 2, 'visit: kv writes': 0 };
-  const rows = compare({ base: side({}, { counts }), run: side({}, { counts }) });
-  assert.deepEqual(rows.filter(r => r.verdict === 'floor').map(r => [r.metric, r.run]), [['visits a day before 100k writes', 33333]]);
-  assert.equal(exitCode(rows), 1);
+  assert.deepEqual(floors(counts).map(r => [r.metric, r.run]), [['visits a day before 100k writes', 33333]]);
   assert.deepEqual(floors({ ...counts, 'visit: writes': 2 }), [], 'two writes a visit is the promise, exactly');
   assert.deepEqual(floors({ ...counts, 'visit: writes': 2, 'queries: /': 11 }).map(r => r.metric), ['dashboard home loads a day before 10k queries']);
 });
@@ -41,44 +17,11 @@ test('what costs nothing has no limit', () => {
   assert.equal(limits({ 'queries: /': 0, 'visit: writes': 2, 'visit: requests': 2, 'visit: kv writes': 0 })['visits a day before 1k KV writes'], Infinity);
 });
 
-test('a run whose only doubt is an inconclusive timing exits 3, to be rerun; a regression or floor exits 1', () => {
-  assert.equal(exitCode([{ verdict: 'same' }, { verdict: 'better' }, { verdict: 'new' }]), 0);
-  assert.equal(exitCode([{ verdict: 'same' }, { verdict: 'inconclusive' }]), 3);
-  assert.equal(exitCode([{ verdict: 'inconclusive' }, { verdict: 'worse' }]), 1);
-  assert.equal(exitCode([{ verdict: 'missing' }]), 1);
-  assert.equal(exitCode([{ verdict: 'floor' }]), 1);
-});
-
-test('a Bench-Accepted price is read whatever the arrow, commas or colons in the metric', () => {
-  const p = parseAccepted([
-    'Bench-Accepted: sheet queries: /; 0 -> 2; buys: goal 1; tried: hourly; owner: yes, 2026-10-28',
-    'dashboard brotli; 115,973 → 118,230; buys: goal 3',
-    'not a price',
-    '',
-  ].join('\n'));
-  assert.deepEqual(p.map(({ metric, before, after }) => [metric, before, after]), [['sheet queries: /', 0, 2], ['dashboard brotli', 115973, 118230]]);
-});
-
-test('since a baseline, growth no price covers is unpriced; savings and priced growth are not', () => {
-  const from = { bytes: { 'dashboard brotli': 100, 't.js gzip': 50 }, counts: { 'queries: /': 8, 'sheet queries: /': 0 } };
-  const to = { bytes: { 'dashboard brotli': 130, 't.js gzip': 48 }, counts: { 'queries: /': 8, 'sheet queries: /': 2 } };
-  const rows = since(from, to, parseAccepted('sheet queries: /; 0 -> 2\ndashboard brotli; 100 -> 110'));
-  assert.deepEqual(rows.map(r => [r.metric, r.unpriced, r.priced.length]), [
-    ['dashboard brotli', true, 1],
-    ['t.js gzip', false, 0],
-    ['sheet queries: /', false, 1],
-  ]);
-});
-
-test('a timing that only one side has is missing or new', () => {
-  const rows = compare({ base: side({ a: reps(1) }), run: side({ b: reps(1) }) });
-  assert.deepEqual(rows.filter(r => r.kind === 'ms').map(r => [r.metric, r.verdict]), [['a', 'missing'], ['b', 'new']]);
-});
-
 test('the noise threshold is twice what unchanged code swings, at least 5%', () => {
   const n = noiseFrom({ base: { times: { calm: reps(10), wild: reps(10) } }, run: { times: { calm: reps(10), wild: reps(10).map((x, i) => x * (i % 2 ? 1.2 : 0.85)) } } });
-  assert.equal(n.calm, 0.05);
-  assert.ok(n.wild > 0.2);
+  assert.equal(n.rel.calm, 0.05);
+  assert.ok(n.rel.wild > 0.2);
+  assert.equal(n.abs.wild, 0.05, 'a gap of 0.05 ms or less is too small to count');
 });
 
 test('headroom says how much a day fits in the free limits', () => {
@@ -142,4 +85,12 @@ test('the house run format names each number by kind, and floors and the Worker 
   assert.equal(h.limits['dashboard home loads a day before 10k queries'], 1000);
   assert.equal(h.limits['worker: summary'], 5);
   assert.equal(h.limits['browser: home drawn'], undefined);
+});
+
+test('house files sit beside the run, and the bench\'s judging flags default to the latest run and main', () => {
+  assert.deepEqual(houseFiles('bench/runs/latest.json'), { run: 'bench/runs/latest.house.json', base: 'bench/runs/latest.house-base.json' });
+  assert.equal(parseArgs(['--compare']).compare, 'bench/runs/latest.json');
+  assert.equal(parseArgs(['--since']).since, 'main');
+  assert.equal(parseArgs(['--since', 'next']).since, 'next');
+  assert.equal(parseArgs(['--noise']).noise, 'bench/runs/aa.json');
 });

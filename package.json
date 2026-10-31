@@ -9,8 +9,8 @@
     "tracker": "node scripts/tracker.mjs",
     "demo": "node scripts/build-demo.mjs",
     "bench": "node scripts/bench.mjs",
-    "bench:compare": "node scripts/compare.mjs",
-    "bench:since": "node scripts/compare.mjs --since"
+    "bench:compare": "node scripts/bench.mjs --compare",
+    "bench:since": "node scripts/bench.mjs --since"
   },
   "devDependencies": {
     "esbuild": "0.28.2",

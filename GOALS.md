@@ -59,7 +59,7 @@ price (see "When a change costs more").
 And we go the extra mile: the edge case handled, the sentence rewritten, the byte saved.
 
 ## Floors
-The floors are "Free to run" in numbers, as `node scripts/compare.mjs` prints them. No change
+The floors are "Free to run" in numbers, as `npm run bench:compare` prints them. No change
 goes below one, whoever accepts it.
 - Visits a day before the free 100,000 writes, and before the free 100,000 Worker requests:
   at least 50,000, the README's promise. A plain visit is at it today, so a visit can't cost
