@@ -408,7 +408,6 @@ test('the overview reads campaign tags and the readers’ OS, language, screen a
 test('the overview\'s minimap places a period and its comparison through setPeriod, and a drag fetches nothing until it ends', () => {
   const f = fn('drawPeriod');
   assert.match(html, /api\('series',\{days:45,back:0\}\)/);
-  assert.match(html, /<div class="marks"><\/div><div class="mm"><\/div>/);
   // One slider each for the period and the comparison, for the keyboard.
   assert.match(f, /role="slider" tabindex="0" data-k="p" aria-label="Period"/);
   assert.match(f, /role="slider" tabindex="0" data-k="b" aria-label="Compared with"/);
@@ -453,4 +452,26 @@ test('the strip: edges and resizes from the pure rules, focus kept only where it
   assert.match(f, /view\.onpointercancel=/);
   assert.match(f, /i0:at\(p\)\/cw/);
   assert.match(f, /t=setTimeout\(\(\)=>commit\(\),800\)/);
+});
+
+test('the period strip lives in the header beside 7 and 30 days, on every screen, and previews only a chart that shows the whole site', () => {
+  // One markup for the topbar and every layer's header: the presets, a Custom button and the panel with the strip.
+  assert.match(html, /const PERIOD='<div class="period" role="group" aria-label="Show the last">[^']*data-days="7"[^']*data-days="30"[^']*class="custom" aria-expanded="false"[^']*<section class="card period-panel" hidden><div class="mm"><\/div><\/section><\/div>';/);
+  assert.match(html, /<div class="period" role="group" aria-label="Show the last" id="period">[\s\S]*?class="custom" aria-expanded="false"[\s\S]*?<section class="card period-panel" hidden><div class="mm"><\/div><\/section>/);
+  // The overview no longer carries a strip of its own.
+  assert.doesNotMatch(fn('renderFilter'), /drawPeriod|class="mm"/);
+  // Only a chart of every visitor takes the live preview; filtered charts redraw once the window is let go.
+  assert.match(html, /<div class="chart"\$\{overview&&H\?' data-daily="scale"':''\}>/);
+  assert.match(fn('drawHome'), /dataset\.daily=''/);
+  const t = fn('togglePeriod');
+  assert.match(t, /api\('series',\{days:45,back:0\}\)/);
+  assert.match(t, /drawPeriod\(panel\.querySelector\('\.mm'\),strip,dailyChart,restoreDaily\)/);
+  assert.match(html, /const dailyChart=\(\)=>stack\[stack\.length-1\]\.el\.querySelector\('\[data-daily\]'\)/);
+  assert.match(fn('drawPeriod'), /const c=getChart\(\);if\(c\)dayBars\(c,/);
+  // The Custom button says the range once the period isn't 7 or 30 days ending today with the default comparison.
+  assert.match(fn('markPeriods') + html, /b\.textContent=preset\?'Custom':PER\(\)\.range/);
+  // Esc, a press elsewhere and opening another screen close it.
+  assert.match(html, /addEventListener\('keydown',e=>\{if\(e\.key==='Escape'\)closePeriod\(\)\}\)/);
+  assert.match(html, /addEventListener\('pointerdown',e=>\{if\(!e\.target\.closest\('\.period'\)\)closePeriod\(\)\}\)/);
+  assert.match(fn('zoom'), /closePeriod\(\)/);
 });
