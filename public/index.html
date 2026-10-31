@@ -221,7 +221,7 @@ button.tile-title:hover{color:var(--ink)}
 .marks{position:relative;height:28px;flex:none}
 /* under a chart with a scale, the markers leave out the scale's 40px column (dayBars' padR), so each sits under its bar */
 .chart+.marks{margin-right:40px}
-.mm{flex:none} .mmk{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap} .mmk span{font-size:var(--fs-xs);color:var(--muted);padding:3px 8px;border:1px solid var(--line);border-radius:6px;outline:0} .mmk span:focus-visible{outline:2px solid var(--focus);outline-offset:1px} .mmk .warn{color:var(--ink)} .moving .marks{visibility:hidden}
+.mm{flex:none} .mm{position:relative} .mmk{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)} .mmk span{outline:0} .moving .marks{visibility:hidden}
 .mark{all:unset;position:absolute;top:0;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;cursor:pointer;border-radius:4px;padding:0 4px}
 .mark .g{display:flex;gap:4px}
 .mark:hover .tag{color:var(--ink)}
@@ -592,7 +592,7 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, thenLine, usualDay, todayHint, Span, alignedGap, prevStart, nowOf, beforeOf, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  dayHint, thenLine, usualDay, todayHint, Span, alignedGap, prevStart, fitWindows, windowSteps, nowOf, beforeOf, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
   ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX, cutSeries } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -619,8 +619,11 @@ const home=()=>HOME&&!HOME.empty?HOME:null;
 const memo=new Map(),MEMO_MS=5*60e3;
 // Every unfiltered series is cut from the 45-day one, so any period and the overview's minimap share one answer.
 function api(route,params={},fresh=false){
-  if(route==='series'&&params.days==null&&params.path==null&&params.referrer==null&&params.channel==null)
+  if(route==='series'&&params.days==null&&params.path==null&&params.referrer==null&&params.channel==null){
+    // The 45 days know each day's top source; a period reaching further back asks for its own.
+    if(AGO+DAYS>45)return api(route,{...params,days:DAYS,back:AGO,gap:gapNow()},fresh);
     return api(route,{...params,days:45,back:0},fresh).then(s=>cutSeries(s,DAYS,AGO,gapNow()));
+  }
   const qs=new URLSearchParams({site:SITE,days:DAYS,tz:TZ,tzName:TZNAME});
   // A request that names its own days (the 45-day series, the 30 hours) isn't about the period and takes neither.
   if(params.days==null){if(AGO)qs.set('back',AGO);if(gapNow()!==DAYS)qs.set('gap',gapNow())}
@@ -2252,21 +2255,12 @@ function drawPeriod(el,ser,chart,restore){
   const all=[...ser.prev.visitors,...ser.cur.visitors],N=all.length,s0=ser.start-ser.days*86400,date=i=>dayDate(s0,i),day=i=>fmtDay(date(i));
   const counted=all.findIndex(v=>v>0);
   if(counted<0)return;
-  const MIN=7,MAX=45,TOP=18,BAR=20,BASE=TOP+BAR,HIT=12;
+  const TOP=18,BAR=20,BASE=TOP+BAR,HIT=12;
   let ae=N-1-AGO,L=DAYS,off=gapNow(),manual=GAP!=null,alt=false,busy=false,drag=null,chip=null,t;
   const as=()=>ae-L+1,endsToday=()=>ae===N-1;
-  // Where the comparison can rest: just before the period, or whole weeks earlier, wherever it fits in the 90 days.
-  const steps=()=>{const c=[L];for(let k=7*Math.ceil((L+1)/7);k<=N;k+=7)c.push(k);return c.filter(o=>as()-o>=0)};
-  const nearest=o=>{const c=steps();return c.length?c.reduce((x,y)=>Math.abs(y-o)<Math.abs(x-o)?y:x):L};
-  const place=o=>alt?Math.max(L,Math.min(as(),o)):nearest(o);
-  // Keeps the windows inside the days there are: the period within the last 45 and the comparison after the first.
-  // Moving the period leaves the comparison's last day (pin) where it was, and pushes it ahead only when they would collide.
-  const fit=pin=>{
-    L=Math.max(MIN,Math.min(MAX,L));
-    ae=Math.max(N-45+L-1,Math.min(N-1,ae));
-    off=pin!=null?Math.max(L,ae-pin):manual?place(Math.max(L,off)):alignedGap(L,N-1-ae);
-    if(as()-off<0){L=Math.max(MIN,ae+1-off);if(as()-off<0)off=Math.max(L,as())}
-  };
+  // Keeps the windows inside the days there are (see fitWindows); pin leaves the comparison where it was.
+  const fit=pin=>{({L,ae,off}=fitWindows({L,ae,off,pin,manual,alt},N))};
+  const steps=()=>windowSteps(L,ae,N);
   el.innerHTML='<div class="mmv"></div><div class="mmk"><span role="slider" tabindex="0" data-k="p" aria-label="Period"></span><span role="slider" tabindex="0" data-k="b" aria-label="Compared with"></span></div>';
   const view=el.firstChild,chips=[...el.lastChild.children];
   observe(view,()=>{
@@ -2281,8 +2275,8 @@ function drawPeriod(el,ser,chart,restore){
         svg+=`<rect x="${x(i).toFixed(1)}" y="${BASE-h}" width="${Math.max(1,cw-1).toFixed(1)}" height="${h}" fill="${inB?'url(#mmh)':'var(--time)'}" opacity="${inA||inB?1:.2}"/>`}
       svg+=`<line class="grid-l" x1="${x(first)}" x2="${W}" y1="${BASE+.5}" y2="${BASE+.5}"/>`;
       for(let i=first;i<N;i++)if(date(i).getDay()===1)svg+=`<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${BASE+1}" y2="${BASE+4}" stroke="var(--muted)" opacity=".5"/>`;
-      svg+=`<rect x="${x(b)}" y="${TOP-4}" width="${n*cw}" height="${BAR+8}" rx="2" fill="none" stroke="var(--time)" stroke-width="1.5" stroke-dasharray="4 3"/>`
-        +`<rect x="${x(a)}" y="${TOP-4}" width="${n*cw}" height="${BAR+8}" rx="2" fill="var(--time)" fill-opacity=".08" stroke="var(--time)" stroke-width="2"/>`
+      svg+=`<rect x="${x(b)}" y="${TOP-4}" width="${n*cw}" height="${BAR+8}" rx="2" fill="none" stroke="var(--time)" stroke-width="${document.activeElement===chips[1]?3:1.5}" stroke-dasharray="4 3"/>`
+        +`<rect x="${x(a)}" y="${TOP-4}" width="${n*cw}" height="${BAR+8}" rx="2" fill="var(--time)" fill-opacity=".08" stroke="var(--time)" stroke-width="${document.activeElement===chips[0]?3.5:2}"/>`
         +knob(x(a))+knob(x(ae+1))+knob(x(b))+knob(x(be+1));
       const al=`${day(a)} to ${endsToday()?'today':day(ae)}`;
       svg+=lab(Math.min(Math.max(x(a),0),W-al.length*6.5),60,al,'start',1)+lab(Math.max(x(b),0),12,`${day(b)} to ${day(be)}`,'start');
@@ -2293,8 +2287,6 @@ function drawPeriod(el,ser,chart,restore){
       chips[1].textContent=`Compared with ${off%7===0?k:off===L?`${n} days just before`:`${off} days earlier`}`;
       chips[0].setAttribute('aria-valuetext',`${n} days, ${al}`);
       chips[1].setAttribute('aria-valuetext',`${day(b)} to ${day(be)}, ${word}`);
-      chips[1].title=word;
-      chips[1].classList.toggle('warn',off%7!==0);
     };
     const show=()=>{
       busy=true;draw();el.parentNode.classList.add('moving');
@@ -2341,11 +2333,12 @@ function drawPeriod(el,ser,chart,restore){
       }else{
         const c=steps(),i=c.indexOf(off),to={ArrowLeft:1,ArrowDown:1,PageDown:1,ArrowRight:-1,ArrowUp:-1,PageUp:-1}[k.key];
         if(to==null)return;
-        off=c[Math.max(0,Math.min(c.length-1,(i<0?c.indexOf(nearest(off)):i)+to))];manual=true;
+        const at=i<0?c.reduce((x,y,j)=>Math.abs(y-off)<Math.abs(c[x]-off)?j:x,0):i;
+        off=c[Math.max(0,Math.min(c.length-1,at+to))];manual=true;
       }
       k.preventDefault();fit();show();clearTimeout(t);t=setTimeout(end,800);
     };
-    chips.forEach(c=>{c.onkeydown=keys;c.onblur=end;c.onfocus=()=>{chip=c.dataset.k}});
+    chips.forEach(c=>{c.onkeydown=keys;c.onblur=()=>{end();draw()};c.onfocus=()=>{chip=c.dataset.k;draw()}});
     draw();
   });
 }

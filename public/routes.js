@@ -46,9 +46,9 @@ export function urlToView(pathname, search) {
   // Sites are saved in ASCII (xn--…); the address shows them as typed, so it's turned back here.
   // A period is 7 to 45 days: fewer is too few to find a big or quiet day, and the API's longest is 45.
   const d = +q.get('days'), days = Number.isInteger(d) && d >= 7 && d <= 45 && d !== 30 ? d : null, site = asciiHost(q.get('site'));
-  // The period lies within the 45 days that know each day's top source; its comparison within the 90 kept, never
-  // overlapping it. A gap that is the default one is no choice at all.
-  const n = days || 30, b = +q.get('back'), back = Number.isInteger(b) && b > 0 && b + n <= 45 ? b : 0;
+  // The period and its comparison lie within the 90 days kept, the comparison clear of it. A gap that is the default
+  // one is no choice at all.
+  const n = days || 30, b = +q.get('back'), back = Number.isInteger(b) && b > 0 && b + 2 * n <= 90 ? b : 0;
   const g = +q.get('gap'), gap = q.has('gap') && Number.isInteger(g) && g >= n && back + g + n <= 90 && g !== alignedGap(n, back) ? g : null;
   const parts = pathname.split('/');
   let view = null;

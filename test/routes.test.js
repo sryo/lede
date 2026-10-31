@@ -60,10 +60,11 @@ test('a period that ended earlier, and a comparison the owner placed, are in the
   assert.equal(viewToUrl({ v: 'overview' }, { days: 14, back: 3, gap: 28 }), '/overview?days=14&back=3&gap=28');
   assert.equal(viewToUrl(null, { days: 30, back: 0, gap: null }), '/', 'the defaults leave the address short');
   assert.deepEqual(round({ v: 'overview' }, { days: 14, back: 3, gap: 28 }), { view: { v: 'overview' }, days: 14, back: 3, gap: 28, site: null });
-  // The period lies in the last 45 days, the comparison in the 90 kept and clear of it; a gap that is the default is none.
-  assert.equal(urlToView('/', '?back=20').back, 0, '30 days back 20 reaches past the 45 days that know each day\'s source');
-  assert.equal(urlToView('/', '?days=14&back=31').back, 31);
-  assert.equal(urlToView('/', '?days=14&back=32').back, 0);
+  // The period and its comparison both lie within the 90 days kept, the comparison clear of it; a gap that is the default is none.
+  assert.equal(urlToView('/', '?back=30').back, 30, 'two periods of 30 days end 30 days ago');
+  assert.equal(urlToView('/', '?back=31').back, 0);
+  assert.equal(urlToView('/', '?days=14&back=62').back, 62);
+  assert.equal(urlToView('/', '?days=14&back=63').back, 0);
   assert.equal(urlToView('/', '?back=x').back, 0);
   assert.equal(urlToView('/', '?days=14&gap=13').gap, null, 'a comparison can\'t overlap the period');
   assert.equal(urlToView('/', '?days=14&gap=14').gap, null, 'the weeks that clear 14 days are 14: nothing to say');

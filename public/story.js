@@ -42,6 +42,27 @@ export const dayHint = (day, n, before, was) => `${day}: ${visitors(n)}${before 
 // Where the comparison's first day is: gap days before the period's.
 export const prevStart = ser => ser.start - (ser.gap ?? ser.days) * 86400;
 export const alignedGap = (n, back = 0) => { const g = 7 * Math.ceil(n / 7); return back + g + n <= 90 ? g : n; };
+// The strip's two windows on the 90 days kept (index 89 is today): the period is L days ending at ae, and the comparison is
+// as long and ended off days before ae. fitWindows keeps them inside the days there are, the comparison clear of the period
+// and of the first day, so the period reaches back as far as both fit: L is 7 to 45, and ae is at least 2L - 1.
+// pin: the comparison's last day, left where it was when the period moves, so it only gives way when they would collide.
+// manual: the owner placed the comparison, which then rests on a step (windowSteps) unless alt; else it is the whole weeks
+// that clear the period (alignedGap).
+export const windowSteps = (L, ae, N = 90) => {
+  const c = [L];
+  for (let k = 7 * Math.ceil((L + 1) / 7); k <= N; k += 7) c.push(k);
+  return c.filter(o => ae - L + 1 - o >= 0);
+};
+export function fitWindows({ L, ae, off, pin = null, manual = false, alt = false }, N = 90) {
+  L = Math.max(7, Math.min(45, L));
+  ae = Math.max(2 * L - 1, Math.min(N - 1, ae));
+  if (pin != null) off = Math.max(L, ae - pin);
+  else if (manual) {
+    const o = Math.max(L, off), c = windowSteps(L, ae, N);
+    off = alt || !c.length ? o : c.reduce((x, y) => Math.abs(y - o) < Math.abs(x - o) ? y : x);
+  } else off = alignedGap(L, N - 1 - ae);
+  return { L, ae, off: Math.max(L, Math.min(ae - L + 1, off)) };
+}
 // The last n days of a series and the n before them, cut from a longer one: every unfiltered series is cut from the
 // 45-day answer, whose two periods are the 90 days Lede keeps, so every period, the dashboard's minimap and the
 // second line's sheet share one answer. The period ended back days ago (within the 45 days that know each day's top

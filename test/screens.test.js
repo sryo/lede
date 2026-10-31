@@ -412,12 +412,12 @@ test('the overview\'s minimap places a period and its comparison through setPeri
   // One slider each for the period and the comparison, for the keyboard.
   assert.match(f, /role="slider" tabindex="0" data-k="p" aria-label="Period"/);
   assert.match(f, /role="slider" tabindex="0" data-k="b" aria-label="Compared with"/);
-  // The period stays within the last 45 days, which know each day's top source; the comparison clears it and the first day.
-  assert.match(f, /ae=Math\.max\(N-45\+L-1,Math\.min\(N-1,ae\)\)/);
-  assert.match(f, /if\(as\(\)-off<0\)/);
-  // The comparison steps by whole weeks, or sits just before the period; Alt places it anywhere.
-  assert.match(f, /const c=\[L\];for\(let k=7\*Math\.ceil\(\(L\+1\)\/7\);k<=N;k\+=7\)c\.push\(k\)/);
-  assert.match(f, /alt\?Math\.max\(L,Math\.min\(as\(\),o\)\):nearest\(o\)/);
+  // Both windows are kept inside the 90 days by fitWindows (tested in windows.test.js); moving the period pins the comparison.
+  assert.match(f, /fitWindows\(\{L,ae,off,pin,manual,alt\},N\)/);
+  assert.match(f, /fit\(pin\)/);
+  assert.match(f, /steps=\(\)=>windowSteps\(L,ae,N\)/);
+  // A period reaching past the 45 days that know each day's top source asks for its own series.
+  assert.match(html, /if\(AGO\+DAYS>45\)return api\(route,\{\.\.\.params,days:DAYS,back:AGO,gap:gapNow\(\)\},fresh\)/);
   assert.match(f, /r=setPeriod\(L,N-1-ae,manual&&off!==alignedGap\(L,N-1-ae\)\?off:null\)/);
   assert.doesNotMatch(f, /api\(/);
   assert.match(fn('bindPeriod'), /setDays\(/);
