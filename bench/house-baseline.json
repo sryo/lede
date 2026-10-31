@@ -1,0 +1,1162 @@
+{
+  "metrics": {
+    "t.js bytes": {
+      "dir": "lower",
+      "kind": "bytes",
+      "samples": [
+        5315
+      ]
+    },
+    "t.js gzip": {
+      "dir": "lower",
+      "kind": "bytes",
+      "samples": [
+        2457
+      ]
+    },
+    "t.js brotli": {
+      "dir": "lower",
+      "kind": "bytes",
+      "samples": [
+        2208
+      ]
+    },
+    "dashboard bytes": {
+      "dir": "lower",
+      "kind": "bytes",
+      "samples": [
+        375791
+      ]
+    },
+    "dashboard gzip": {
+      "dir": "lower",
+      "kind": "bytes",
+      "samples": [
+        138020
+      ]
+    },
+    "dashboard brotli": {
+      "dir": "lower",
+      "kind": "bytes",
+      "samples": [
+        123035
+      ]
+    },
+    "queries: /": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        8
+      ]
+    },
+    "sheet queries: /": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "api calls: /": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        10
+      ]
+    },
+    "screenshots: /": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "browser ms: /": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "kv reads: /": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        11
+      ]
+    },
+    "kv writes: /": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "kv lists: /": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "ai calls: /": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "ai tokens: /": {
+      "dir": "lower",
+      "kind": "tokens",
+      "samples": [
+        550
+      ]
+    },
+    "queries: / reloaded": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "queries: /overview": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        13
+      ]
+    },
+    "sheet queries: /overview": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "api calls: /overview": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        16
+      ]
+    },
+    "screenshots: /overview": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "browser ms: /overview": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "kv reads: /overview": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        11
+      ]
+    },
+    "kv writes: /overview": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "kv lists: /overview": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "ai calls: /overview": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "ai tokens: /overview": {
+      "dir": "lower",
+      "kind": "tokens",
+      "samples": [
+        550
+      ]
+    },
+    "queries: /sources": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        8
+      ]
+    },
+    "sheet queries: /sources": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "api calls: /sources": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        10
+      ]
+    },
+    "screenshots: /sources": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "browser ms: /sources": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "kv reads: /sources": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        11
+      ]
+    },
+    "kv writes: /sources": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "kv lists: /sources": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "ai calls: /sources": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "ai tokens: /sources": {
+      "dir": "lower",
+      "kind": "tokens",
+      "samples": [
+        550
+      ]
+    },
+    "queries: /pages": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        9
+      ]
+    },
+    "sheet queries: /pages": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "api calls: /pages": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        11
+      ]
+    },
+    "screenshots: /pages": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "browser ms: /pages": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "kv reads: /pages": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        11
+      ]
+    },
+    "kv writes: /pages": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "kv lists: /pages": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "ai calls: /pages": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "ai tokens: /pages": {
+      "dir": "lower",
+      "kind": "tokens",
+      "samples": [
+        550
+      ]
+    },
+    "queries: /bounce": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        9
+      ]
+    },
+    "sheet queries: /bounce": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "api calls: /bounce": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        11
+      ]
+    },
+    "screenshots: /bounce": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "browser ms: /bounce": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "kv reads: /bounce": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        11
+      ]
+    },
+    "kv writes: /bounce": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "kv lists: /bounce": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "ai calls: /bounce": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "ai tokens: /bounce": {
+      "dir": "lower",
+      "kind": "tokens",
+      "samples": [
+        550
+      ]
+    },
+    "queries: /sources/google.com": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        14
+      ]
+    },
+    "sheet queries: /sources/google.com": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "api calls: /sources/google.com": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        15
+      ]
+    },
+    "screenshots: /sources/google.com": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "browser ms: /sources/google.com": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "kv reads: /sources/google.com": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        11
+      ]
+    },
+    "kv writes: /sources/google.com": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "kv lists: /sources/google.com": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "ai calls: /sources/google.com": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "ai tokens: /sources/google.com": {
+      "dir": "lower",
+      "kind": "tokens",
+      "samples": [
+        550
+      ]
+    },
+    "queries: /page/blog": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        15
+      ]
+    },
+    "sheet queries: /page/blog": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "api calls: /page/blog": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        17
+      ]
+    },
+    "screenshots: /page/blog": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "browser ms: /page/blog": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        3000
+      ]
+    },
+    "kv reads: /page/blog": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        12
+      ]
+    },
+    "kv writes: /page/blog": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        3
+      ]
+    },
+    "kv lists: /page/blog": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "ai calls: /page/blog": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "ai tokens: /page/blog": {
+      "dir": "lower",
+      "kind": "tokens",
+      "samples": [
+        550
+      ]
+    },
+    "visit: requests": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "visit: writes": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "visit: kv reads": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "visit: kv writes": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "visit: live requests": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "visit, tab switch: requests": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        4
+      ]
+    },
+    "visit, tab switch: writes": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        4
+      ]
+    },
+    "visit, app: requests": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        4
+      ]
+    },
+    "visit, app: writes": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        6
+      ]
+    },
+    "cron: spikes queries": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "cron: spikes kv reads": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "cron: spikes kv writes": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "cron: spikes kv lists": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "cron: spikes ai calls": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "cron: spikes ai tokens": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "cron: spikes webhooks": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "cron: weekly queries": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        12
+      ]
+    },
+    "cron: weekly kv reads": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        3
+      ]
+    },
+    "cron: weekly kv writes": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "cron: weekly kv lists": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        0
+      ]
+    },
+    "cron: weekly ai calls": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        2
+      ]
+    },
+    "cron: weekly ai tokens": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1080
+      ]
+    },
+    "cron: weekly webhooks": {
+      "dir": "lower",
+      "kind": "count",
+      "samples": [
+        1
+      ]
+    },
+    "worker: visit": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.062,
+        0.058,
+        0.063,
+        0.063,
+        0.06,
+        0.064,
+        0.063,
+        0.064,
+        0.064,
+        0.055,
+        0.063,
+        0.064,
+        0.061,
+        0.056,
+        0.063
+      ]
+    },
+    "worker: summary": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.027,
+        0.027,
+        0.027,
+        0.026,
+        0.027,
+        0.028,
+        0.027,
+        0.028,
+        0.028,
+        0.026,
+        0.028,
+        0.027,
+        0.027,
+        0.026,
+        0.027
+      ]
+    },
+    "worker: series": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.074,
+        0.072,
+        0.075,
+        0.073,
+        0.074,
+        0.078,
+        0.075,
+        0.073,
+        0.074,
+        0.075,
+        0.073,
+        0.076,
+        0.074,
+        0.073,
+        0.073
+      ]
+    },
+    "worker: flows": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.031,
+        0.03,
+        0.031,
+        0.031,
+        0.031,
+        0.031,
+        0.03,
+        0.031,
+        0.031,
+        0.031,
+        0.03,
+        0.032,
+        0.031,
+        0.03,
+        0.031
+      ]
+    },
+    "worker: hourly": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.093,
+        0.094,
+        0.101,
+        0.091,
+        0.094,
+        0.095,
+        0.093,
+        0.091,
+        0.09,
+        0.094,
+        0.094,
+        0.094,
+        0.094,
+        0.09,
+        0.095
+      ]
+    },
+    "worker: firsts": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.055,
+        0.053,
+        0.055,
+        0.056,
+        0.056,
+        0.055,
+        0.056,
+        0.054,
+        0.057,
+        0.053,
+        0.054,
+        0.056,
+        0.055,
+        0.053,
+        0.054
+      ]
+    },
+    "worker: live": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.019,
+        0.02,
+        0.019,
+        0.02,
+        0.019,
+        0.019,
+        0.019,
+        0.019,
+        0.019,
+        0.02,
+        0.019,
+        0.019,
+        0.019,
+        0.019,
+        0.019
+      ]
+    },
+    "worker: engagement": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.031,
+        0.031,
+        0.032,
+        0.033,
+        0.031,
+        0.032,
+        0.031,
+        0.031,
+        0.032,
+        0.032,
+        0.033,
+        0.031,
+        0.032,
+        0.032,
+        0.031
+      ]
+    },
+    "worker: links": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.015,
+        0.015,
+        0.016,
+        0.015,
+        0.016,
+        0.015,
+        0.015,
+        0.015,
+        0.016,
+        0.015,
+        0.015,
+        0.016,
+        0.016,
+        0.015,
+        0.015
+      ]
+    },
+    "worker: breakdown path": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.023,
+        0.022,
+        0.022,
+        0.023,
+        0.022,
+        0.022,
+        0.023,
+        0.023,
+        0.023,
+        0.022,
+        0.022,
+        0.023,
+        0.023,
+        0.022,
+        0.023
+      ]
+    },
+    "worker: breakdown referrer": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.027,
+        0.027,
+        0.026,
+        0.027,
+        0.027,
+        0.027,
+        0.027,
+        0.027,
+        0.026,
+        0.027,
+        0.027,
+        0.027,
+        0.028,
+        0.026,
+        0.027
+      ]
+    },
+    "worker: conversions /pricing": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.018,
+        0.018,
+        0.019,
+        0.018,
+        0.018,
+        0.018,
+        0.018,
+        0.018,
+        0.018,
+        0.018,
+        0.018,
+        0.018,
+        0.018,
+        0.018,
+        0.018
+      ]
+    },
+    "big site: flows": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        5.681,
+        5.726,
+        5.654,
+        5.637,
+        5.817,
+        5.926,
+        5.7,
+        5.64,
+        5.624,
+        5.713,
+        5.634,
+        5.68,
+        6.165,
+        5.667,
+        5.674
+      ]
+    },
+    "big site: engagement": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.94,
+        0.885,
+        0.897,
+        0.886,
+        0.911,
+        0.884,
+        0.887,
+        0.886,
+        0.916,
+        0.896,
+        0.892,
+        0.923,
+        0.86,
+        0.912,
+        0.909
+      ]
+    },
+    "big site: links": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.415,
+        0.354,
+        0.37,
+        0.366,
+        0.379,
+        0.357,
+        0.366,
+        0.359,
+        0.366,
+        0.364,
+        0.361,
+        0.367,
+        0.365,
+        0.368,
+        0.362
+      ]
+    },
+    "big site: breakdown path": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.334,
+        0.329,
+        0.328,
+        0.329,
+        0.327,
+        0.326,
+        0.337,
+        0.331,
+        0.336,
+        0.327,
+        0.338,
+        0.355,
+        0.322,
+        0.326,
+        0.333
+      ]
+    },
+    "big site: breakdown referrer": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        0.396,
+        0.393,
+        0.397,
+        0.395,
+        0.399,
+        0.396,
+        0.401,
+        0.402,
+        0.402,
+        0.387,
+        0.391,
+        0.42,
+        0.385,
+        0.394,
+        0.4
+      ]
+    },
+    "browser: t.js run": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        1.6,
+        2.1,
+        2,
+        2,
+        2.5,
+        2.3,
+        2.3,
+        1.8,
+        1.7,
+        1.9,
+        2.3,
+        2.2,
+        2.3,
+        1.9,
+        1.9
+      ]
+    },
+    "browser: home drawn": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        182.4,
+        183.4,
+        180.5,
+        181.6,
+        204.8,
+        177,
+        181.1,
+        183.8,
+        186.8,
+        178.5,
+        184.2,
+        175.3,
+        176.1,
+        179.5,
+        178
+      ]
+    },
+    "browser: home blocking": {
+      "dir": "lower",
+      "kind": "time",
+      "samples": [
+        20,
+        13,
+        20,
+        21,
+        29,
+        18,
+        19,
+        15,
+        16,
+        20,
+        16,
+        17,
+        15,
+        11,
+        19
+      ]
+    },
+    "visits a day before 100k writes": {
+      "dir": "higher",
+      "kind": "limit",
+      "samples": [
+        50000
+      ]
+    },
+    "visits a day before 100k Worker requests": {
+      "dir": "higher",
+      "kind": "limit",
+      "samples": [
+        50000
+      ]
+    },
+    "dashboard home loads a day before 10k queries": {
+      "dir": "higher",
+      "kind": "limit",
+      "samples": [
+        1213
+      ]
+    }
+  },
+  "limits": {
+    "worker: visit": 5,
+    "worker: summary": 5,
+    "worker: series": 5,
+    "worker: flows": 5,
+    "worker: hourly": 5,
+    "worker: firsts": 5,
+    "worker: live": 5,
+    "worker: engagement": 5,
+    "worker: links": 5,
+    "worker: breakdown path": 5,
+    "worker: breakdown referrer": 5,
+    "worker: conversions /pricing": 5,
+    "visits a day before 100k writes": 50000,
+    "visits a day before 100k Worker requests": 50000,
+    "dashboard home loads a day before 10k queries": 1000
+  }
+}

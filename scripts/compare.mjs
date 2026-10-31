@@ -5,7 +5,7 @@
 //                   median decides: worse when the whole range is above 1 + REL and the medians differ
 //                   by more than ABS ms, better when the whole range is below 1 - REL, inconclusive when
 //                   the range crosses a threshold (rerun before believing it), same otherwise.
-//                   REL per metric comes from bench/noise.json (an A/A run, see --noise), default 10%.
+//                   REL per metric comes from bench/noise.json's rel (an A/A run, see --noise), default 10%.
 //   floors          GOALS.md's floors, "Free to run" in numbers: a run below one fails whatever the base
 //                   did, and no Bench-Accepted price lets it through. A small site's Worker answer over
 //                   CEILING_MS is one: free Workers stop at 10 ms of CPU.
@@ -165,7 +165,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (args[0] === '--noise') {
     const aa = JSON.parse(readFileSync(resolve(ROOT, args[1] || 'bench/runs/aa.json'), 'utf8'));
     const noise = noiseFrom(aa);
-    writeFileSync(resolve(ROOT, 'bench/noise.json'), JSON.stringify(noise, null, 2) + '\n');
+    writeFileSync(resolve(ROOT, 'bench/noise.json'), JSON.stringify({ rel: noise, abs: Object.fromEntries(Object.keys(noise).map(k => [k, ABS_MS])) }, null, 2) + '\n');
     for (const [k, v] of Object.entries(noise)) console.log(`${k.padEnd(34)} ±${(v * 100).toFixed(1)}%`);
     process.exit(0);
   }
@@ -191,7 +191,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const ab = JSON.parse(readFileSync(resolve(ROOT, args[0] || 'bench/runs/latest.json'), 'utf8'));
   if (!ab.base) { console.error('not an A/B run; rerun scripts/bench.mjs without --save-baseline'); process.exit(2); }
   let noise = {};
-  try { noise = JSON.parse(readFileSync(resolve(ROOT, 'bench/noise.json'), 'utf8')); } catch {}
+  try { noise = JSON.parse(readFileSync(resolve(ROOT, 'bench/noise.json'), 'utf8')).rel; } catch {}
   const rows = compare(ab, noise);
   const fmt = (v, kind) => v == null ? '-' : kind === 'ms' ? v.toFixed(3) : String(v);
   console.log(`base ${ab.base.rev} vs run ${ab.run.rev} (${ab.browser}, ${ab.reps} reps)`);

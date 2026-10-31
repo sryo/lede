@@ -13,6 +13,9 @@
 //   node scripts/bench.mjs --run <ref>  another ref instead of the working tree, e.g. a branch to merge
 //   node scripts/bench.mjs --aa        the working tree against itself, to measure noise
 //   node scripts/bench.mjs --save-baseline     records the working tree in bench/baseline.json
+//   node scripts/bench.mjs --house <out.json>   also writes the run side in house's format, and an A/B run's
+//                                              base side to <out>.base.json, for `house price compare`
+//   node scripts/bench.mjs --from <run.json> --house <out.json>   converts a run already made, measuring nothing
 
 import { spawn, execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync, existsSync, readdirSync } from 'node:fs';
@@ -20,6 +23,7 @@ import { gzipSync, brotliCompressSync, constants as Z } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { FLOORS, CEILING_MS, limits as headroomLimits } from './compare.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const git = (...a) => execFileSync('git', ['-C', ROOT, ...a]).toString();
@@ -27,7 +31,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 const r3 = x => Math.round(x * 1000) / 1000;
 
 export function parseArgs(argv) {
-  const a = { reps: 15, base: undefined, run: null, out: null, chrome: null, aa: false, saveBaseline: false };
+  const a = { reps: 15, base: undefined, run: null, out: null, chrome: null, aa: false, saveBaseline: false, house: null, from: null };
   for (let i = 0; i < argv.length; i++) {
     const k = argv[i];
     if (k === '--reps') a.reps = +argv[++i];
@@ -37,6 +41,8 @@ export function parseArgs(argv) {
     else if (k === '--chrome') a.chrome = argv[++i];
     else if (k === '--aa') a.aa = true;
     else if (k === '--save-baseline') a.saveBaseline = true;
+    else if (k === '--house') a.house = argv[++i];
+    else if (k === '--from') a.from = argv[++i];
     else throw new Error('unknown arg ' + k);
   }
   if (!Number.isInteger(a.reps) || a.reps < 3) throw new Error('--reps must be an integer of at least 3');
@@ -283,6 +289,22 @@ export function baselineRef(baseline, recordedIn) {
   return ref;
 }
 
+// One side of a run in house's format (~/Documents/house, RULES.md K2), for `house price compare`.
+// The floored headroom is a metric of its own, higher is better, judged only against its floor.
+export function houseOf(side) {
+  const metrics = {}, limits = {};
+  const put = (name, kind, samples, dir = 'lower') => { metrics[name] = { dir, kind, samples }; };
+  for (const [k, v] of Object.entries(side.bytes)) put(k, 'bytes', [v]);
+  for (const [k, v] of Object.entries(side.counts)) put(k, k.startsWith('ai tokens') ? 'tokens' : 'count', [v]);
+  for (const [k, v] of Object.entries(side.times)) {
+    put(k, 'time', v);
+    if (k.startsWith('worker:')) limits[k] = CEILING_MS;
+  }
+  const have = headroomLimits(side.counts);
+  for (const [k, min] of Object.entries(FLOORS)) { put(k, 'limit', [have[k]], 'higher'); limits[k] = min; }
+  return { metrics, limits };
+}
+
 export async function run(opts) {
   const chromePath = opts.chrome || CHROMES.find(p => existsSync(p));
   if (!chromePath) throw new Error('no Chrome found; pass --chrome or set CHROME');
@@ -330,10 +352,23 @@ export async function run(opts) {
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const opts = parseArgs(process.argv.slice(2));
+  const writeHouse = out => {
+    const file = resolve(ROOT, opts.house);
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(file, JSON.stringify(houseOf(out.run), null, 2) + '\n');
+    if (out.base) writeFileSync(file.replace(/\.json$/, '') + '.base.json', JSON.stringify(houseOf(out.base), null, 2) + '\n');
+    console.log(`house format → ${file}`);
+  };
+  if (opts.from) {
+    if (!opts.house) throw new Error('--from needs --house <out.json>');
+    writeHouse(JSON.parse(readFileSync(resolve(ROOT, opts.from), 'utf8')));
+    process.exit(0);
+  }
   const out = await run(opts);
   const file = opts.saveBaseline ? join(ROOT, 'bench/baseline.json') : resolve(ROOT, opts.out || (opts.aa ? 'bench/runs/aa.json' : 'bench/runs/latest.json'));
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify(out, null, 2) + '\n');
   console.log(`${out.browser}, ${out.reps} reps → ${file}`);
   if (out.base) console.log(`judge with: node scripts/compare.mjs ${file}`);
+  if (opts.house) writeHouse(out);
 }
