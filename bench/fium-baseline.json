@@ -110,7 +110,8 @@
       "kind": "tokens",
       "samples": [
         550
-      ]
+      ],
+      "noisy": false
     },
     "queries: / reloaded": {
       "dir": "lower",
@@ -187,7 +188,8 @@
       "kind": "tokens",
       "samples": [
         550
-      ]
+      ],
+      "noisy": false
     },
     "queries: /sources": {
       "dir": "lower",
@@ -257,7 +259,8 @@
       "kind": "tokens",
       "samples": [
         550
-      ]
+      ],
+      "noisy": false
     },
     "queries: /pages": {
       "dir": "lower",
@@ -327,7 +330,8 @@
       "kind": "tokens",
       "samples": [
         550
-      ]
+      ],
+      "noisy": false
     },
     "queries: /bounce": {
       "dir": "lower",
@@ -397,7 +401,8 @@
       "kind": "tokens",
       "samples": [
         550
-      ]
+      ],
+      "noisy": false
     },
     "queries: /sources/google.com": {
       "dir": "lower",
@@ -467,7 +472,8 @@
       "kind": "tokens",
       "samples": [
         550
-      ]
+      ],
+      "noisy": false
     },
     "queries: /page/blog": {
       "dir": "lower",
@@ -537,7 +543,8 @@
       "kind": "tokens",
       "samples": [
         550
-      ]
+      ],
+      "noisy": false
     },
     "visit: requests": {
       "dir": "lower",
@@ -639,10 +646,11 @@
     },
     "cron: spikes ai tokens": {
       "dir": "lower",
-      "kind": "count",
+      "kind": "tokens",
       "samples": [
         0
-      ]
+      ],
+      "noisy": false
     },
     "cron: spikes webhooks": {
       "dir": "lower",
@@ -688,10 +696,11 @@
     },
     "cron: weekly ai tokens": {
       "dir": "lower",
-      "kind": "count",
+      "kind": "tokens",
       "samples": [
         1080
-      ]
+      ],
+      "noisy": false
     },
     "cron: weekly webhooks": {
       "dir": "lower",

@@ -78,7 +78,7 @@ test('the fium run format names each number by kind, and floors and the Worker c
   const h = fiumOf({ rev: 'x', bytes: { 't.js gzip': 100 }, counts, times: { 'worker: summary': [1, 2], 'browser: home drawn': [90] } });
   assert.deepEqual(h.metrics['t.js gzip'], { dir: 'lower', kind: 'bytes', samples: [100] });
   assert.deepEqual(h.metrics['queries: /'], { dir: 'lower', kind: 'count', samples: [8] });
-  assert.equal(h.metrics['ai tokens: /'].kind, 'tokens');
+  assert.deepEqual(h.metrics['ai tokens: /'], { dir: 'lower', kind: 'tokens', samples: [550], noisy: false }, 'counted exactly, one pass a run');
   assert.deepEqual(h.metrics['worker: summary'], { dir: 'lower', kind: 'time', samples: [1, 2] });
   assert.deepEqual(h.metrics['visits a day before 100k writes'], { dir: 'higher', kind: 'limit', samples: [50000] });
   assert.equal(h.limits['visits a day before 100k writes'], 50000);

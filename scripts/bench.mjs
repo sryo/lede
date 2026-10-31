@@ -304,7 +304,10 @@ export function fiumOf(side) {
   const metrics = {}, limits = {};
   const put = (name, kind, samples, dir = 'lower') => { metrics[name] = { dir, kind, samples }; };
   for (const [k, v] of Object.entries(side.bytes)) put(k, 'bytes', [v]);
-  for (const [k, v] of Object.entries(side.counts)) put(k, k.startsWith('ai tokens') ? 'tokens' : 'count', [v]);
+  // Tokens here are counted exactly, once a run, not sampled, so fium judges them on any move.
+  for (const [k, v] of Object.entries(side.counts)) {
+    if (k.includes('ai tokens')) { put(k, 'tokens', [v]); metrics[k].noisy = false; } else put(k, 'count', [v]);
+  }
   for (const [k, v] of Object.entries(side.times)) {
     put(k, 'time', v);
     if (k.startsWith('worker:')) limits[k] = CEILING_MS;
