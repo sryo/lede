@@ -8,7 +8,7 @@
 //   timings  the Worker per visit and per stats answer (Node), and in headless Chrome Canary with the
 //            CPU slowed 4x: what t.js adds to a page load, and how long the dashboard home takes to draw
 // Timings run base and working tree in turn, rep after rep, so machine noise hits both alike; then
-// `fium price compare` (~/Documents/fium) judges the paired ratios. Each run is also written in fium's
+// `fium compare` (~/Documents/fium) judges the paired ratios. Each run is also written in fium's
 // format, <out>.fium.json and, for an A/B run, its base side as <out>.fium-base.json.
 //   node scripts/bench.mjs [--base <ref>] [--reps 15] [--out bench/runs/latest.json] [--chrome path]
 //   node scripts/bench.mjs --run <ref>  another ref instead of the working tree, e.g. a branch to merge
@@ -32,7 +32,7 @@ import { FLOORS, CEILING_MS, limits as headroomLimits, headroom, noiseFrom } fro
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const FIUM = process.env.FIUM || join(process.env.HOME, 'Documents/fium/fium');
 // fium's exit code is the verdict: 1 worse, missing or past a limit, 3 inconclusive (rerun), 0 otherwise.
-const fium = (...args) => { try { execFileSync('python3', [FIUM, 'price', 'compare', ...args], { cwd: ROOT, stdio: 'inherit' }); return 0; } catch (e) { if (e.status == null) throw e; return e.status; } };
+const fium = (...args) => { try { execFileSync('python3', [FIUM, 'compare', ...args], { cwd: ROOT, stdio: 'inherit' }); return 0; } catch (e) { if (e.status == null) throw e; return e.status; } };
 const git = (...a) => execFileSync('git', ['-C', ROOT, ...a]).toString();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const r3 = x => Math.round(x * 1000) / 1000;
@@ -298,7 +298,7 @@ export function baselineRef(baseline, recordedIn) {
   return ref;
 }
 
-// One side of a run in fium's format (~/Documents/fium, RULES.md K2), for `fium price compare`.
+// One side of a run in fium's format (~/Documents/fium, RULES.md K2), for `fium compare`.
 // The floored headroom is a metric of its own, higher is better, judged only against its floor.
 export function fiumOf(side) {
   const metrics = {}, limits = {};

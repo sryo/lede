@@ -238,7 +238,7 @@ npm run bench:compare    # judges it with fium; exits 1 on a regression or a flo
 npm run bench:since      # what changed since main's baseline, and the prices accepted for it (or: -- <ref>)
 ```
 
-`scripts/bench.mjs` measures and `fium price compare` judges (fium's RULES.md K2, at `~/Documents/fium` or `$FIUM`; the bench writes each run in its format beside the run, `<out>.fium.json` and `<out>.fium-base.json`). The bench runs both versions without Cloudflare: the Worker in Node with stand-ins for Analytics Engine and KV that count every query and write (`bench/fakes.mjs`, `bench/server.mjs`), and the dashboard and tracker in headless Chrome Canary with the CPU slowed 4x. It records:
+`scripts/bench.mjs` measures and `fium compare` judges (fium's RULES.md K2, at `~/Documents/fium` or `$FIUM`; the bench writes each run in its format beside the run, `<out>.fium.json` and `<out>.fium-base.json`). The bench runs both versions without Cloudflare: the Worker in Node with stand-ins for Analytics Engine and KV that count every query and write (`bench/fakes.mjs`, `bench/server.mjs`), and the dashboard and tracker in headless Chrome Canary with the CPU slowed 4x. It records:
 
 - **Bytes**: `t.js` as sites receive it (`public/t.js`, so run `npm run tracker` first), and everything the dashboard can load, raw, gzip and brotli. Any increase is a regression.
 - **Counts**: Analytics Engine queries, `/api` calls, page pictures and their browser time, KV reads, writes and lists, and Workers AI asks and the tokens they send (a token for about every 4 characters; Neurons follow tokens) per dashboard page, with the second line's sheet counted apart, since it's built at most once an hour per period; requests, writes and KV use per visit, and the `Live` object's requests per visit while no dashboard watches, plus requests and writes for a visit that leaves the tab and comes back, and one through a single-page app; and the same for one spike check and one week's story, run with an alert webhook set (`bench/cron.mjs`). These are what the free limits count, they don't vary between runs, and any increase is a regression. The judge also prints what the schedules take a day (96 spike checks and a seventh of the week's story), and how much a day the rest leaves room for.
@@ -299,6 +299,6 @@ Days run from local midnight to local midnight in `tzName`, so the day the clock
 | Dashboard | `public/index.html`, `public/story.js`, `public/routes.js`, `public/hosts.js`. The crowd's figures are [Wee People](https://github.com/propublica/weepeople) by ProPublica (CC BY-NC-ND 3.0), in `public/weepeople.woff2`. |
 | Static files | `public/_headers`, `public/robots.txt`, the icons |
 | Demo site | `demo/`, `scripts/build-demo.mjs`, `.github/workflows/demo.yml` |
-| Bench | `scripts/bench.mjs`, `scripts/headroom.mjs`, `bench/`, and fium's `price compare` |
+| Bench | `scripts/bench.mjs`, `scripts/headroom.mjs`, `bench/`, and fium's `compare` |
 | Analytics Engine's delay | `scripts/ae-lag.mjs` |
 | Tests | `test/` |
