@@ -592,7 +592,7 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, thenLine, usualDay, todayHint, Span, alignedGap, prevStart, fitWindows, windowSteps, tableUnit, nowOf, beforeOf, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  dayHint, thenLine, usualDay, todayHint, Span, alignedGap, prevStart, fitWindows, windowSteps, resizeWindows, pickEdge, tableUnit, nowOf, beforeOf, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
   ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX, cutSeries } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -2264,9 +2264,9 @@ function drawDays(el,S,ser,{scale=false,note=false}={}){
 function drawPeriod(el,ser,chart,restore){
   const all=[...ser.prev.visitors,...ser.cur.visitors],N=all.length,s0=ser.start-ser.days*86400,date=i=>dayDate(s0,i),day=i=>fmtDay(date(i));
   const counted=all.findIndex(v=>v>0);
-  if(counted<0)return;
+  if(counted<0){el.innerHTML='';return}
   const TOP=18,BAR=20,BASE=TOP+BAR,HIT=12;
-  let ae=N-1-AGO,L=DAYS,off=gapNow(),manual=GAP!=null,alt=false,busy=false,drag=null,chip=null,t;
+  let ae=N-1-AGO,L=DAYS,off=gapNow(),manual=GAP!=null,alt=false,busy=false,drag=null,t,commit=()=>{};
   const as=()=>ae-L+1,endsToday=()=>ae===N-1;
   // Keeps the windows inside the days there are (see fitWindows); pin leaves the comparison where it was.
   const fit=pin=>{({L,ae,off}=fitWindows({L,ae,off,pin,manual,alt},N))};
@@ -2280,75 +2280,80 @@ function drawPeriod(el,ser,chart,restore){
     const knob=x=>`<rect x="${x-3}" y="${TOP+4}" width="6" height="${BAR-8}" rx="3" fill="var(--time)" stroke="var(--tile)" stroke-width="1.5"/>`;
     const draw=()=>{
       const a=as(),b=a-off,be=ae-off,n=L,wd=i=>fmtWeekday(date(i),'long'),k=off%7===0?`the same weekday ${off===7?'a week':off/7+' weeks'} earlier`:`just before`;
+      const fA=document.activeElement===chips[0],fB=document.activeElement===chips[1];
       let svg=`<svg width="${W}" height="64" style="overflow:visible"><defs><pattern id="mmh" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.6" height="4" fill="var(--time)"/></pattern></defs>`;
       for(let i=first;i<N;i++){const h=all[i]?Math.max(2,Math.round(BAR*all[i]/max)):0,inA=i>=a&&i<=ae,inB=i>=b&&i<=be;
         svg+=`<rect x="${x(i).toFixed(1)}" y="${BASE-h}" width="${Math.max(1,cw-1).toFixed(1)}" height="${h}" fill="${inB?'url(#mmh)':'var(--time)'}" opacity="${inA||inB?1:.2}"/>`}
       svg+=`<line class="grid-l" x1="${x(first)}" x2="${W}" y1="${BASE+.5}" y2="${BASE+.5}"/>`;
       for(let i=first;i<N;i++)if(date(i).getDay()===1)svg+=`<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${BASE+1}" y2="${BASE+4}" stroke="var(--muted)" opacity=".5"/>`;
-      svg+=`<rect x="${x(b)}" y="${TOP-4}" width="${n*cw}" height="${BAR+8}" rx="2" fill="none" stroke="var(--time)" stroke-width="${document.activeElement===chips[1]?3:1.5}" stroke-dasharray="4 3"/>`
-        +`<rect x="${x(a)}" y="${TOP-4}" width="${n*cw}" height="${BAR+8}" rx="2" fill="var(--time)" fill-opacity=".08" stroke="var(--time)" stroke-width="${document.activeElement===chips[0]?3.5:2}"/>`
+      // The window whose slider has focus is outlined in the focus colour and heavier.
+      svg+=`<rect x="${x(b)}" y="${TOP-4}" width="${n*cw}" height="${BAR+8}" rx="2" fill="none" stroke="var(--${fB?'focus':'time'})" stroke-width="${fB?3:1.5}" stroke-dasharray="4 3"/>`
+        +`<rect x="${x(a)}" y="${TOP-4}" width="${n*cw}" height="${BAR+8}" rx="2" fill="var(--time)" fill-opacity=".08" stroke="var(--${fA?'focus':'time'})" stroke-width="${fA?3.5:2}"/>`
         +knob(x(a))+knob(x(ae+1))+knob(x(b))+knob(x(be+1));
-      const al=`${day(a)} to ${endsToday()?'today':day(ae)}`;
-      svg+=lab(Math.min(Math.max(x(a),0),W-al.length*6.5),60,al,'start',1)+lab(Math.max(x(b),0),12,`${day(b)} to ${day(be)}`,'start');
-      if(first)svg+=lab(x(first)-6,BASE-2,'Nothing counted yet','end');
+      const al=`${day(a)} to ${endsToday()?'today':day(ae)}`,bl=`${day(b)} to ${day(be)}`;
+      svg+=lab(Math.min(Math.max(x(a),0),W-al.length*6.5),60,al,'start',1)+lab(Math.min(Math.max(x(b),0),W-bl.length*6.5),12,bl,'start');
+      if(first)svg+=lab(Math.max(x(first)-6,19*6.5),BASE-2,'Nothing counted yet','end');
       view.innerHTML=svg+'</svg>';
       const word=off%7===0||off===L?(off%7===0?k:`${k}: a ${wd(a)} is set against a ${wd(b)}`):`${off} days earlier: a ${wd(a)} is set against a ${wd(b)}`;
       chips[0].textContent=`Period ${n} days to ${endsToday()?'today':day(ae)}`;
       chips[1].textContent=`Compared with ${off%7===0?k:off===L?`${n} days just before`:`${off} days earlier`}`;
       chips[0].setAttribute('aria-valuetext',`${n} days, ${al}`);
-      chips[1].setAttribute('aria-valuetext',`${day(b)} to ${day(be)}, ${word}`);
+      chips[1].setAttribute('aria-valuetext',`${bl}, ${word}`);
+      // The period's slider moves its last day; the comparison's, its distance back.
+      [[ae,2*L-1,N-1],[off,L,ae-L+1]].forEach(([now,lo,hi],j)=>{chips[j].setAttribute('aria-valuenow',now);chips[j].setAttribute('aria-valuemin',lo);chips[j].setAttribute('aria-valuemax',hi)});
     };
     const show=()=>{
       busy=true;draw();el.parentNode.classList.add('moving');
       dayBars(chart,{cur:all.slice(as(),ae+1),prev:all.slice(as()-off,ae-off+1),start:s0+as()*86400,gap:off,live:endsToday(),scale:true,aria:`Visitors per day from ${day(as())} to ${endsToday()?'today':day(ae)}.`});
     };
-    // The redraw replaces the strip, so a slider that had focus hands it to the new one.
+    // The redraw replaces the strip, so a slider that had focus when the commit began hands it to the new one; Tab or a
+    // click elsewhere leaves focus where it went.
     const end=()=>{
       clearTimeout(t);if(!busy)return;busy=false;el.parentNode.classList.remove('moving');
-      const f=chip,r=setPeriod(L,N-1-ae,manual&&off!==alignedGap(L,N-1-ae)?off:null);
-      if(r)r.then(()=>f&&$(`.mm [data-k=${f}]`)?.focus());else{draw();restore()}
+      const f=chips.includes(document.activeElement)?document.activeElement.dataset.k:null;
+      // The comparison is the owner's only where it differs from the default.
+      manual=off!==alignedGap(L,N-1-ae);
+      const r=setPeriod(L,N-1-ae,manual?off:null);
+      if(r)r.then(()=>f&&$(`.mm [data-k=${f}]`)?.focus({preventScroll:true}));else{draw();restore()}
     };
-    // The nearest edge within reach wins, the period's before the comparison's; else whichever body is under the finger.
-    const pick=px=>{
-      const a=as(),b=a-off,be=ae-off,reach=Math.min(HIT,L*cw/4);
-      const edges=[['a-start',x(a)],['a-end',x(ae+1)],['b-start',x(b)],['b-end',x(be+1)]].map(([m,v])=>[m,Math.abs(px-v)]).filter(e=>e[1]<=reach).sort((p,q)=>p[1]-q[1]||(p[0][0]==='a'?-1:1));
-      if(edges.length)return edges[0][0];
-      const i=px/cw;return i>=a&&i<=ae+1?'a-body':i>=b&&i<=be+1?'b-body':null;
-    };
+    commit=end;
     const at=p=>p.clientX-view.getBoundingClientRect().left;
     view.style.touchAction='pan-y pinch-zoom';
-    view.onpointerdown=p=>{const m=pick(at(p));if(!m)return;view.setPointerCapture(p.pointerId);drag={m,x0:at(p),ae0:ae,L0:L,off0:off}};
+    view.onpointerdown=p=>{const m=pickEdge({px:at(p),cw,hit:HIT,a:as(),ae,off,L});if(!m)return;view.setPointerCapture(p.pointerId);drag={m,i0:at(p)/cw,ae0:ae,L0:L,off0:off,manual0:manual}};
     view.onpointermove=p=>{
       alt=p.altKey;
-      if(!drag){const m=pick(at(p));view.style.cursor=!m?'':m.endsWith('body')?'grab':'ew-resize';return}
-      const d=drag,dd=Math.round((at(p)-d.x0)/cw);
+      if(!drag){const m=pickEdge({px:at(p),cw,hit:HIT,a:as(),ae,off,L});view.style.cursor=!m?'':m.endsWith('body')?'grab':'ew-resize';return}
+      const d=drag,dd=Math.round(at(p)/cw-d.i0);
       if(d.m==='a-body'){
         // The period's end snaps to today, else to where the comparison is whole weeks before it.
         const pin=d.ae0-d.off0;ae=d.ae0+dd;manual=true;
         if(!alt)ae=N-1-ae<=3?N-1:pin+7*Math.round((ae-pin)/7);
         fit(pin);show();return;
       }
-      else if(d.m==='b-body'){off=d.off0-dd;manual=true}
-      else if(d.m.endsWith('start')){L=d.L0-dd;ae=d.ae0;off=d.off0}
-      else{L=d.L0+dd;ae=d.ae0+(L-d.L0);off=d.off0}
+      if(d.m==='b-body'){off=d.off0-dd;manual=true}
+      else{({L,ae}=resizeWindows({edge:d.m.endsWith('start')?'start':'end',dd,L0:d.L0,ae0:d.ae0},N));off=d.off0}
       fit();show();
     };
-    view.onpointerup=view.onpointercancel=()=>{if(drag){drag=null;end()}};
+    view.onpointerup=()=>{if(drag){drag=null;end()}};
+    // A gesture that is cancelled (a touch that became a scroll) goes back to where it began.
+    view.onpointercancel=()=>{if(drag){({L,ae,off,manual}={L:drag.L0,ae:drag.ae0,off:drag.off0,manual:drag.manual0});drag=null;busy=false;el.parentNode.classList.remove('moving');draw();restore()}};
     const keys=k=>{
-      const kind=k.target.dataset.k;chip=kind;let d;
+      // Alt, Ctrl and Cmd with an arrow are the browser's (Back, Forward, line start): leave them be.
+      if(k.altKey||k.ctrlKey||k.metaKey)return;
+      const kind=k.target.dataset.k;
       if(kind==='p'){
-        d={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1,PageDown:-7,PageUp:7}[k.key];
+        const d={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1,PageDown:-7,PageUp:7,Home:-N,End:N}[k.key];
         if(d==null)return;
-        if(k.shiftKey)L+=d;else{const pin=ae-off;ae+=d;manual=true;k.preventDefault();fit(pin);show();clearTimeout(t);t=setTimeout(end,800);return}
+        if(k.shiftKey)L+=d;else{const pin=ae-off;ae+=d;manual=true;k.preventDefault();fit(pin);show();clearTimeout(t);t=setTimeout(()=>commit(),800);return}
       }else{
-        const c=steps(),i=c.indexOf(off),to={ArrowLeft:1,ArrowDown:1,PageDown:1,ArrowRight:-1,ArrowUp:-1,PageUp:-1}[k.key];
+        const c=steps(),i=c.indexOf(off),to={ArrowLeft:1,ArrowDown:1,PageDown:1,ArrowRight:-1,ArrowUp:-1,PageUp:-1,Home:N,End:-N}[k.key];
         if(to==null)return;
         const at=i<0?c.reduce((x,y,j)=>Math.abs(y-off)<Math.abs(c[x]-off)?j:x,0):i;
         off=c[Math.max(0,Math.min(c.length-1,at+to))];manual=true;
       }
-      k.preventDefault();fit();show();clearTimeout(t);t=setTimeout(end,800);
+      k.preventDefault();fit();show();clearTimeout(t);t=setTimeout(()=>commit(),800);
     };
-    chips.forEach(c=>{c.onkeydown=keys;c.onblur=()=>{end();draw()};c.onfocus=()=>{chip=c.dataset.k;draw()}});
+    chips.forEach(c=>{c.onkeydown=keys;c.onblur=()=>{end();draw()};c.onfocus=draw});
     draw();
   });
 }

@@ -63,6 +63,27 @@ export function fitWindows({ L, ae, off, pin = null, manual = false, alt = false
   } else off = alignedGap(L, N - 1 - ae);
   return { L, ae, off: Math.max(L, Math.min(ae - L + 1, off)) };
 }
+// Dragging an edge of either window resizes both: from a start edge the ends stay where they are, from an end edge the
+// starts do, and the 7 to 45 days clamp (and today) moves the dragged edge, never the fixed one.
+export function resizeWindows({ edge, dd, L0, ae0 }, N = 90) {
+  if (edge === 'start') return { L: Math.max(7, Math.min(45, L0 - dd)), ae: ae0 };
+  const start = ae0 - L0 + 1, L = Math.max(7, Math.min(45, N - start, L0 + dd));
+  return { L, ae: start + L - 1 };
+}
+// What a press at px (in the strip's pixels, cw a day wide) grabs: the nearest edge within reach (a window's edge is
+// a quarter of it at most, so a body is always left to grab), the period's edge when two are as near, except that where
+// the windows touch it is the side you are on; else the body under it, else nothing.
+export function pickEdge({ px, cw, hit, a, ae, off, L }) {
+  const b = a - off, be = ae - off, reach = Math.min(hit, L * cw / 4);
+  const edges = [['a-start', a * cw], ['a-end', (ae + 1) * cw], ['b-start', b * cw], ['b-end', (be + 1) * cw]]
+    .map(([m, x]) => [m, Math.abs(px - x), x]).filter(e => e[1] <= reach).sort((p, q) => p[1] - q[1] || (p[0][0] === 'a' ? -1 : 1));
+  if (edges.length) {
+    const [top, next] = edges;
+    return next && next[1] === top[1] && [top[0], next[0]].sort().join() === 'a-start,b-end' ? (px < top[2] ? 'b-end' : 'a-start') : top[0];
+  }
+  const i = px / cw;
+  return i >= a && i <= ae + 1 ? 'a-body' : i >= b && i <= be + 1 ? 'b-body' : null;
+}
 // The last n days of a series and the n before them, cut from a longer one: every unfiltered series is cut from the
 // 45-day answer, whose two periods are the 90 days Lede keeps, so every period, the dashboard's minimap and the
 // second line's sheet share one answer. The period ended back days ago (within the 45 days that know each day's top

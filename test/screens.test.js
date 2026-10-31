@@ -418,7 +418,7 @@ test('the overview\'s minimap places a period and its comparison through setPeri
   assert.match(f, /steps=\(\)=>windowSteps\(L,ae,N\)/);
   // A period reaching past the 45 days that know each day's top source asks for its own series.
   assert.match(html, /if\(AGO\+DAYS>45\)return api\(route,\{\.\.\.params,days:DAYS,back:AGO,gap:gapNow\(\)\},fresh\)/);
-  assert.match(f, /r=setPeriod\(L,N-1-ae,manual&&off!==alignedGap\(L,N-1-ae\)\?off:null\)/);
+  assert.match(f, /r=setPeriod\(L,N-1-ae,manual\?off:null\)/);
   assert.doesNotMatch(f, /api\(/);
   assert.match(fn('bindPeriod'), /setDays\(/);
   // A period button means the last N days with the weeks that clear it.
@@ -429,4 +429,28 @@ test('every sentence about the period is given its words, and a period that ende
   assert.doesNotMatch(html, /audienceNote\(A,DAYS\)|in these \$\{DAYS\} days/);
   assert.match(html, /audienceNote\(A,PER\(\)\)/);
   assert.match(fn('findEvents'), /quietRuns\(cur,ser\.prev\.visitors,!ser\.back\)/);
+});
+
+test('the strip: edges and resizes from the pure rules, focus kept only where it was, keys that leave the browser\'s shortcuts alone', () => {
+  const f = fn('drawPeriod');
+  assert.match(f, /pickEdge\(\{px:at\(p\),cw,hit:HIT,a:as\(\),ae,off,L\}\)/);
+  assert.match(f, /resizeWindows\(\{edge:d\.m\.endsWith\('start'\)\?'start':'end',dd,L0:d\.L0,ae0:d\.ae0\},N\)/);
+  // Only a slider that had focus when the commit began gets it back; Tab or a click elsewhere is left alone.
+  assert.match(f, /const f=chips\.includes\(document\.activeElement\)\?document\.activeElement\.dataset\.k:null/);
+  assert.match(f, /focus\(\{preventScroll:true\}\)/);
+  assert.doesNotMatch(f, /\bchip\b/);
+  // A comparison the owner never moved is the default again once a commit ends, even when nothing changed.
+  assert.match(f, /manual=off!==alignedGap\(L,N-1-ae\)/);
+  assert.match(f, /k\.altKey\|\|k\.ctrlKey\|\|k\.metaKey/);
+  assert.match(f, /Home:/);
+  assert.match(f, /End:/);
+  for (const a of ['valuenow', 'valuemin', 'valuemax']) assert.match(f, new RegExp(`aria-${a}`));
+  assert.match(f, /if\(counted<0\)\{el\.innerHTML='';return\}/);
+  // The labels stay inside the strip: the comparison's on the right, "Nothing counted yet" on the left.
+  assert.match(f, /lab\(Math\.min\(Math\.max\(x\(b\),0\),W-bl\.length\*6\.5\),12,bl,'start'\)/);
+  assert.match(f, /Math\.max\(x\(first\)-6,19\*6\.5\)/);
+  // A cancelled gesture goes back to where it began; a resize mid-drag keeps the finger's place in days.
+  assert.match(f, /view\.onpointercancel=/);
+  assert.match(f, /i0:at\(p\)\/cw/);
+  assert.match(f, /t=setTimeout\(\(\)=>commit\(\),800\)/);
 });
