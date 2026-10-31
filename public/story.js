@@ -87,7 +87,7 @@ export const Span = (days, back = 0, gap = days, now = new Date()) => {
     over: back ? `from ${day(first)} to ${day(last)}` : `over the last ${days} days`,
     these: back ? `the ${days} days to ${day(last)}` : `these ${days} days`,
     before: beforeWords(days, gap, day(bLast)),
-    range: `${day(first)} to ${back ? day(last) : 'today'}`, against: `${day(bLast + days - 1)} to ${day(bLast)}` };
+    range: `${day(first)} to ${back ? day(last) : 'today'}`, against: gap === days ? `the ${days} days before` : gap % 7 === 0 ? `the same weekday ${gap / 7} weeks earlier` : `${gap} days earlier` };
 };
 export const nowOf = p => p?.now ?? `in the last ${p} days`;
 export const beforeOf = p => p?.before ?? `the ${p} days before`;
