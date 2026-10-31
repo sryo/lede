@@ -16,3 +16,6 @@ bench/runs/
 
 # the demo's static build (npm run demo)
 demo-site/
+
+# local Claude Code state
+.claude/

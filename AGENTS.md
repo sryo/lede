@@ -1,10 +1,16 @@
 # Working on Lede
 
-Read these before changing anything:
+Read these parts before changing anything, not the whole files:
 
-- [docs/how-its-built.md](docs/how-its-built.md): how Lede works inside. Start with "Before you change anything" and "Change recipes".
-- [GOALS.md](GOALS.md): what Lede is for, what wins when goals conflict, and the rule for measuring every change.
-- [docs/how-it-works.md](docs/how-it-works.md): what owners see and are told.
+- [docs/how-its-built.md](docs/how-its-built.md): how Lede works inside. Read "Before you change anything" and "Change recipes", then the section your change touches.
+- [GOALS.md](GOALS.md): read "Goals, in priority order" and "When a change costs more" before a change that costs anything.
+- [docs/how-it-works.md](docs/how-it-works.md): what owners see and are told. Read it only for a change owners will see or be told about.
 - fium's `~/Documents/fium/RULES.md`, rules K1–K5: how every change is priced. `npm run bench:compare` runs its `compare`.
 
 A change that makes either doc wrong updates it in the same commit.
+
+## Test
+
+```bash
+npm test
+```
