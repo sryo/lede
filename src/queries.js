@@ -81,9 +81,11 @@ export function ranges(days, tz, nowMs = Date.now(), tzName, back = 0, gap = day
   const at = k => midnight(off, today + (k - back) * DAY);
   const bounds = Array.from({ length: 2 * days + 1 }, (_, k) => at(k - 2 * days + 1));
   const start = at(1 - days), end = at(1), prevStart = at(1 - days - gap), prevFull = at(1 - gap);
-  const prevEnd = back ? prevFull : Math.min(prevFull, at(-gap) + now - at(0));
+  // The comparison stops at this time of day by the clock on the wall (a day the clocks changed is 23 or 25 hours long).
+  const sinceMidnight = now + off(now) - today, wall = today - gap * DAY + sinceMidnight;
+  const prevEnd = back ? prevFull : Math.min(prevFull, wall - off(wall - off(wall)));
   const prevDays = Array.from({ length: days }, (_, k) => at(1 - days - gap + k));
-  return { start, end, prevStart, prevEnd, bounds, prevDays, last: at(0), todayStart: midnight(off, today), back, gap };
+  return { start, end, prevStart, prevEnd, prevFull, bounds, prevDays, last: at(0), todayStart: midnight(off, today), back, gap };
 }
 
 // Which day an instant t (a SQL expression in unix seconds) falls in, counted from bounds[0], given the
@@ -91,13 +93,19 @@ export function ranges(days, tz, nowMs = Date.now(), tzName, back = 0, gap = day
 // window, it counts the midnights already passed instead. if() rather than a bare comparison, because
 // only if() is documented as turning a condition into a number. With 89 midnights (45 days twice) the
 // longest query is still near 3 KB of the 10 KiB allowed.
-export function dayOf(t, bounds) {
-  const even = bounds.every((b, i) => !i || b - bounds[i - 1] === DAY);
+// end is where the last of those days ends: it is the one that can be 25 hours long, which a list of starts can't show.
+export function dayOf(t, bounds, end) {
+  const even = (end == null ? bounds : [...bounds, end]).every((b, i, all) => !i || b - all[i - 1] === DAY);
   if (even) return `intDiv(${t} - ${bounds[0]}, ${DAY})`;
   return bounds.slice(1).map(b => `if(${t} >= ${b}, 1, 0)`).join(' + ');
 }
-const curDays = q => q.bounds.slice(q.days, 2 * q.days);
-const bothDays = q => q.bounds.slice(0, 2 * q.days);
+// The day of t (an SQL expression) in the period, the comparison, or both end to end (counted from the comparison's start).
+const WINDOWS = {
+  cur: q => [q.bounds.slice(q.days, 2 * q.days), q.end],
+  prev: q => [q.prevDays, q.prevFull],
+  both: q => [q.bounds.slice(0, 2 * q.days), q.end],
+};
+export const dayIn = (t, q, which) => dayOf(t, ...WINDOWS[which](q));
 
 const span = (from, to) => `timestamp >= toDateTime(${from}) AND timestamp < toDateTime(${to})`;
 
@@ -166,7 +174,7 @@ export const summarySql = (ds, q) =>
 
 // d counts days from the start of the previous period, by the day each visit started. Apart from the period,
 // the previous one's days are counted from its own start and the period's follow them.
-const seriesDay = q => q.gap == null || q.gap === q.days ? dayOf('t0', bothDays(q)) : `if(p = 1, ${q.days} + ${dayOf('t0', curDays(q))}, ${dayOf('t0', q.prevDays)})`;
+const seriesDay = q => q.gap == null || q.gap === q.days ? dayIn('t0', q, 'both') : `if(p = 1, ${q.days} + ${dayIn('t0', q, 'cur')}, ${dayIn('t0', q, 'prev')})`;
 export const seriesSql = (ds, q) =>
   `SELECT p, ${seriesDay(q)} AS d, ${METRICS}, ${FLAT} FROM ${visits(ds, within(q), `, toUnixTimestamp(min(timestamp)) AS t0${STEPS}`, PERIOD(q))} `
   + 'GROUP BY p, d ORDER BY p, d';
@@ -184,7 +192,7 @@ export const monthSplit = q => ({ cur: nextMonth(q.start) < q.end, prev: nextMon
 // the quieter days out of the answer. The inner count isn't named visitors: the outer alias would
 // shadow it, putting max() inside argMax().
 export const topSourceSql = (ds, q) =>
-  `SELECT d, argMax(ref, n) AS ref, max(n) AS visitors FROM (SELECT ${dayOf('toUnixTimestamp(timestamp)', curDays(q))} AS d, ${COL.referrer} AS ref, `
+  `SELECT d, argMax(ref, n) AS ref, max(n) AS visitors FROM (SELECT ${dayIn('toUnixTimestamp(timestamp)', q, 'cur')} AS d, ${COL.referrer} AS ref, `
   + `count(DISTINCT ${COL.visitor}) AS n FROM ${ds} WHERE ${where(q, q.start, q.end)} GROUP BY d, ref) GROUP BY d ORDER BY d LIMIT ${q.days}`;
 
 // d is the day of this period each key was first seen, so the timeline can mark new pages and sources
@@ -192,9 +200,9 @@ export const topSourceSql = (ds, q) =>
 export function breakdownSql(ds, q, dim, only) {
   if (dim === 'path') {
     return `SELECT ${PERIOD(q)} AS p, ${COL.path} AS key, count(DISTINCT ${COL.visitor}) AS visitors, count(DISTINCT ${COL.visit}) AS visits, sum(_sample_interval) AS views, `
-      + `${dayOf('toUnixTimestamp(min(timestamp))', curDays(q))} AS d FROM ${ds} WHERE ${within(q, only)} GROUP BY p, key ORDER BY visitors DESC ${limit(capsOf(q, LISTS.breakdown), only)}`;
+      + `${dayIn('toUnixTimestamp(min(timestamp))', q, 'cur')} AS d FROM ${ds} WHERE ${within(q, only)} GROUP BY p, key ORDER BY visitors DESC ${limit(capsOf(q, LISTS.breakdown), only)}`;
   }
-  return `SELECT p, key, ${METRICS}, ${dayOf('min(t0)', curDays(q))} AS d FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS[dim]} AS key, toUnixTimestamp(min(timestamp)) AS t0`, PERIOD(q))} `
+  return `SELECT p, key, ${METRICS}, ${dayIn('min(t0)', q, 'cur')} AS d FROM ${visits(ds, within(q, only), `, ${VISIT_KEYS[dim]} AS key, toUnixTimestamp(min(timestamp)) AS t0`, PERIOD(q))} `
     + `GROUP BY p, key ORDER BY visitors DESC ${limit(capsOf(q, LISTS.breakdown), only)}`;
 }
 

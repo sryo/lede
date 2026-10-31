@@ -328,10 +328,10 @@ async function sitesFor(url, env) {
 async function insightFor(q, env, ask) {
   // Its words say "the last N days", which a period that ended earlier or a comparison the owner moved isn't.
   if (q.back || (q.gap !== q.days && q.gap !== alignedGap(q.days))) return null;
-  return lineFor(env, `insight:${q.site}:${q.days}`, async () => {
+  return lineFor(env, `insight:${q.site}:${q.days}${q.gap === q.days ? '' : `:${q.gap}`}`, async () => {
     // Home just asked for the totals, so this costs nothing, and a small site stops here before the 2 queries.
     if ((await ask.stat('summary')).cur.visitors < MIN_VISITORS) return null;
-    const [totals, ser, pages, refs, flows, saved, engagement, keywords] = await Promise.all([ask.stat('summary'), ask.stat('series', { days: 45 }).then(s => cutSeries(s, q.days, q.back, q.gap)),
+    const [totals, ser, pages, refs, flows, saved, engagement, keywords] = await Promise.all([ask.stat('summary'), ask.stat('series', { days: 45, back: null, gap: null }).then(s => cutSeries(s, q.days, q.back, q.gap)),
       ask.stat('breakdown', { dim: 'path' }), ask.stat('breakdown', { dim: 'referrer' }), ask.stat('flows'), getSettings(env, q.site),
       ask.stat('engagement').catch(() => null), ask.stat('keywords').catch(() => null)]);
     const notes = settingsOf(saved, q, false).notes;
@@ -477,7 +477,8 @@ export async function handleApi(req, env, ctx, shared = null) {
     const at = (other, params = {}) => {
       const u = new URL(url);
       u.pathname = `/api/${other}`;
-      for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+      // A param set to null is taken off, so the 45-day series is the one address home asks for whatever the comparison.
+      for (const [k, v] of Object.entries(params)) { if (v == null) u.searchParams.delete(k); else u.searchParams.set(k, v); }
       return u;
     };
     const ask = {

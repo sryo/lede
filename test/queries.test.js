@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseQuery, sqlStore } from '../src/api.js';
-import { ranges, dayOf, zoneOffset, summarySql, seriesSql, topSourceSql, breakdownSql, flowSql, engagementSql, linksSql, everSql, monthSplit, LISTS, FULL, BREAKDOWNS, DAY } from '../src/queries.js';
+import { ranges, dayOf, dayIn, zoneOffset, summarySql, seriesSql, topSourceSql, breakdownSql, flowSql, engagementSql, linksSql, everSql, monthSplit, LISTS, FULL, BREAKDOWNS, DAY } from '../src/queries.js';
 import { toSummary, toSeriesBoth, toSeries, byPeriod, topByDay } from '../src/shape.js';
 import { dayDate, todayPace } from '../public/story.js';
 
@@ -388,4 +388,57 @@ test('back and gap stay inside the 90 days kept, and a comparison never overlaps
   assert.equal(s.prevDays[0], s.prevStart);
   assert.match(seriesSql('lede', { ...parseQuery(url('series?days=14'), SITES, now), site: 'example.com', filters: {} }), /intDiv\(t0 - \d+, 86400\) AS d/);
   assert.equal(q('days=14&back=5&gap=28').prevEnd, ranges(14, 0, now, undefined, 5, 28).prevEnd);
+});
+
+test('the last day of a moved period or comparison keeps its extra hour on the day the clocks go back', () => {
+  const zone = 'America/New_York', now = Date.UTC(2026, 10, 3, 15); // 10:00 EST on 3 Nov; the clocks went back on 1 Nov
+  const lateOnNov1 = Date.UTC(2026, 10, 2, 4, 30) / 1000; // 23:30 EST on 1 Nov, 24 hours into a 25 hour day
+  const r = { days: 3, ...ranges(3, 0, now, zone, 2) };
+  assert.equal(local(zone, r.end), '2026-11-02 00:00:00', 'the period ends on Nov 1');
+  assert.equal(evalDay(dayIn('t', r, 'cur'), lateOnNov1), 2, 'day 2 of 3, not a fourth day the answer drops');
+  assert.equal(evalDay(dayIn('t', r, 'cur'), r.end - 1), 2);
+  assert.equal(evalDay(dayIn('t', r, 'both'), lateOnNov1), 5);
+  // A comparison 6 days before it ends on a whole day.
+  const c = { days: 3, ...ranges(3, 0, now, zone, 2, 6) };
+  assert.equal(local(zone, c.prevEnd), '2026-10-27 00:00:00');
+  assert.equal(evalDay(dayIn('t', c, 'prev'), c.prevEnd - 1), 2);
+  // A comparison whose last day is the 25 hour Nov 1: today is Nov 4, 3 days back is Nov 1.
+  const e = { days: 3, ...ranges(3, 0, Date.UTC(2026, 10, 4, 15), zone, 0, 3) };
+  assert.equal(local(zone, e.prevFull), '2026-11-02 00:00:00');
+  assert.equal(evalDay(dayIn('t', e, 'prev'), lateOnNov1), 2, 'its last day is Nov 1');
+});
+
+test('the comparison stops at the same time of day on its last day, by the clock on the wall, whatever the clocks did in between', () => {
+  const zone = 'America/New_York';
+  // The clocks go back on 1 Nov: 10:00 EST is 11 real hours after midnight, and 10:00 on the day it is compared with.
+  const back = ranges(3, 0, Date.UTC(2026, 10, 1, 15), zone, 0, 7);
+  assert.equal(local(zone, back.prevEnd), '2026-10-25 10:00:00');
+  // They go forward on 8 Mar: 10:00 EDT is 9 real hours after midnight.
+  const forward = ranges(3, 0, Date.UTC(2026, 2, 8, 14), zone, 0, 7);
+  assert.equal(local(zone, forward.prevEnd), '2026-03-01 10:00:00');
+  // The comparison's own last day is the one with the change: it still stops at 10:00 by the wall, not the 24 real hours.
+  const onTheDay = ranges(3, 0, Date.UTC(2026, 10, 8, 15), zone, 0, 7);
+  assert.equal(local(zone, onTheDay.prevEnd), '2026-11-01 10:00:00');
+  assert.equal(local(zone, ranges(30, 300, Date.UTC(2026, 9, 31, 15), zone).prevEnd), '2026-10-01 11:00:00', 'the default is unchanged');
+});
+
+test('a month starting is told for each window on its own, wherever the comparison sits', () => {
+  const now = Date.UTC(2026, 10, 3, 15); // 1 Nov is in the last 7 days
+  const q = s => monthSplit(parseQuery(url(`summary?${s}`), SITES, now));
+  assert.deepEqual(q('days=7&gap=7'), { cur: true, prev: false });
+  assert.deepEqual(q('days=7&gap=14'), { cur: true, prev: false });
+  assert.deepEqual(q('days=7&back=7&gap=7'), { cur: false, prev: false }, 'ended 7 days ago, the days from 20 to 27 Oct');
+  assert.deepEqual(q('days=14&gap=35'), { cur: true, prev: false }, '16 to 29 Sep: ends before 1 Oct');
+  assert.deepEqual(q('days=14&gap=56'), { cur: true, prev: true }, '26 Aug to 8 Sep holds 1 Sep');
+});
+
+test('days from 1 to 45 keep back and gap inside the 90 days, and the cache tells a moved period from the default', () => {
+  const now = Date.UTC(2026, 9, 31, 15), q = s => parseQuery(url(`summary?${s}`), SITES, now);
+  for (const d of [1, 44, 45]) {
+    const r = q(`days=${d}&back=999&gap=999`);
+    assert.ok(r.back >= 0 && r.gap >= d && r.back + r.gap + d <= 90, `${d}: back ${r.back}, gap ${r.gap}`);
+  }
+  assert.equal(q('days=1&back=999').back, 88);
+  assert.equal(q('days=45&back=999').back, 0);
+  assert.notEqual(q('days=7').start, q('days=7&back=3').start, 'a moved period is another address and another period');
 });

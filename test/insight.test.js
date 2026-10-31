@@ -257,3 +257,20 @@ test('the sample’s second line gives the numbers it rests on, true for either 
     assert.ok(DEMO_INSIGHT.includes(`LCP ${fmtVital('lcp', owls.lcp)}`), `load time for ${days} days`);
   }
 });
+
+test('a comparison placed apart from the default is its own line, and reuses home\'s 45-day series', async () => {
+  await withSql(2, async calls => {
+    let runs = 0;
+    const env = { ...ENV(), AI: { run: async () => { runs++; return { response: 'Hacker News sent 40 visitors to /blog. Worth checking: /blog.' }; } } };
+    const base = 'site=example.com&days=10&tz=0&tzName=UTC';
+    // Home asks for the 45-day series by itself, and for the rest with the comparison it shows.
+    await Promise.all([get(`series?site=example.com&days=45&tz=0&tzName=UTC`, env), ...['summary', 'breakdown?dim=path', 'breakdown?dim=referrer', 'flows']
+      .map(r => get(`${r}${r.includes('?') ? '&' : '?'}${base}&gap=14`, env))]);
+    const home = calls.length;
+    assert.equal((await get(`insight?${base}&gap=14`, env)).status, 200);
+    assert.equal(calls.length - home, 2, 'only the reading, speed and search words: the series is home\'s own');
+    assert.equal((await get(`insight?${base}&gap=10`, env)).status, 200, 'the days just before is another comparison');
+    assert.deepEqual(env.STORE.puts.map(p => p.key).filter(k => k.startsWith('insight:')), ['insight:example.com:10:14', 'insight:example.com:10']);
+    assert.equal(runs, 2);
+  });
+});
