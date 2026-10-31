@@ -625,7 +625,7 @@ function api(route,params={},fresh=false){
   if(route==='series'&&params.days==null&&params.path==null&&params.referrer==null&&params.channel==null){
     // The 45 days know each day's top source; a period reaching further back asks for its own.
     if(AGO+DAYS>45)return api(route,{...params,days:DAYS,back:AGO,gap:gapNow()},fresh);
-    return api(route,{...params,days:45,back:0},fresh).then(s=>cutSeries(s,DAYS,AGO,gapNow()));
+    return api(route,{...params,days:45},fresh).then(s=>cutSeries(s,DAYS,AGO,gapNow()));
   }
   const qs=new URLSearchParams({site:SITE,days:DAYS,tz:TZ,tzName:TZNAME});
   // A request that names its own days (the 45-day series, the 30 hours) isn't about the period and takes neither.
@@ -1096,7 +1096,7 @@ function togglePeriod(el,open){
   const panel=el.querySelector('.period-panel'),btn=el.querySelector('.custom');
   open??=panel.hidden;
   panel.hidden=!open;btn.setAttribute('aria-expanded',open);
-  if(open)api('series',{days:45,back:0}).then(strip=>{if(!panel.hidden)drawPeriod(panel.querySelector('.mm'),strip,dailyChart,restoreDaily)}).catch(e=>{panel.hidden=true;btn.setAttribute('aria-expanded',false);announce(e.message)});
+  if(open)api('series',{days:45}).then(strip=>{if(!panel.hidden)drawPeriod(panel.querySelector('.mm'),strip,dailyChart,restoreDaily)}).catch(e=>{panel.hidden=true;btn.setAttribute('aria-expanded',false);announce(e.message)});
 }
 const closePeriod=()=>document.querySelectorAll('.period').forEach(el=>{if(!el.querySelector('.period-panel').hidden)togglePeriod(el,false)});
 // A new period redraws the strips that are open, so their windows are where the dashboard now is.

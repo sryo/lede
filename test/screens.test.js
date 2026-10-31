@@ -407,7 +407,7 @@ test('the overview reads campaign tags and the readers’ OS, language, screen a
 
 test('the overview\'s minimap places a period and its comparison through setPeriod, and a drag fetches nothing until it ends', () => {
   const f = fn('drawPeriod');
-  assert.match(html, /api\('series',\{days:45,back:0\}\)/);
+  assert.match(html, /api\('series',\{days:45\}\)/);
   // One slider each for the period and the comparison, for the keyboard.
   assert.match(f, /role="slider" tabindex="0" data-k="p" aria-label="Period"/);
   assert.match(f, /role="slider" tabindex="0" data-k="b" aria-label="Compared with"/);
@@ -464,7 +464,7 @@ test('the period strip lives in the header beside 7 and 30 days, on every screen
   assert.match(html, /<div class="chart"\$\{overview&&H\?' data-daily="scale"':''\}>/);
   assert.match(fn('drawHome'), /dataset\.daily=''/);
   const t = fn('togglePeriod');
-  assert.match(t, /api\('series',\{days:45,back:0\}\)/);
+  assert.match(t, /api\('series',\{days:45\}\)/);
   assert.match(t, /drawPeriod\(panel\.querySelector\('\.mm'\),strip,dailyChart,restoreDaily\)/);
   assert.match(html, /const dailyChart=\(\)=>stack\[stack\.length-1\]\.el\.querySelector\('\[data-daily\]'\)/);
   assert.match(fn('drawPeriod'), /const c=getChart\(\);if\(c\)dayBars\(c,/);
