@@ -1,6 +1,6 @@
 # Lede: goals
 
-## Why Lede exists
+## What Lede is for
 Lede tells the truth about a site, and makes it easy to read.
 
 It started because the tools at hand didn't. Cloudflare's analytics counted mostly bots and
@@ -126,3 +126,13 @@ and it never removes features.
 
 A timing that comes out inconclusive is rerun before the change lands; it isn't a pass. The
 same numbers with less code is a better change.
+
+## Non-goals
+- **Answering any query or filling a report.** Lede shows how the small things you do change
+  who reads you, as it happens. Reports and custom queries are for tools built for them.
+- **Following a person.** No cookies, no IDs that last past a month, nothing across sites.
+  Lede would rather show less than know more about one reader.
+- **Counting everything.** Bots and your own visits are left out, and the docs say what.
+  A bigger number that isn't people isn't a goal.
+- **Features the other one in ten needs.** What Lede does, it does better than any other tool;
+  it doesn't grow to cover every site's every need.
