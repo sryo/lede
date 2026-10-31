@@ -1,5 +1,5 @@
 // What Lede's numbers mean against Cloudflare's free limits, and how much timings swing on unchanged code.
-// `house price compare` judges a run (scripts/bench.mjs writes it in house's format); this is what it can't know.
+// `fium price compare` judges a run (scripts/bench.mjs writes it in fium's format); this is what it can't know.
 
 export const ABS_MS = 0.05, CEILING_MS = 5, MIN_REL = 0.05;
 

@@ -8,15 +8,15 @@
 //   timings  the Worker per visit and per stats answer (Node), and in headless Chrome Canary with the
 //            CPU slowed 4x: what t.js adds to a page load, and how long the dashboard home takes to draw
 // Timings run base and working tree in turn, rep after rep, so machine noise hits both alike; then
-// `house price compare` (~/Documents/house) judges the paired ratios. Each run is also written in house's
-// format, <out>.house.json and, for an A/B run, its base side as <out>.house-base.json.
+// `fium price compare` (~/Documents/fium) judges the paired ratios. Each run is also written in fium's
+// format, <out>.fium.json and, for an A/B run, its base side as <out>.fium-base.json.
 //   node scripts/bench.mjs [--base <ref>] [--reps 15] [--out bench/runs/latest.json] [--chrome path]
 //   node scripts/bench.mjs --run <ref>  another ref instead of the working tree, e.g. a branch to merge
 //   node scripts/bench.mjs --aa        the working tree against itself, to measure noise
-//   node scripts/bench.mjs --save-baseline     records the working tree in bench/baseline.json and bench/house-baseline.json
-//   node scripts/bench.mjs --from <run.json>   writes a run already made in house's format, measuring nothing
+//   node scripts/bench.mjs --save-baseline     records the working tree in bench/baseline.json and bench/fium-baseline.json
+//   node scripts/bench.mjs --from <run.json>   writes a run already made in fium's format, measuring nothing
 //   node scripts/bench.mjs --noise [bench/runs/aa.json]   writes bench/noise.json from an A/A run
-//   node scripts/bench.mjs --compare [bench/runs/latest.json]   judges an A/B run with house, reading the prices
+//   node scripts/bench.mjs --compare [bench/runs/latest.json]   judges an A/B run with fium, reading the prices
 //                                         accepted since its base
 //   node scripts/bench.mjs --since [main]   judges this baseline against <ref>'s with the prices accepted since,
 //                                         bytes and counts only: timings compare only within one run
@@ -30,10 +30,9 @@ import { fileURLToPath } from 'node:url';
 import { FLOORS, CEILING_MS, limits as headroomLimits, headroom, noiseFrom } from './headroom.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-// The command is fium in newer house checkouts, house in older ones.
-const HOUSE = process.env.HOUSE || ['fium', 'house'].map(f => join(process.env.HOME, 'Documents/house', f)).find(existsSync);
-// house's exit code is the verdict: 1 worse, missing or past a limit, 3 inconclusive (rerun), 0 otherwise.
-const house = (...args) => { try { execFileSync('python3', [HOUSE, 'price', 'compare', ...args], { cwd: ROOT, stdio: 'inherit' }); return 0; } catch (e) { if (e.status == null) throw e; return e.status; } };
+const FIUM = process.env.FIUM || join(process.env.HOME, 'Documents/fium/fium');
+// fium's exit code is the verdict: 1 worse, missing or past a limit, 3 inconclusive (rerun), 0 otherwise.
+const fium = (...args) => { try { execFileSync('python3', [FIUM, 'price', 'compare', ...args], { cwd: ROOT, stdio: 'inherit' }); return 0; } catch (e) { if (e.status == null) throw e; return e.status; } };
 const git = (...a) => execFileSync('git', ['-C', ROOT, ...a]).toString();
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 const r3 = x => Math.round(x * 1000) / 1000;
@@ -299,9 +298,9 @@ export function baselineRef(baseline, recordedIn) {
   return ref;
 }
 
-// One side of a run in house's format (~/Documents/house, RULES.md K2), for `house price compare`.
+// One side of a run in fium's format (~/Documents/fium, RULES.md K2), for `fium price compare`.
 // The floored headroom is a metric of its own, higher is better, judged only against its floor.
-export function houseOf(side) {
+export function fiumOf(side) {
   const metrics = {}, limits = {};
   const put = (name, kind, samples, dir = 'lower') => { metrics[name] = { dir, kind, samples }; };
   for (const [k, v] of Object.entries(side.bytes)) put(k, 'bytes', [v]);
@@ -360,14 +359,14 @@ export async function run(opts) {
   }
 }
 
-// <out>.house.json beside <out>.json, and <out>.house-base.json for an A/B run's base side.
-export function houseFiles(file) {
+// <out>.fium.json beside <out>.json, and <out>.fium-base.json for an A/B run's base side.
+export function fiumFiles(file) {
   const stem = file.replace(/\.json$/, '');
-  return { run: `${stem}.house.json`, base: `${stem}.house-base.json` };
+  return { run: `${stem}.fium.json`, base: `${stem}.fium-base.json` };
 }
 
-function writeHouse(out, file) {
-  const to = houseFiles(file), put = (f, side) => writeFileSync(f, JSON.stringify(houseOf(side), null, 2) + '\n');
+function writeFium(out, file) {
+  const to = fiumFiles(file), put = (f, side) => writeFileSync(f, JSON.stringify(fiumOf(side), null, 2) + '\n');
   put(to.run, out.run);
   if (out.base) put(to.base, out.base);
   return to;
@@ -386,31 +385,31 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const from = JSON.parse(git('show', `${opts.since}:bench/baseline.json`)).run;
     const to = JSON.parse(readFileSync(join(ROOT, 'bench/baseline.json'), 'utf8')).run;
     mkdirSync(join(ROOT, 'bench/runs'), { recursive: true });
-    const files = writeHouse({ base: exact(from), run: exact(to) }, join(ROOT, 'bench/runs/since.json'));
+    const files = writeFium({ base: exact(from), run: exact(to) }, join(ROOT, 'bench/runs/since.json'));
     console.log(`baseline at ${opts.since} (${from.rev}) → now (${to.rev})`);
-    process.exit(house(files.base, files.run, '--since', opts.since));
+    process.exit(fium(files.base, files.run, '--since', opts.since));
   }
   if (opts.compare) {
     const file = resolve(ROOT, opts.compare), ab = JSON.parse(readFileSync(file, 'utf8'));
     if (!ab.base) { console.error('not an A/B run; rerun scripts/bench.mjs without --save-baseline'); process.exit(2); }
-    const files = writeHouse(ab, file);
+    const files = writeFium(ab, file);
     console.log(`base ${ab.base.rev} vs run ${ab.run.rev} (${ab.browser}, ${ab.reps} reps)`);
-    const code = house(files.base, files.run, '--noise', 'bench/noise.json', '--since', ab.base.rev);
+    const code = fium(files.base, files.run, '--noise', 'bench/noise.json', '--since', ab.base.rev);
     for (const line of headroom(ab.run.counts)) console.log('  ' + line);
     if (code === 3) console.log('rerun before the change lands: npm run bench && npm run bench:compare');
     process.exit(code);
   }
   if (opts.from) {
     const file = resolve(ROOT, opts.from);
-    console.log(`house format → ${writeHouse(JSON.parse(readFileSync(file, 'utf8')), file).run}`);
+    console.log(`fium format → ${writeFium(JSON.parse(readFileSync(file, 'utf8')), file).run}`);
     process.exit(0);
   }
   const out = await run(opts);
   const file = opts.saveBaseline ? join(ROOT, 'bench/baseline.json') : resolve(ROOT, opts.out || (opts.aa ? 'bench/runs/aa.json' : 'bench/runs/latest.json'));
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify(out, null, 2) + '\n');
-  if (opts.saveBaseline) writeFileSync(join(ROOT, 'bench/house-baseline.json'), JSON.stringify(houseOf(out.run), null, 2) + '\n');
-  else writeHouse(out, file);
+  if (opts.saveBaseline) writeFileSync(join(ROOT, 'bench/fium-baseline.json'), JSON.stringify(fiumOf(out.run), null, 2) + '\n');
+  else writeFium(out, file);
   console.log(`${out.browser}, ${out.reps} reps → ${file}`);
   for (const line of headroom(out.run.counts)) console.log('  ' + line);
   if (out.base) console.log('judge with: npm run bench:compare');

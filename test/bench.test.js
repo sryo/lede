@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { noiseFrom, headroom, scheduleDay, sheetDay, limits, floors } from '../scripts/headroom.mjs';
 import { counters, fakeAI, fakeFetch, WEBHOOK } from '../bench/fakes.mjs';
-import { baselineRef, houseOf, houseFiles, parseArgs } from '../scripts/bench.mjs';
+import { baselineRef, fiumOf, fiumFiles, parseArgs } from '../scripts/bench.mjs';
 
 const reps = (v, n = 15, jitter = 0.01) => Array.from({ length: n }, (_, i) => v * (1 + (i % 3 - 1) * jitter));
 
@@ -73,9 +73,9 @@ test('the bench measures against the commit a saved baseline was taken at', () =
   assert.throws(() => baselineRef({ run: { rev: 'unknown' } }, ''), /--base/);
 });
 
-test('the house run format names each number by kind, and floors and the Worker ceiling become limits', () => {
+test('the fium run format names each number by kind, and floors and the Worker ceiling become limits', () => {
   const counts = { 'queries: /': 8, 'sheet queries: /': 2, 'ai tokens: /': 550, 'visit: writes': 2, 'visit: requests': 2, 'visit: kv writes': 0 };
-  const h = houseOf({ rev: 'x', bytes: { 't.js gzip': 100 }, counts, times: { 'worker: summary': [1, 2], 'browser: home drawn': [90] } });
+  const h = fiumOf({ rev: 'x', bytes: { 't.js gzip': 100 }, counts, times: { 'worker: summary': [1, 2], 'browser: home drawn': [90] } });
   assert.deepEqual(h.metrics['t.js gzip'], { dir: 'lower', kind: 'bytes', samples: [100] });
   assert.deepEqual(h.metrics['queries: /'], { dir: 'lower', kind: 'count', samples: [8] });
   assert.equal(h.metrics['ai tokens: /'].kind, 'tokens');
@@ -87,8 +87,8 @@ test('the house run format names each number by kind, and floors and the Worker 
   assert.equal(h.limits['browser: home drawn'], undefined);
 });
 
-test('house files sit beside the run, and the bench\'s judging flags default to the latest run and main', () => {
-  assert.deepEqual(houseFiles('bench/runs/latest.json'), { run: 'bench/runs/latest.house.json', base: 'bench/runs/latest.house-base.json' });
+test('fium files sit beside the run, and the bench\'s judging flags default to the latest run and main', () => {
+  assert.deepEqual(fiumFiles('bench/runs/latest.json'), { run: 'bench/runs/latest.fium.json', base: 'bench/runs/latest.fium-base.json' });
   assert.equal(parseArgs(['--compare']).compare, 'bench/runs/latest.json');
   assert.equal(parseArgs(['--since']).since, 'main');
   assert.equal(parseArgs(['--since', 'next']).since, 'next');
