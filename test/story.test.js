@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { moreFindings, findSpike, readStory, tellStory, bounceSplit, bounceCaption, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
   scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
-  unitOf, countNotes, quietRuns, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  unitOf, countNotes, quietRuns, Span, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
   ICONS, iconFor, iconSVG, figureScale, apportion, crowdFigures, laneScale, pageList, leftWord, pairStay, bounciestPair, outcomeStory, readingMap, lanes, laneX } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
@@ -1407,4 +1407,29 @@ test('what else changed: every finding the sentences above didn’t tell, bigges
   const rest = moreFindings(S, new Set());
   assert.deepEqual(rest.map(f => f.key), all.slice(1).map(f => f.key), 'the first is the one home and the overview already tell');
   assert.ok(rest.some(f => f.kind === 'vanished' && f.key === 'bing.com'), 'a source that all but vanished is said');
+});
+
+test('a level shift reads the comparison where it is, so each weekday is evened out against its own', async () => {
+  const { levelShift, cutSeries } = await import('../public/story.js');
+  const D = 45, start = Date.UTC(2026, 8, 17) / 1000, weekend = i => [0, 6].includes(dayDate(start - D * 86400, i).getDay());
+  // 90 days: 100 a weekday and 300 a weekend, a rise of 60% from day k of the last 30 on. The comparison is 35 days before
+  // the period ends, so its weekdays line up with the period's and not with those of the 30 days just before.
+  for (const k of [14, 20]) {
+    const days = Array.from({ length: 2 * D }, (_, i) => 100 * (weekend(i) ? 3 : 1) * (i >= 60 + k ? 1.6 : 1));
+    const ser = cutSeries({ start, days: D, cur: { visitors: days.slice(D) }, prev: { visitors: days.slice(0, D) }, top: Array(D).fill('a'), topVisitors: Array(D).fill(1) }, 30, 0, 35);
+    assert.equal(levelShift(ser, 1).i, k, `the rise began on day ${k}`);
+  }
+});
+
+test('a period that ended earlier has a finished last day, which can be a quiet one', () => {
+  const cur = [...Array(29).fill(100), 0];
+  assert.deepEqual(quietRuns(cur), [], 'today is not over');
+  assert.deepEqual(quietRuns(cur, [], false), [{ start: 29, end: 29, visitors: 0, usual: 100 }]);
+});
+
+test('the notes about samples and partial recording say the period and its comparison as they are', () => {
+  const part = { partial: 'prev' };
+  assert.equal(audienceNote(part, Span(30, 5, 35)), 'Lede began recording devices and browsers during the 30 days 5 weeks earlier, so they show no change yet.');
+  assert.equal(audienceNote({ partial: 'cur' }, Span(30, 5, 35)), `Lede began recording devices and browsers during ${Span(30, 5, 35).these}, so they cover only the visits since then and show no change yet.`);
+  assert.equal(audienceNote(part, 7), 'Lede began recording devices and browsers during the 7 days before, so they show no change yet.');
 });

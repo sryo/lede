@@ -424,3 +424,9 @@ test('the overview\'s minimap places a period and its comparison through setPeri
   // A period button means the last N days with the weeks that clear it.
   assert.match(html, /const setDays=d=>setPeriod\(d\);/);
 });
+
+test('every sentence about the period is given its words, and a period that ended earlier has a finished last day', () => {
+  assert.doesNotMatch(html, /audienceNote\(A,DAYS\)|in these \$\{DAYS\} days/);
+  assert.match(html, /audienceNote\(A,PER\(\)\)/);
+  assert.match(fn('findEvents'), /quietRuns\(cur,ser\.prev\.visitors,!ser\.back\)/);
+});

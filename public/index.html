@@ -723,7 +723,7 @@ async function drawGoalCard(card,path){
   let text='';
   try{text=goalStory(await api('conversions',{goal:[path]}),[path],HOME?.S?.lead?.key)||''}catch{text='Couldn’t load this. Check your connection, then reopen the page.'}
   card.innerHTML=`<div class="card-head"><div class="card-title">${SHARED?'Visits that reached this goal':'Is this page a goal?'}</div>${SHARED?'':goalSeg(path,on?true:no?false:null)}</div>
-    <p class="goal-text">${text||`No visits yet in these ${DAYS} days.`}</p><p class="goal-text muted">A goal is a page you want visits to reach, like a sign-up or thank-you page.</p>`;
+    <p class="goal-text">${text||`No visits yet in ${PER().these}.`}</p><p class="goal-text muted">A goal is a page you want visits to reach, like a sign-up or thank-you page.</p>`;
   card.hidden=false;
   if(SHARED)return;
   card.querySelector('[data-a="yes"]').onclick=()=>{store.set(`lede_not_goal:${SITE}:${path}`,'');if(!on)toggleGoal(path)};
@@ -1580,7 +1580,7 @@ function drawAudience(sec,A){
     if(n)top.push([`${n} more`,all-sum(top.map(r=>r[1])),0,'-p']);
     return all?`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v],i)=>`<i ${shadeSeg('time',i)} style="flex:${v}" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}</div>
       <p>${top.map(([l,v,b],i)=>`<span>${keySw('time',i)}${b?`<b>${esc(l)}</b>`:esc(l)} ${fmtPct(v/all)}</span>`).join('')}</p>
-      ${n?`<button type="button" class="mix-more" aria-expanded="false">All ${fmtInt(rows.length)}</button><p hidden>${rows.map(r=>`<span>${esc(labelOf(dim,r.key))} ${fmtPct(r.visitors/all)} · ${fmtInt(r.visitors)}</span>`).join('')}</p>`:''}</div>`:''}).join('')}<p class="say-sub">${audienceNote(A,DAYS)}</p>`;
+      ${n?`<button type="button" class="mix-more" aria-expanded="false">All ${fmtInt(rows.length)}</button><p hidden>${rows.map(r=>`<span>${esc(labelOf(dim,r.key))} ${fmtPct(r.visitors/all)} · ${fmtInt(r.visitors)}</span>`).join('')}</p>`:''}</div>`:''}).join('')}<p class="say-sub">${audienceNote(A,PER())}</p>`;
   // "All N" opens every part of a list under its strip, with its share and visitors.
   sec.querySelectorAll('.mix-more').forEach(b=>b.onclick=()=>{const p=b.nextElementSibling,open=p.hidden;p.hidden=!open;b.setAttribute('aria-expanded',open);b.textContent=open?'Fewer':`All ${p.children.length}`});
   sec.hidden=false;
@@ -2495,7 +2495,7 @@ function findEvents(S,T,ser,firsts,pageRows){
   }
   // Quiet days in a row are one event, at the first of them: one thing happened, not one a day.
   const check='Check that Lede’s line is still on every page.';
-  for(const q of quietRuns(cur,ser.prev.visitors)){
+  for(const q of quietRuns(cur,ser.prev.visitors,!ser.back)){
     const k=q.end-q.start+1,until=fmtDay(dayDate(ser.start,q.end));
     ev.push(k===1?{day:q.start,kind:'quiet',told:false,name:'Quiet day',title:`Quiet day: ${fmtInt(q.visitors)} visitors`,tag:'quiet',
       short:`${fmtInt(q.visitors)} visitors, far fewer than usual. ${check}`,detail:`a usual day has ${fmtInt(q.usual)}. ${check}`,open:openOverview}

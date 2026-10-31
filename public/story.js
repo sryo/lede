@@ -249,13 +249,14 @@ export function didWhat(text) {
   return (/^[a-z]{2,}ed$/.test(w) && !/eed$/.test(w)) || DONE.has(w) ? `you ${t[0].toLowerCase()}${t.slice(1)}` : null;
 }
 
-// Where a lasting change began, over both periods with the unfinished last day of each left out:
+// Where a lasting change began, over the comparison and the period with the unfinished last day of each left out
+// (a period that ended earlier has none, and the comparison is then whole days too):
 // the split where the running total of (day − average) bottoms out (for a rise) or peaks (for a fall),
 // after each weekday is evened out against its own average, so weekends don't pull the split.
-function levelShift(ser, sign) {
-  const n = ser.cur.visitors.length, pts = [];
-  const add = (vals, start, off) => vals.forEach((v, i) => { if (i < n - 1) pts.push({ i: i + off, v, wd: dayDate(start, i).getDay() }); });
-  add(ser.prev.visitors, ser.start - n * 86400, -n);
+export function levelShift(ser, sign) {
+  const n = ser.cur.visitors.length, last = ser.back ? n : n - 1, pts = [], gap = ser.gap ?? n;
+  const add = (vals, start, off) => vals.forEach((v, i) => { if (i < last) pts.push({ i: i + off, v, wd: dayDate(start, i).getDay() }); });
+  add(ser.prev.visitors, prevStart(ser), -gap);
   add(ser.cur.visitors, ser.start, 0);
   const all = mean(pts.map(p => p.v));
   if (!all) return null;
@@ -293,9 +294,9 @@ export function noteChange(S, ser, notes) {
     }
   }
   // A usual day: the same weekday in both periods (unfinished days left out), or any day when there are too few.
-  const days = [...ser.prev.visitors.slice(0, n - 1).map((v, i) => ({ v, d: dayDate(prevStart(ser), i) })),
-    ...cur.slice(0, n - 1).map((v, i) => ({ v, d: dayDate(ser.start, i), i }))];
-  for (let i = 0; i < n - 1; i++) {
+  const last = ser.back ? n : n - 1, days = [...ser.prev.visitors.slice(0, last).map((v, i) => ({ v, d: dayDate(prevStart(ser), i) })),
+    ...cur.slice(0, last).map((v, i) => ({ v, d: dayDate(ser.start, i), i }))];
+  for (let i = 0; i < last; i++) {
     for (const lag of [0, 1]) {
       const note = noteOn(i - lag);
       if (!note) continue;
@@ -419,12 +420,13 @@ export function countNotes(totals, days) {
   return out;
 }
 
-// Runs of days far quieter than usual (under 35% of a usual day), today left out since it isn't over.
+// Runs of days far quieter than usual (under 35% of a usual day), today left out since it isn't over (live: false when
+// the period ended earlier and its last day is whole).
 // A usual day is the period's median, or the period before's when most of this one had no visitors at all.
-export function quietRuns(cur, prev = []) {
+export function quietRuns(cur, prev = [], live = true) {
   const n = cur.length, usual = median(cur) || median(prev), out = [];
   if (usual < 20) return out;
-  for (let i = 0; i < n - 1; i++) {
+  for (let i = 0; i < (live ? n - 1 : n); i++) {
     if (cur[i] >= usual * .35) continue;
     const last = out.at(-1);
     if (last && last.end === i - 1) { last.end = i; last.visitors += cur[i]; }
@@ -1016,7 +1018,7 @@ export function audienceStory(A) {
   return best;
 }
 
-export const audienceNote = ({ partial: p }, days) => p ? `Lede began recording devices and browsers during ${p == 'cur' ? 'these' : 'the'} ${days} days${p == 'cur' ? '' : ' before'}, so they ${p == 'cur' ? 'cover only the visits since then and ' : ''}show no change yet.` : '';
+export const audienceNote = ({ partial: p }, days) => p ? `Lede began recording devices and browsers during ${p == 'cur' ? days?.these ?? `these ${days} days` : beforeOf(days)}, so they ${p == 'cur' ? 'cover only the visits since then and ' : ''}show no change yet.` : '';
 
 /* ---------- other sub-pages ---------- */
 
@@ -1096,7 +1098,7 @@ export function pictureCaption({ path, days, kind, why }) {
   const what = kind === 'shot' ? `Picture of ${page} taken today. `
     : kind === 'og' ? `This is the picture ${page} shows when shared on social sites, not the page itself. ${later}`
       : kind === 'none' ? (why === 'permission' ? `To show a picture of the page here, ${fix}. ` : why === 'failed' || why === 'busy' ? later : 'No picture of the page yet; Lede takes one tomorrow. ') : '';
-  return what + (days === 1 ? 'Readers counted today.' : `Readers counted ${days?.over ?? `over the last ${days} days`}.`);
+  return what + (+days === 1 ? 'Readers counted today.' : `Readers counted ${days?.over ?? `over the last ${days} days`}.`);
 }
 
 // What readers do after a page (from /api/next): the two biggest steps, leaving the site or going on to a
