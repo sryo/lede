@@ -81,6 +81,8 @@ single-page app cost more; they are priced, not floored, as the README's "about"
 | 5 | t.js bytes (raw, gzip, brotli), t.js run time, Worker time per answer, dashboard bytes, home drawn, blocking | `npm run bench` |
 | 6 | queries per dashboard page, requests and writes per visit, KV use, Workers AI asks and tokens, the schedules' cost, headroom | `npm run bench` |
 
+Caps: `q3 k2 n2 b1 t1 *t.js*=2` (how firm each kind of number is: 3 never grows, 2 needs the owner's price, 1 may grow 10%, 0 only reported; fium RULES.md K6)
+
 ## When a change costs more
 Every change is measured (see "Measuring changes" in `docs/how-its-built.md`). A change made
 for goals 5 or 6 must make them better. Any other change may make them worse only to buy one of:
