@@ -2260,10 +2260,11 @@ function drawPeriod(el,ser,chart,restore){
   const nearest=o=>{const c=steps();return c.length?c.reduce((x,y)=>Math.abs(y-o)<Math.abs(x-o)?y:x):L};
   const place=o=>alt?Math.max(L,Math.min(as(),o)):nearest(o);
   // Keeps the windows inside the days there are: the period within the last 45 and the comparison after the first.
-  const fit=()=>{
+  // Moving the period leaves the comparison's last day (pin) where it was, and pushes it ahead only when they would collide.
+  const fit=pin=>{
     L=Math.max(MIN,Math.min(MAX,L));
     ae=Math.max(N-45+L-1,Math.min(N-1,ae));
-    off=manual?place(Math.max(L,off)):alignedGap(L,N-1-ae);
+    off=pin!=null?Math.max(L,ae-pin):manual?place(Math.max(L,off)):alignedGap(L,N-1-ae);
     if(as()-off<0){L=Math.max(MIN,ae+1-off);if(as()-off<0)off=Math.max(L,as())}
   };
   el.innerHTML='<div class="mmv"></div><div class="mmk"><span role="slider" tabindex="0" data-k="p" aria-label="Period"></span><span role="slider" tabindex="0" data-k="b" aria-label="Compared with"></span></div>';
@@ -2319,7 +2320,12 @@ function drawPeriod(el,ser,chart,restore){
       alt=p.altKey;
       if(!drag){const m=pick(at(p));view.style.cursor=!m?'':m.endsWith('body')?'grab':'ew-resize';return}
       const d=drag,dd=Math.round((at(p)-d.x0)/cw);
-      if(d.m==='a-body'){ae=d.ae0+dd;if(!alt&&N-1-ae<=3)ae=N-1}
+      if(d.m==='a-body'){
+        // The period's end snaps to today, else to where the comparison is whole weeks before it.
+        const pin=d.ae0-d.off0;ae=d.ae0+dd;manual=true;
+        if(!alt)ae=N-1-ae<=3?N-1:pin+7*Math.round((ae-pin)/7);
+        fit(pin);show();return;
+      }
       else if(d.m==='b-body'){off=d.off0-dd;manual=true}
       else if(d.m.endsWith('start')){L=d.L0-dd;ae=d.ae0;off=d.off0}
       else{L=d.L0+dd;ae=d.ae0+(L-d.L0);off=d.off0}
@@ -2331,7 +2337,7 @@ function drawPeriod(el,ser,chart,restore){
       if(kind==='p'){
         d={ArrowLeft:-1,ArrowDown:-1,ArrowRight:1,ArrowUp:1,PageDown:-7,PageUp:7}[k.key];
         if(d==null)return;
-        if(k.shiftKey)L+=d;else ae+=d;
+        if(k.shiftKey)L+=d;else{const pin=ae-off;ae+=d;manual=true;k.preventDefault();fit(pin);show();clearTimeout(t);t=setTimeout(end,800);return}
       }else{
         const c=steps(),i=c.indexOf(off),to={ArrowLeft:1,ArrowDown:1,PageDown:1,ArrowRight:-1,ArrowUp:-1,PageUp:-1}[k.key];
         if(to==null)return;
