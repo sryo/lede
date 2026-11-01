@@ -2,6 +2,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { headroom, scheduleDay, sheetDay, limits, floors } from '../scripts/headroom.mjs';
 import { counters, fakeAI, fakeFetch, WEBHOOK } from '../bench/fakes.mjs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
 import { baselineRef, fiumOf, fiumFiles, parseArgs } from '../scripts/bench.mjs';
 
 const reps = (v, n = 15, jitter = 0.01) => Array.from({ length: n }, (_, i) => v * (1 + (i % 3 - 1) * jitter));
@@ -80,10 +84,14 @@ test('the fium run format names each number by kind, and floors and the Worker c
   assert.equal(h.limits['browser: home drawn'], undefined);
 });
 
-test('fium files sit beside the run, and the bench\'s judging flags default to the latest run and main', () => {
-  assert.deepEqual(fiumFiles('bench/runs/latest.json'), { run: 'bench/runs/latest.fium.json', base: 'bench/runs/latest.fium-base.json' });
-  assert.equal(parseArgs(['--compare']).compare, 'bench/runs/latest.json');
+test('fium files sit beside the run, and the bench\'s judging flags default to the latest run in fium\'s runs folder and main', () => {
+  process.env.FIUM_HOME = mkdtempSync(join(tmpdir(), 'fium-home-'));
+  const common = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], { cwd: new URL('..', import.meta.url) }).toString().trim();
+  const runs = join(process.env.FIUM_HOME, 'runs', basename(dirname(common)));
+  assert.deepEqual(fiumFiles(join(runs, 'latest.json')), { run: join(runs, 'latest.fium.json'), base: join(runs, 'latest.fium-base.json') });
+  assert.equal(parseArgs(['--compare']).compare, join(runs, 'latest.json'));
   assert.equal(parseArgs(['--since']).since, 'main');
   assert.equal(parseArgs(['--since', 'next']).since, 'next');
-  assert.equal(parseArgs(['--noise']).noise, 'bench/runs/aa.json');
+  assert.equal(parseArgs(['--noise']).noise, join(runs, 'aa.json'));
+  assert.equal(parseArgs(['--noise', 'x.json']).noise, 'x.json');
 });
