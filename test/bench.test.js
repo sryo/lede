@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { noiseFrom, headroom, scheduleDay, sheetDay, limits, floors } from '../scripts/headroom.mjs';
+import { headroom, scheduleDay, sheetDay, limits, floors } from '../scripts/headroom.mjs';
 import { counters, fakeAI, fakeFetch, WEBHOOK } from '../bench/fakes.mjs';
 import { baselineRef, fiumOf, fiumFiles, parseArgs } from '../scripts/bench.mjs';
 
@@ -15,13 +15,6 @@ test('a run below a floor fails even when the base was just as low', () => {
 
 test('what costs nothing has no limit', () => {
   assert.equal(limits({ 'queries: /': 0, 'visit: writes': 2, 'visit: requests': 2, 'visit: kv writes': 0 })['visits a day before 1k KV writes'], Infinity);
-});
-
-test('the noise threshold is twice what unchanged code swings, at least 5%', () => {
-  const n = noiseFrom({ base: { times: { calm: reps(10), wild: reps(10) } }, run: { times: { calm: reps(10), wild: reps(10).map((x, i) => x * (i % 2 ? 1.2 : 0.85)) } } });
-  assert.equal(n.rel.calm, 0.05);
-  assert.ok(n.rel.wild > 0.2);
-  assert.equal(n.abs.wild, 0.05, 'a gap of 0.05 ms or less is too small to count');
 });
 
 test('headroom says how much a day fits in the free limits', () => {

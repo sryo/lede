@@ -27,7 +27,7 @@ import { gzipSync, brotliCompressSync, constants as Z } from 'node:zlib';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FLOORS, CEILING_MS, limits as headroomLimits, headroom, noiseFrom } from './headroom.mjs';
+import { FLOORS, CEILING_MS, limits as headroomLimits, headroom } from './headroom.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const FIUM = process.env.FIUM || join(process.env.HOME, 'Documents/fium/fium');
@@ -378,9 +378,11 @@ function writeFium(out, file) {
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.noise) {
-    const noise = noiseFrom(JSON.parse(readFileSync(resolve(ROOT, opts.noise), 'utf8')));
-    writeFileSync(join(ROOT, 'bench/noise.json'), JSON.stringify(noise, null, 2) + '\n');
-    for (const [k, v] of Object.entries(noise.rel)) console.log(`${k.padEnd(34)} ±${(v * 100).toFixed(1)}%`);
+    const file = resolve(ROOT, opts.noise), files = writeFium(JSON.parse(readFileSync(file, 'utf8')), file);
+    // fium's noise formula (RULES.md K2), and a gap of 0.05 ms or less never counts.
+    const noise = execFileSync('python3', [FIUM, 'noise', files.base, files.run, '--abs', '*=0.05']).toString();
+    writeFileSync(join(ROOT, 'bench/noise.json'), noise);
+    for (const [k, v] of Object.entries(JSON.parse(noise).rel)) console.log(`${k.padEnd(34)} ±${(v * 100).toFixed(1)}%`);
     process.exit(0);
   }
   if (opts.since) {

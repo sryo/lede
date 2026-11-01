@@ -1,31 +1,7 @@
-// What Lede's numbers mean against Cloudflare's free limits, and how much timings swing on unchanged code.
+// What Lede's numbers mean against Cloudflare's free limits.
 // `fium compare` judges a run (scripts/bench.mjs writes it in fium's format); this is what it can't know.
 
-export const ABS_MS = 0.05, CEILING_MS = 5, MIN_REL = 0.05;
-
-const median = a => { const s = a.slice().sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
-
-// Seeded, so the same run always gets the same verdict.
-function rng(seed) { return () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296); }
-export function bootstrap(ratios, n = 2000) {
-  const rand = rng(42), logs = ratios.map(Math.log), meds = [];
-  for (let i = 0; i < n; i++) meds.push(median(logs.map(() => logs[(rand() * logs.length) | 0])));
-  meds.sort((a, b) => a - b);
-  return [Math.exp(meds[Math.floor(n * 0.025)]), Math.exp(meds[Math.ceil(n * 0.975) - 1])];
-}
-
-export const ratiosOf = (base, run) => run.map((x, i) => (base[i] > 0 ? x / base[i] : x > 0 ? 2 : 1));
-
-// bench/noise.json from an A/A run: rel is twice the spread that unchanged code shows, never under 5%;
-// abs is a gap in ms too small to count, whatever the ratio.
-export function noiseFrom(aa) {
-  const rel = {};
-  for (const [k, b] of Object.entries(aa.base.times)) {
-    const [lo, hi] = bootstrap(ratiosOf(b, aa.run.times[k]));
-    rel[k] = Math.round(Math.max(MIN_REL, 2 * Math.max(hi - 1, 1 - lo)) * 1000) / 1000;
-  }
-  return { rel, abs: Object.fromEntries(Object.keys(rel).map(k => [k, ABS_MS])) };
-}
+export const CEILING_MS = 5;
 
 // What the schedules cost a day, whoever opens the dashboard: the spike check every 15 minutes, and the
 // week's story once a week. Counts missing from an older run are taken as none.
