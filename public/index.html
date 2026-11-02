@@ -312,7 +312,7 @@ button.tile-title:hover{color:var(--ink)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(440px,calc(100% - 32px));z-index:20;background:var(--ink);color:var(--tile);border-radius:12px;padding:10px 14px;font-size:var(--fs-s)}
 .retry{border:0;border-radius:999px;padding:8px 16px;background:var(--ink);color:var(--win);cursor:pointer;font-size:var(--fs-s);font-weight:600;margin-top:4px}
 .sk{display:block;background:var(--line);border-radius:6px}
-#home.busy .story,#home.busy .grid,.layer-body.busy{opacity:.5;transition:opacity .2s}
+#home.busy .story,#home.busy .grid,.layer-body.busy{opacity:.5}
 .state b,.legend .total{color:var(--ink);font-weight:600}
 
 /* zoom layers */
@@ -571,7 +571,34 @@ button.lrow:hover{background:var(--line)}
   .say{font-size:var(--fs-m)}
   .mix{grid-template-columns:1fr}.mix p,.mix-more{grid-column:1}
 }
-@media (prefers-reduced-motion:reduce){.blk,.shot,.shot img,.now .chev{transition:none}}
+/* What floats over the page grows in from the button that opened it, on the zoom's curve, and leaves
+   faster than it came. allow-discrete keeps it on screen while [hidden]'s display:none waits for the
+   fade, so .hidden still says open or shut the moment it's set. */
+.card.share-panel,.card.period-panel,.note-edit,.toast,.tip,.mix-more+p{
+  transition:opacity .2s cubic-bezier(.22,.9,.24,1),scale .2s cubic-bezier(.22,.9,.24,1),translate .2s cubic-bezier(.22,.9,.24,1),display .2s allow-discrete}
+.card.share-panel{transform-origin:24px 0} .card.period-panel{transform-origin:calc(100% - 24px) 0}
+@media (max-width:760px){.card.period-panel{transform-origin:50% 0}}
+/* scale applies before the translate(-50%,…) that places a tip or the toast, so their origin is where the
+   point they mark sits in the box before it's moved: x 0, and 8px past the edge for a tip. */
+.tip{transform-origin:0 -8px} .tip.below{transform-origin:0 8px} .toast{transform-origin:0 100%} .note-edit{transform-origin:50% 0}
+.card.share-panel[hidden],.card.period-panel[hidden],.toast[hidden],.tip[hidden],.mix-more+p[hidden]{
+  opacity:0;scale:.96;pointer-events:none;transition-duration:.12s;transition-timing-function:cubic-bezier(.4,0,1,1)}
+/* Share and Setup open in the same spot, so switching from one to the other doesn't fade the first over the second. */
+.share-panel[hidden]:has(+.share-panel:not([hidden])),.share-panel:not([hidden])+.share-panel[hidden]{transition:none}
+/* A tip goes the moment it's no longer wanted: it hides on a press, a scroll or the pointer leaving, and one left
+   fading would sit over whatever the press opened. */
+.toast[hidden]{translate:0 8px} .tip[hidden],.tip.warm{transition:none}
+/* A list that closes gives its room back at once, so what's below doesn't wait and then jump. */
+.mix-more+p[hidden]{transition:none}
+@starting-style{
+  .card.share-panel,.card.period-panel,.note-edit,.toast,.mix-more+p{opacity:0;scale:.96}
+  .toast{translate:0 8px} .tip{opacity:0;scale:.92} .mix-more+p{scale:1;translate:0 -4px}
+}
+/* A redraw dims what's on screen and brightens it again once it's back, both ways eased. Cards themselves
+   don't fade in: every redraw makes new ones, so each would blink. */
+#home .story,#home .grid,.layer-body{transition:opacity .2s}
+@media (prefers-reduced-motion:reduce){.blk,.shot,.shot img,.now .chev,.card.share-panel,.card.period-panel,.note-edit,.toast,.tip,.mix-more+p,
+  #home .story,#home .grid,.layer-body{transition:none}}
 </style>
 </head>
 <body>
@@ -2640,7 +2667,8 @@ function noteDays(el,ser,pad=40){
   el._pick=pick;pick(at);
   // The keyboard gets the same hint over the picked day that a pointer gets on hover.
   const say=()=>{const r=el.querySelectorAll('rect[data-hint]')[at];if(r){showHint(r);hint.textContent=r.dataset.hint.replace('Click to','Press Enter to')}};
-  el.onfocus=()=>setTimeout(say);
+  // Only focus from the keyboard: a click already has the pointer's hint, and this one would jump to the bar's top.
+  el.onfocus=()=>{if(el.matches(':focus-visible'))setTimeout(say)};
   // On home the chart sits in a tile that opens the overview; a day takes the click instead.
   el.onclick=e=>{
     e.stopPropagation();
@@ -2673,7 +2701,10 @@ function editNote(i,anchor,at){
   // Above the day when there is room, else below; always inside the window.
   const r=at?{left:at.clientX,width:0,top:at.clientY,bottom:at.clientY}:anchor.getBoundingClientRect(),w=f.offsetWidth,h=f.offsetHeight;
   f.style.left=Math.min(innerWidth-16-w,Math.max(16,r.left+r.width/2-w/2))+'px';
-  f.style.top=(r.top-h-8>=16?r.top-h-8:Math.min(innerHeight-16-h,r.bottom+8))+'px';
+  const above=r.top-h-8>=16;
+  f.style.top=(above?r.top-h-8:Math.min(innerHeight-16-h,r.bottom+8))+'px';
+  // It grows out of the day it's about.
+  f.style.transformOrigin=`${r.left+r.width/2-parseFloat(f.style.left)}px ${above?'100%':'0'}`;
   const outside=e=>{if(!f.contains(e.target))closeNote(false)};
   const picked=anchor.querySelectorAll?.('rect[data-hint]')[i];picked?.classList.add('on');
   closeNote=(back=true)=>{f.remove();picked?.classList.remove('on');document.removeEventListener('pointerdown',outside,true);closeNote=()=>{};if(back&&anchor.isConnected)anchor.focus()};
@@ -3064,19 +3095,21 @@ function startPolling(){
 // browser's own tooltip, which comes late and not at all in some browsers. The title moves to data-hint so the
 // two don't show together; an element with no other name keeps it as its aria-label.
 const hint=document.createElement('div');hint.className='tip hint';hint.hidden=true;document.body.append(hint);
-let hintFor=null;
+let hintFor=null,hintGone=-1e9;
 // A hint inside a chart sits at the pointer, since a ribbon's box can be far from where it was pointed at.
 function showHint(el,at){
   const t=el.getAttribute('title');
   if(t){el.dataset.hint=t;el.removeAttribute('title');if(!el.getAttribute('aria-label')&&!el.textContent.trim())el.setAttribute('aria-label',t)}
   if(!el.dataset.hint)return;
+  // Moving on from one hint to the next shows it at once; only the first in a while fades in.
+  hint.classList.toggle('warm',hint.hidden&&performance.now()-hintGone<300);
   hintFor=el;hint.textContent=el.dataset.hint;hint.hidden=false;
   const r=at?{left:at.clientX,width:0,top:at.clientY-4,bottom:at.clientY+12}:el.getBoundingClientRect(),below=r.top<48;
   hint.classList.toggle('below',below);
   const w=hint.offsetWidth,x=Math.min(innerWidth-8-w/2,Math.max(8+w/2,r.left+r.width/2));
   hint.style.left=x+'px';hint.style.top=(below?r.bottom:r.top)+'px';
 }
-function hideHint(){hintFor=null;hint.hidden=true}
+function hideHint(){if(!hint.hidden)hintGone=performance.now();hintFor=null;hint.hidden=true}
 const hinted=e=>e.target.closest?.('[title]:not(svg *),[data-hint]');
 const inChart=el=>el.ownerSVGElement?true:false;
 document.addEventListener('pointerover',e=>{const el=hinted(e);if(el&&el!==hintFor)showHint(el,inChart(el)?e:null);else if(!el)hideHint()});
