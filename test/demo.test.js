@@ -204,13 +204,17 @@ test('the build stops when the page points at its own files in a way it does not
   rewrite("f.path==='/'; '<path d=\"M0\"/>'; `${location.origin}/t.js`; public/story.js" + routes, '/lede/', ['story.js']);
 });
 
-test('the sample’s last half hour is about as busy as its hours say a usual one is', async () => {
+test('the sample’s last half hour is about as busy as its hours say a usual one is, at every hour of the day', async () => {
   const { demoStore } = await import('../src/demo.js');
   const { parseQuery } = await import('../src/api.js');
   const { onlinePace } = await import('../public/story.js');
   const q = parseQuery(new URL('https://x/api/hourly?site=example.com&days=30&tz=0'), ['example.com']);
-  const P = onlinePace(await demoStore.live(q), await demoStore.hourly(q), Date.now() / 1000);
-  if (P) assert.ok(P.ratio > .6 && P.ratio < 1.75, `ratio ${P.ratio.toFixed(2)}`);
+  const hourly = await demoStore.hourly(q), day = Math.floor(Date.now() / 86400000) * 86400;
+  for (let half = 0; half < 48; half++) {
+    const now = day + half * 1800 + 600;
+    const P = onlinePace(await demoStore.live(q, now), hourly, now);
+    if (P) assert.ok(P.ratio > .6 && P.ratio < 1.75, `ratio ${P.ratio.toFixed(2)} at ${new Date(now * 1000).toISOString().slice(11, 16)} UTC`);
+  }
 });
 
 test('a local build lands in the system’s temporary folder, never in the project; the workflow names its own', () => {

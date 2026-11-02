@@ -500,11 +500,13 @@ export const demoStore = {
   },
   // The people listed, and as many more who left earlier in the half hour as a usual half hour at this time of day
   // has in the sample's own hours, so the Online view's "usual" is true of the sample at any hour.
-  async live(q) {
-    const now = Math.floor(Date.now() / 1000), usual = q ? Math.round(usualHalfHour(await this.hourly(q), now) ?? 0) : 0;
+  async live(q, now = Math.floor(Date.now() / 1000)) {
+    const usual = q ? Math.round(usualHalfHour(await this.hourly(q), now) ?? 0) : 0;
     const more = Array.from({ length: Math.max(0, usual - LIVE.length) }, (_, i) => ({ path: PATHS[i % PATHS.length].key, referrer: SOURCES[i % SOURCES.length].key,
       country: ['US', 'GB', 'DE', 'BR', 'IN', 'JP', 'CA', 'AU'][i % 8], ago: 400 + (i * 97) % 1380, span: 20 + (i * 53) % 400 }));
-    return shapeLive([...LIVE, ...more].map(v => ({ ...v, first: now - v.ago - v.span, last: now - v.ago })), now);
+    // At a quiet hour the listed people alone would outnumber a usual half hour, so only that many are online.
+    const people = q && usual < LIVE.length ? LIVE.slice(0, usual) : [...LIVE, ...more];
+    return shapeLive(people.map(v => ({ ...v, first: now - v.ago - v.span, last: now - v.ago })), now);
   },
 };
 
