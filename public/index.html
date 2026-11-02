@@ -127,8 +127,9 @@ h1,h2,h3{margin:0;font:inherit}
 .chip::before,.setup-panel .onoff::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--live)}
 .period{display:inline-flex;gap:4px} .period[hidden]{display:none}
 /* the panel hangs from the whole header, not from the buttons, so on a phone it keeps to the screen */
-.topbar,.layer-head{position:relative} .layer-head .period-panel{right:16px}
+.topbar,.layer-head{position:relative}
 .card.period-panel{position:absolute;top:calc(100% + 8px);right:0;z-index:5;width:min(640px,calc(100vw - 32px));padding:12px 16px 4px;box-shadow:var(--pop)}
+.layer-head .card.period-panel{right:16px}
 .period button{height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:transparent;color:var(--muted);font-size:var(--fs-s);cursor:pointer}
 .period button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--win);font-weight:700}
 
@@ -312,7 +313,7 @@ button.tile-title:hover{color:var(--ink)}
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(440px,calc(100% - 32px));z-index:20;background:var(--ink);color:var(--tile);border-radius:12px;padding:10px 14px;font-size:var(--fs-s)}
 .retry{border:0;border-radius:999px;padding:8px 16px;background:var(--ink);color:var(--win);cursor:pointer;font-size:var(--fs-s);font-weight:600;margin-top:4px}
 .sk{display:block;background:var(--line);border-radius:6px}
-#home.busy .story,#home.busy .grid,.layer-body.busy{opacity:.5}
+#home.busy .story,#home.busy .grid,.layer-body.busy,.dim-body.busy{opacity:.5}
 .state b,.legend .total{color:var(--ink);font-weight:600}
 
 /* zoom layers */
@@ -531,7 +532,9 @@ button.lrow:hover{background:var(--line)}
   body{padding-block:12px}
   .win{height:auto;min-height:0;max-height:none;overflow:visible;background:transparent;box-shadow:none;border-radius:0}
   .home{position:relative;inset:auto;height:auto;overflow:visible;padding:4px 0}
-  .hint,.layer-head .chip{display:none}
+  .site>.hint,.layer-head .chip{display:none}
+  /* phones: the period goes under the title, so the title keeps the row */
+  .layer-head{flex-wrap:wrap} .layer-head>.period{flex-basis:100%}
   .story{grid-template-columns:1fr;gap:12px}
   .story .now{justify-self:stretch}.now-body{width:100%}
   .now-body>span:last-child{white-space:normal}
@@ -596,9 +599,9 @@ button.lrow:hover{background:var(--line)}
 }
 /* A redraw dims what's on screen and brightens it again once it's back, both ways eased. Cards themselves
    don't fade in: every redraw makes new ones, so each would blink. */
-#home .story,#home .grid,.layer-body{transition:opacity .2s}
+#home .story,#home .grid,.layer-body,.dim-body{transition:opacity .2s}
 @media (prefers-reduced-motion:reduce){.blk,.shot,.shot img,.now .chev,.card.share-panel,.card.period-panel,.note-edit,.toast,.tip,.mix-more+p,
-  #home .story,#home .grid,.layer-body{transition:none}}
+  #home .story,#home .grid,.layer-body,.dim-body{transition:none}}
 </style>
 </head>
 <body>
@@ -1258,7 +1261,8 @@ function run(parent,layer,src,opening,h0){
   if(h0&&h0!==h1)anims.push(win.animate([{height:h0+'px'},{height:h1+'px'}],{duration:opt.duration,easing:opt.easing}));
   anims[0].finished.then(()=>{anims.forEach(a=>a.cancel());ghost.remove();parent.style.transformOrigin='';done()});
 }
-document.addEventListener('keydown',e=>{if(e.key==='Escape')goBack()});
+// An open Custom panel takes the Escape for itself: it closes, and the view stays.
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.querySelector('.period-panel:not([hidden])'))goBack()});
 // Zooming out goes through the browser's history, so the back button and the dashboard's own back agree.
 function goBack(){if(animating||stack.length<2)return;if((history.state?.depth||0)>0)history.back();else back()}
 // A Back pressed while a zoom is still moving waits for it to finish, so no press is lost.
@@ -1281,8 +1285,11 @@ const stale=(body,gen)=>gen!==body._gen;
 async function view(body,fn){
   release(body);
   const gen=body._gen=(body._gen|0)+1;
-  body.innerHTML='<div class="state">Loading…</div>';
+  // A redraw keeps what's there, dimmed, until the new one replaces it; only a first draw says it's loading.
+  if(body.firstElementChild&&!body.querySelector(':scope>.state'))body.classList.add('busy');
+  else body.innerHTML='<div class="state">Loading…</div>';
   try{await fn(body)}catch(e){if(!stale(body,gen))showError(body,e,()=>view(body,fn))}
+  finally{if(!stale(body,gen))body.classList.remove('busy')}
 }
 
 // subj colours the bar after each name (its length is the value against the largest row).
@@ -1600,22 +1607,27 @@ function drawSpeed(body,S,path){
 }
 
 // The day's picture of the page, kept by the Worker (src/shot.js). It keeps the page's shape: as tall as the
-// column, or, for a short page, as wide as it may be.
+// column, or, for a short page, as wide as it may be. A picture already shown is the same one when the period changes,
+// so the card drawn again shows it at once, at its size, without asking or fading it in again.
+const shownPictures=new Map();
 async function showPicture(sec,path){
-  const shot=sec.querySelector('.shot'),cap=sec.querySelector('figcaption'),site=SITE;
+  const shot=sec.querySelector('.shot'),cap=sec.querySelector('figcaption'),site=SITE,key=`${site} ${path}`;
   const say=(kind,why)=>{cap.innerHTML=pictureCaption({path,days:PER(),kind,why})};
   const place=(src,kind,why,failed)=>{
+    const again=shownPictures.has(key);
     const img=new Image();img.alt='';
     img.onload=()=>{
       if(!sec.isConnected)return;
       sec.querySelector('.reach-nums').remove();shot.parentNode.hidden=false;
       const h=shot.offsetHeight,w=Math.min(280,Math.max(40,h*img.naturalWidth/img.naturalHeight));
+      if(again){shot.style.transition='none';img.className='in'}
       shot.style.width=w+'px';shot.style.height=Math.min(h,w*img.naturalHeight/img.naturalWidth)+'px';
-      shot.prepend(img);requestAnimationFrame(()=>requestAnimationFrame(()=>img.classList.add('in')));
-      say(kind,why);
+      shot.prepend(img);if(!again)requestAnimationFrame(()=>requestAnimationFrame(()=>img.classList.add('in')));
+      shownPictures.set(key,[src,kind,why]);say(kind,why);
     };
     img.onerror=failed;img.src=src;
   };
+  if(shownPictures.has(key))return place(...shownPictures.get(key),()=>{shownPictures.delete(key);say('none','failed')});
   try{
     const res=await fetch(`/api/shot?${new URLSearchParams({site,path})}`);
     if(!sec.isConnected||site!==SITE)return;
@@ -2247,10 +2259,11 @@ async function renderOnline(body){
 
 // Redraws the Online view in place, without the loading state in between, and keeps focus on the row it was on.
 async function redrawOnline(body){
-  const at=body.contains(document.activeElement)?document.activeElement.dataset.path:null;
+  const a=body.contains(document.activeElement)?document.activeElement:null,at=a?.dataset.path;
   body._gen=(body._gen|0)+1;
   try{await renderOnline(body)}catch{return}
-  if(at!=null)[...body.querySelectorAll('[data-path]')].find(b=>b.dataset.path===at)?.focus({preventScroll:true});
+  // The same path is both a row and the chart's lane label, so it goes back to the same kind of element.
+  if(at!=null)[...body.querySelectorAll('[data-path]')].find(b=>b.dataset.path===at&&b.tagName===a.tagName)?.focus({preventScroll:true});
 }
 
 /* ---------- home tiles ---------- */
@@ -2681,7 +2694,7 @@ function noteDays(el,ser,pad=40){
       e.preventDefault();pick(at+step);say();
       const note=NOTES.find(x=>x.day===dayKey(dayDate(ser.start,at)));
       announce(`${fmtDate(dayDate(ser.start,at),'long')}: ${fmtInt(ser.cur.visitors[at])} visitors${note?`. Your note: ${note.text}`:''}`);
-    }else if(e.key==='Enter'||e.key===' '){e.preventDefault();editNote(at,el)}
+    }else if(e.key==='Enter'||e.key===' '){e.preventDefault();const r=el.querySelectorAll('rect[data-hint]')[at]?.getBoundingClientRect();editNote(at,el,r&&{clientX:r.left+r.width/2,clientY:r.top})}
   };
 }
 
@@ -3114,7 +3127,8 @@ const hinted=e=>e.target.closest?.('[title]:not(svg *),[data-hint]');
 const inChart=el=>el.ownerSVGElement?true:false;
 document.addEventListener('pointerover',e=>{const el=hinted(e);if(el&&el!==hintFor)showHint(el,inChart(el)?e:null);else if(!el)hideHint()});
 document.addEventListener('pointermove',e=>{if(hintFor&&inChart(hintFor)&&hinted(e)===hintFor)showHint(hintFor,e)});
-document.addEventListener('focusin',e=>{const el=hinted(e);el?showHint(el):hideHint()});
+// Only focus from the keyboard shows one: a click's focus comes after its press has hidden the pointer's hint.
+document.addEventListener('focusin',e=>{const el=hinted(e);el&&e.target.matches(':focus-visible')?showHint(el):hideHint()});
 document.addEventListener('focusout',hideHint);
 document.addEventListener('pointerdown',hideHint);
 addEventListener('scroll',hideHint,true);
