@@ -3,7 +3,7 @@ version: alpha
 name: Lede
 themes: [light, dark]
 # derived from the tokens below (faded mixes, rules, the shadow), or local to one component
-omitted: ["--a-*", "--*-t", "--*-p", "--*-ts", "--*-ps", "--rule", "--lost", "--pop", "--hatch-*", "--wait", "--was"]
+omitted: ["--a-*", "--*-t", "--*-p", "--*-ts", "--*-ps", "--rule", "--lost", "--pop", "--achura-*", "--wait", "--was"]
 colors:
   canvas: "#FAF9F6"
   win: "#F3F1EC"

@@ -1,5 +1,5 @@
-// Rasterizes a hatch glyph's path, to measure how much of its tile it inks. Copied from the hatch library
-// (https://github.com/sryo/hatch, test/raster.mjs), which Lede's strip textures come from; only what the tests use.
+// Rasterizes an achura glyph's path, to measure how much of its tile it inks. Copied from the achura library
+// (https://github.com/sryo/achura, test/raster.mjs), which Lede's strip textures come from; only what the tests use.
 // Covers M L H V C S A Z, absolute and relative; arcs are circular (rx = ry, no rotation). Under evenodd, a path that
 // starts with the whole tile (M0 0h8v8H0z) cuts the rest out of it.
 export function raster(g, n = 128) {

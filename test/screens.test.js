@@ -219,14 +219,14 @@ test('the overview shows sources and pages as two strips shaded by position, its
   assert.doesNotMatch(d, /rowsInto\(/);
 });
 
-// The strips' textures: what shadeSeg asks for, and the hatch rules the page carries for light and dark.
+// The strips' textures: what shadeSeg asks for, and the achura rules the page carries for light and dark.
 const shadeSeg = new Function(`${html.match(/const GLYPHS4=.*\n/)[0]}${html.match(/const shadeSeg=.*\n/)[0]}return shadeSeg`)();
-const hatchLine = html.split('\n').find(l => l.includes('.hatch-diag.w1{'));
-const darkAt = hatchLine.indexOf('@media (prefers-color-scheme:dark){');
-const patterns = css => Object.fromEntries([...css.matchAll(/\.hatch-(\w+)\.(w\d)\{--hatch-g:url\("data:image\/svg\+xml,(.*?)"\)\}/g)]
+const achuraLine = html.split('\n').find(l => l.includes('.achura-diag.w1{'));
+const darkAt = achuraLine.indexOf('@media (prefers-color-scheme:dark){');
+const patterns = css => Object.fromEntries([...css.matchAll(/\.achura-(\w+)\.(w\d)\{--achura-g:url\("data:image\/svg\+xml,(.*?)"\)\}/g)]
   .map(m => [`${m[1]}.${m[2]}`, m[3].match(/ d='([^']*)'/)[1]]));
-const PATTERNS = { light: patterns(hatchLine.slice(0, darkAt)), dark: patterns(hatchLine.slice(darkAt)) };
-const patternOf = i => { const c = shadeSeg('src', i).match(/hatch-(\w+) (w\d)/); return c && `${c[1]}.${c[2]}`; };
+const PATTERNS = { light: patterns(achuraLine.slice(0, darkAt)), dark: patterns(achuraLine.slice(darkAt)) };
+const patternOf = i => { const c = shadeSeg('src', i).match(/achura-(\w+) (w\d)/); return c && `${c[1]}.${c[2]}`; };
 // A path that starts with the whole tile is cut out of it, under evenodd.
 const ink = d => d.startsWith('M0 0h8v8H0z') ? cover({ invert: true, d: d.slice(11) }) : cover(d);
 
@@ -239,7 +239,7 @@ test('a strip’s first part is plain, and every later part has its texture in b
 });
 
 test('textures keep the part’s own color and fade it toward the card in even steps', () => {
-  assert.match(html, /\.src-h,\.page-h,\.time-h\{--hatch-ink:var\(--tile\);--hatch-a:1\}/);
+  assert.match(html, /\.src-h,\.page-h,\.time-h\{--achura-ink:var\(--tile\);--achura-a:1\}/);
   for (const s of ['src', 'page', 'time']) assert.match(html, new RegExp(`\\.${s}-h,\\.${s}-s\\{background:var\\(--${s}\\)\\}`));
   const STEPS = [.23, .45, .65, .85];
   const at = [1, 2, 3, 4].map(i => ({ light: ink(PATTERNS.light[patternOf(i)]), dark: ink(PATTERNS.dark[patternOf(i)]) }));
