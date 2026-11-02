@@ -81,7 +81,7 @@ single-page app cost more; they are priced, not floored, as the README's "about"
 | 5 | t.js bytes (raw, gzip, brotli), t.js run time, Worker time per answer, dashboard bytes, home drawn, blocking | `npm run bench`: `t.js <part>`, `dashboard bytes`, `dashboard gzip`, `dashboard brotli`, `browser<x>`, `worker<x>`, `big site<x>` | `npm run bench -- --aa --out ~/.fium/runs/lede/done.json; echo ~/.fium/runs/lede/done.fium.json` |
 | 6 | queries per dashboard page, requests and writes per visit, KV use, Workers AI asks and tokens, the schedules' cost, headroom | `npm run bench`: `queries: <page>`, `sheet queries: <page>`, `api calls: <page>`, `screenshots: <page>`, `kv <op>: <page>`, `ai <x>: <page>`, `visit<x>`, `cron<x>`, `visits a day <x>`, `dashboard home loads a day <x>` | `npm run bench -- --aa --out ~/.fium/runs/lede/done.json; echo ~/.fium/runs/lede/done.fium.json` |
 
-Caps: `q3 k2 n2 b1 t1 *t.js*=2` (how firm each kind of number is: 3 hard, must end the same or better; 2 semi-hard, past its margin you choose; 1 semi-hard with a 10% margin; 0 soft, no limit; fium RULES.md K6)
+Caps: `all=ask quality=hard bytes=ask+10% time=ask+10% *t.js*=ask`
 
 ## When a change costs more
 Every change is measured (see "Measuring changes" in `docs/how-its-built.md`). A change made
