@@ -634,8 +634,8 @@ export function flowCaption(S, T, flows, days = 30) {
 
 /* ---------- who is here now ---------- */
 
-// Wee People letters that read as one standing person each.
-const PEOPLE = 'RoKhuBqAbCeFgHiJlN';
+// Wee People letters that read as one person each, t a wheelchair user. Figures overlap in a crowd, wider ones more.
+const PEOPLE = 'RoKhuBqAbCeFgHiJlNt';
 const hash = s => { let h = 2166136261; for (const ch of s) h = Math.imul(h ^ ch.charCodeAt(0), 16777619); return h >>> 0; };
 
 // One figure per visitor: those here now first (a source the sentence names first of all), then those who left.

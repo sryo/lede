@@ -4,7 +4,7 @@ import { moreFindings, findSpike, readStory, tellStory, bounceSplit, bounceCapti
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
   scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
   unitOf, countNotes, quietRuns, Span, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
-  ICONS, iconFor, iconSVG, figureScale, apportion, crowdFigures, laneScale, pageList, leftWord, pairStay, bounciestPair, outcomeStory, readingMap, lanes, laneX } from '../public/story.js';
+  ICONS, iconFor, iconSVG, figureScale, apportion, crowdFigures, laneScale, figureLetter, pageList, leftWord, pairStay, bounciestPair, outcomeStory, readingMap, lanes, laneX } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -197,6 +197,12 @@ const live = (n, left, extra = []) => ({
     ...Array.from({ length: n }, (_, i) => ({ path: `/p${i}`, referrer: 'google.com', country: 'US', seconds: 30 + i, active: true })),
     ...Array.from({ length: left }, (_, i) => ({ path: `/q${i}`, referrer: '', country: 'DE', seconds: 200, active: false })),
   ],
+});
+
+test('crowd: a wheelchair user (Wee People\'s t) is among the figures, for a person and in proportion', () => {
+  const many = { now: 200, recent: 200, visitors: Array.from({ length: 200 }, (_, i) => ({ path: `/p${i}`, referrer: '', country: 'US', seconds: 30, active: true })) };
+  assert.ok(crowd(many, new Set(), Infinity).some(p => p.letter === 't'));
+  assert.ok(Array.from({ length: 30 }, (_, i) => figureLetter(i)).includes('t'));
 });
 
 test('crowd: people here first (named source first), then those who left, at most 18', () => {
