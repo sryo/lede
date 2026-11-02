@@ -1,3 +1,5 @@
+// The /lede endpoint the tracker posts to: each event is checked, its visitor hashed with the month's salt, and
+// written to Analytics Engine as one data point (see schema.js). Bots, spam and sites not listed are dropped.
 import { unwanted, isSpam } from './bots.js';
 import { channelFor, referrerHost, sourceTag } from './channels.js';
 import { deviceOf, browserOf, osOf, versionOf } from './devices.js';

@@ -1,3 +1,4 @@
+// The SQL the dashboard's questions become, run against Analytics Engine's SQL API; shape.js turns the rows into JSON.
 import { COL } from './schema.js';
 
 export const DAY = 86400;

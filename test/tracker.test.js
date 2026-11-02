@@ -2,6 +2,7 @@ import { test as nodeTest } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { TRACKING } from '../src/collect.js';
 
 // Every test runs on the readable tracker and on public/t.js, the minified copy that sites receive,
 // so minifying it can't change what it does.
@@ -140,6 +141,12 @@ test('tracker: sends the referring address without its #, and the landing page\'
   assert.equal(page('https://example.com/?mc_cid=a&mc_eid=b&_hsenc=c&_hsmi=d&via=e&igshid=f&yclid=g&srsltid=h').sent[0].l, '?mc_cid=a&mc_eid=b&_hsenc=c&_hsmi=d&via=e&igshid=f&yclid=g&srsltid=h', 'email tools’ and other sites’ tags too');
   assert.equal(page('https://example.com/?q=owls&utm_medium=email').sent[0].l, '&utm_medium=email', 'the server reads it as a query all the same');
   assert.deepEqual([page('https://example.com/?q=owls').sent[0].l, page('https://example.com/').sent[0].r], ['', '']);
+});
+
+// The tracker can't import collect.js, so it carries its own copy of the tags collect.js strips from a page.
+test('tracker: picks out the same landing-page tags that collect.js leaves out of a page', () => {
+  const tags = SOURCE.match(/\[\?&\](\(utm_[^=]*\))=/)?.[1];
+  assert.equal(`^${tags}$`, TRACKING.source, 'change both TRACKING in src/collect.js and the tags in src/tracker.js');
 });
 
 test('tracker: a link within the site that carries tags doesn\'t replace where the visit came from', () => {
