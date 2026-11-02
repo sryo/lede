@@ -1023,15 +1023,16 @@ function drawSteps(el,steps,{fmt,aria,colorOf,openOf=()=>null}){
   });
 }
 
+// Ids for SVG defs, new each drawing: screens stack, and a def with the same id on a hidden one would win.
+let defN=0;
 // Rows of ten squares: the filled share is how many of every 10 visits left after one page.
-let clipN=0;
 function squaresSVG(pct,size,gap,fill){
   const k=Math.max(0,Math.min(10,pct*10)),full=Math.floor(k),frac=k-full,r=Math.round(size*.18),w=10*size+9*gap;
   const at=i=>i*(size+gap);
   let s=`<svg width="${w}" height="${size}" aria-hidden="true">`;
   for(let i=0;i<10;i++)s+=`<rect x="${at(i)}" width="${size}" height="${size}" rx="${r}" fill="var(--bnc-p)"/>`;
   for(let i=0;i<full;i++)s+=`<rect x="${at(i)}" width="${size}" height="${size}" rx="${r}" fill="${fill}"/>`;
-  if(frac>.02){const id=`sq${++clipN}`;s+=`<clipPath id="${id}"><rect x="${at(full)}" width="${(frac*size).toFixed(1)}" height="${size}"/></clipPath><rect x="${at(full)}" width="${size}" height="${size}" rx="${r}" fill="${fill}" clip-path="url(#${id})"/>`}
+  if(frac>.02){const id=`sq${++defN}`;s+=`<clipPath id="${id}"><rect x="${at(full)}" width="${(frac*size).toFixed(1)}" height="${size}"/></clipPath><rect x="${at(full)}" width="${size}" height="${size}" rx="${r}" fill="${fill}" clip-path="url(#${id})"/>`}
   return s+'</svg>';
 }
 // rows: [{pct, label, story, aria, open}]; pct null (no visits) shows a dash over empty squares.
@@ -2308,12 +2309,13 @@ function drawPeriod(el,ser,getChart,restore){
     const first=Math.min(counted,as()-off),cw=W/N,x=i=>i*cw,max=maxOf(all.slice(first));
     const lab=(x,y,s,at,ink)=>`<text x="${x}" y="${y}" font-size="12" text-anchor="${at}" fill="var(--${ink?'ink)" font-weight="600':'muted)'}">${s}</text>`;
     const knob=x=>`<rect x="${x-3}" y="${TOP+4}" width="6" height="${BAR-8}" rx="3" fill="var(--time)" stroke="var(--tile)" stroke-width="1.5"/>`;
+    const hatch=`mmh${++defN}`;
     const draw=()=>{
       const a=as(),b=a-off,be=ae-off,n=L,wd=i=>fmtWeekday(date(i),'long'),k=off%7===0?`the same weekday ${off===7?'a week':off/7+' weeks'} earlier`:`just before`;
       const fA=document.activeElement===chips[0],fB=document.activeElement===chips[1];
-      let svg=`<svg width="${W}" height="64" style="overflow:visible"><defs><pattern id="mmh" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.6" height="4" fill="var(--time)"/></pattern></defs>`;
+      let svg=`<svg width="${W}" height="64" style="overflow:visible"><defs><pattern id="${hatch}" width="4" height="4" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="1.6" height="4" fill="var(--time)"/></pattern></defs>`;
       for(let i=first;i<N;i++){const h=all[i]?Math.max(2,Math.round(BAR*all[i]/max)):0,inA=i>=a&&i<=ae,inB=i>=b&&i<=be;
-        svg+=`<rect x="${x(i).toFixed(1)}" y="${BASE-h}" width="${Math.max(1,cw-1).toFixed(1)}" height="${h}" fill="${inB?'url(#mmh)':'var(--time)'}" opacity="${inA||inB?1:.2}"/>`}
+        svg+=`<rect x="${x(i).toFixed(1)}" y="${BASE-h}" width="${Math.max(1,cw-1).toFixed(1)}" height="${h}" fill="${inB?`url(#${hatch})`:'var(--time)'}" opacity="${inA||inB?1:.2}"/>`}
       svg+=`<line class="grid-l" x1="${x(first)}" x2="${W}" y1="${BASE+.5}" y2="${BASE+.5}"/>`;
       for(let i=first;i<N;i++)if(date(i).getDay()===1)svg+=`<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${BASE+1}" y2="${BASE+4}" stroke="var(--muted)" opacity=".5"/>`;
       // The window whose slider has focus is outlined in the focus colour and heavier.

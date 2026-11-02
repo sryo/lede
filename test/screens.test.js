@@ -454,6 +454,14 @@ test('the strip: edges and resizes from the pure rules, focus kept only where it
   assert.match(f, /t=setTimeout\(\(\)=>commit\(\),800\)/);
 });
 
+test('an SVG def gets an id of its own each time it is drawn, since a hidden screen\'s copy under the stack would win', () => {
+  const ids = [...html.matchAll(/<(pattern|clipPath|linearGradient|radialGradient|mask|marker|filter) id="([^"]*)"/g)].map(m => m[2]);
+  assert.ok(ids.length >= 2);
+  for (const id of ids) assert.match(id, /\$\{/, `${id} is the same in every drawing`);
+  // A reference inside a plain string isn't filled in, so it names no def at all.
+  for (const [ref] of html.matchAll(/'url\(#[^)]*\)'|url\(#[^$][^)]*\)/g)) assert.fail(`${ref} doesn't point at a def drawn with it`);
+});
+
 test('the period strip lives in the header beside 7 and 30 days, on every screen, and previews only a chart that shows the whole site', () => {
   // One markup for the topbar and every layer's header: the presets, a Custom button and the panel with the strip.
   assert.match(html, /const PERIOD='<div class="period" role="group" aria-label="Show the last">[^']*data-days="7"[^']*data-days="30"[^']*class="custom" aria-expanded="false"[^']*<section class="card period-panel" hidden><div class="mm"><\/div><\/section><\/div>';/);
