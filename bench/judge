@@ -1,0 +1,4 @@
+bench/**
+scripts/bench.mjs
+test/**
+GOALS.md
