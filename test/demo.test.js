@@ -222,6 +222,6 @@ test('a local build lands in the system’s temporary folder, never in the proje
   assert.equal(OUT, join(tmpdir(), 'lede-demo'));
   assert.ok(!OUT.startsWith(ROOT));
   const flow = readFileSync(new URL('../.github/workflows/demo.yml', import.meta.url), 'utf8');
-  assert.match(flow, /run: npm run demo -- --out demo-site\n/);
+  assert.match(flow, /run: npm run demo -- --base \/lede\/demo\/ --out demo-site\/demo\n/);
   assert.match(flow, /path: demo-site\n/);
 });

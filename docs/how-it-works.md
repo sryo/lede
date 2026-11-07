@@ -1,6 +1,6 @@
 # How Lede works
 
-Lede, said like *lead* in "take the lead", is the newsroom word for the opening of a story: the sentence that says what happened. Lede is one Cloudflare Worker that counts the people who visit your site and tells you, in plain words, what changed. To see it before you install it, open the demo at https://sryo.github.io/lede/.
+Lede, said like *lead* in "take the lead", is the newsroom word for the opening of a story: the sentence that says what happened. Lede is one Cloudflare Worker that counts the people who visit your site and tells you, in plain words, what changed. To see it before you install it, open the demo at https://sryo.github.io/lede/demo/.
 
 This page is for the person who runs Lede. How Lede is put together, for changing it, is in [How Lede is built](how-its-built.md).
 

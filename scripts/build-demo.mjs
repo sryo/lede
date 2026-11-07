@@ -1,4 +1,4 @@
-// Writes the static sample published at sryo.github.io/lede: the dashboard from public/, with the
+// Writes the static sample published at sryo.github.io/lede/demo: the dashboard from public/, with the
 // Worker bundled for the browser (demo/main.js) answering its /api/* from the sample data. Nothing in public/
 // changes, so the dashboard's bytes stay what the bench measures.
 //   npm run demo [-- --base /lede/ --out demo-site]

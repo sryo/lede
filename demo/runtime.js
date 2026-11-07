@@ -1,4 +1,4 @@
-// The sample at sryo.github.io/lede runs the Worker in the visitor's browser: the dashboard's /api/* requests are
+// The sample at sryo.github.io/lede/demo runs the Worker in the visitor's browser: the dashboard's /api/* requests are
 // answered by src/index.js with DEMO on, from an in-memory store, so nothing reaches Cloudflare and no visitor
 // can use up anyone's free limits. Nothing here touches window or location, so the tests run it in Node.
 import worker from '../src/index.js';
