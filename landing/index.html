@@ -664,18 +664,23 @@ section.sec{padding:80px 0}
     w = r.width; h = r.height;
     canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const rand = rng(20051), sz = w < 600 ? 10 : 13, rowH = sz * 1.1, old = slots;
+    const rand = rng(20051), sz = w < 600 ? 10 : 13, old = slots;
+    // Perspective: rows nearer the front are taller and set further apart, as an audience seen from the stage.
+    // A figure's size comes from its row alone, from half the base size at the back to 3.6 times it at the
+    // front, and each row's step is its own size, so rows read as bands instead of piling up.
+    const back = sz * 0.5, front = sz * 3.6, sizeAt = y => back * (front / back) ** Math.min(1, Math.max(0, y / h));
     slots = [];
-    for (let y = rowH; y < h + rowH; y += rowH) {
-      for (let x = -sz; x < w + sz; x += sz * 0.5) {
+    for (let y = back; y <= h; y += sizeAt(y) * 0.55) {
+      const size = sizeAt(y), shift = (rand() - 0.5) * size * 0.5;
+      for (let x = -size + shift; x < w + size; x += size * 0.44) {
         const u = x / w;
-        // a rolling horizon: the crowd thickens below it, like a halftone of a hill of people
+        // a rolling horizon: the crowd begins below it and thickens toward the front
         const horizon = h * (0.16 + 0.1 * Math.sin(u * 6.6 + 0.7) + 0.04 * Math.sin(u * 17 + 2));
-        const v = smooth(horizon - rowH * 2, horizon + h * 0.6, y + (rand() - 0.5) * rowH);
+        const v = smooth(horizon - size * 2, horizon + h * 0.45, y + (rand() - 0.5) * size);
         if (v < 0.03 || rand() > 0.5 + v) continue;
-        // places near the ground are filled first, so a small crowd still stands on it
-        slots.push({ x: x + (rand() - 0.5) * sz * 0.4, y, u, size: sz * (0.6 + 1.7 * v), ch: LETTERS[(rand() * LETTERS.length) | 0],
-          rank: (1 - v) * 0.4 + rand() * 0.6, near: Math.abs(u - 0.66) + rand() * 0.07, cur: null, tgt: null, rate: 0.07 + rand() * 0.06, sc: 1, sv: 0 });
+        // depth weighs less than chance in the order places fill, so a small crowd isn't only its front row
+        slots.push({ x: x + (rand() - 0.5) * size * 0.3, y, u, size, ch: LETTERS[(rand() * LETTERS.length) | 0],
+          rank: (1 - v) * 0.25 + rand() * 0.75, near: Math.abs(u - 0.66) + rand() * 0.07, cur: null, tgt: null, rate: 0.07 + rand() * 0.06, sc: 1, sv: 0 });
       }
     }
     slots.sort((a, b) => a.y - b.y);
@@ -759,7 +764,7 @@ section.sec{padding:80px 0}
       let tg = 1;
       if (ptr.in) {
         const d = Math.hypot(s.x + s.size * 0.2 - ptr.x, s.y - s.size * 0.45 - ptr.y);
-        if (d < reach) tg += LENS.grow * (1 - d / reach) ** 2;
+        if (d < reach) tg += LENS.grow * Math.min(1, 13 / s.size) * (1 - d / reach) ** 2;
       }
       if (s.sc !== 1 || tg !== 1) {
         s.sv = (s.sv + (tg - s.sc) * LENS.k) * LENS.damp; s.sc += s.sv;
