@@ -669,8 +669,11 @@ section.sec{padding:80px 0}
     // A figure's size comes from its row alone, from half the base size at the back to 3.6 times it at the
     // front, and each row's step is its own size, so rows read as bands instead of piling up.
     const back = sz * 0.5, front = sz * 3.6, sizeAt = y => back * (front / back) ** Math.min(1, Math.max(0, y / h));
+    // Rows are laid from the front back, so the front row stands on the canvas's bottom edge, whole.
+    const rows = [];
+    for (let y = h - sizeAt(h) * 0.06 - 1; y > back; y -= sizeAt(y) * 0.55) rows.unshift(y);
     slots = [];
-    for (let y = back; y <= h; y += sizeAt(y) * 0.55) {
+    for (const y of rows) {
       const size = sizeAt(y), shift = (rand() - 0.5) * size * 0.5;
       for (let x = -size + shift; x < w + size; x += size * 0.44) {
         const u = x / w;
@@ -763,7 +766,7 @@ section.sec{padding:80px 0}
     for (const s of slots) {
       let tg = 1;
       if (ptr.in) {
-        const d = Math.hypot(s.x + s.size * 0.2 - ptr.x, s.y - s.size * 0.45 - ptr.y);
+        const d = Math.hypot(s.x + s.size * 0.2 - ptr.x, s.y - s.size * 0.35 - ptr.y);
         if (d < reach) tg += LENS.grow * Math.min(1, 13 / s.size) * (1 - d / reach) ** 2;
       }
       if (s.sc !== 1 || tg !== 1) {
@@ -783,7 +786,8 @@ section.sec{padding:80px 0}
   }
   function draw() {
     ctx.clearRect(0, 0, w, h);
-    ctx.textBaseline = "bottom"; ctx.lineWidth = 1.3;
+    // a figure's feet are its y: WeePeople's ink ends a hair under the alphabetic baseline
+    ctx.textBaseline = "alphabetic"; ctx.lineWidth = 1.3;
     let size = 0;
     for (const s of slots) {
       const c = s.cur;
