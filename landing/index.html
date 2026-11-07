@@ -863,7 +863,8 @@ section.sec{padding:80px 0}
       play.style.setProperty('--c', `var(${STORY_C[n]})`);
     };
     ui.time = (run, leftMs) => {
-      ring.style.animation = 'none'; void ring.offsetWidth;
+      // an SVG circle has no offsetWidth to read, so reading its style is what makes the browser drop the old run
+      ring.style.animation = 'none'; void getComputedStyle(ring).animationName;
       if (narrow.matches) { ring.style.strokeDashoffset = 0; return; }
       ring.style.strokeDashoffset = '';
       ring.style.animation = `ring ${DUR}ms linear ${-(DUR - leftMs)}ms forwards`;
