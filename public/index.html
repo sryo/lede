@@ -13,9 +13,9 @@
    Every tile zooms to fill the window, and items inside zoom again into filtered views.
    Colour says what kind of thing a mark is, on every tile and sub-page: visitors over time are blue, sources amber,
    pages violet, bounce (people leaving) red, and people here now green. Colour is solid. Transparency means empty,
-   before, those who left, or how much; and in crowded charts (Sankey ribbons, the spike day, the page treemap) the
+   before, those who left, or how much; and in crowded charts (a page's crossing, the spike day, the page treemap) the
    marks the sentence names stay solid while the rest fade, so the eye finds them. Small marks fade less so they show.
-   Home's ribbons fade nothing: each source and page has its own step of its colour, so a strand can be followed.
+   The ribbons fade nothing: each source and page has its own step of its colour, so a strand can be followed.
    Text stays ink; colour sits in marks, swatches and underlines. */
 @font-face{font-family:"WeePeople";src:url("/weepeople.woff2") format("woff2");font-display:block}
 :root{
@@ -269,7 +269,7 @@ button.tile-title:hover{color:var(--ink)}
 .node.r{text-align:right}
 .node>span+span{margin-left:6px}
 .node>.left{display:block;margin-left:0}
-.node.in .chg,.node.in .muted,.node.in .left{color:inherit}
+.node.in .chg,.node.in.told .chg,.node.in .muted,.node.in .left{color:inherit}
 .node b{font-weight:700}
 .node .chg{color:var(--muted);font-variant-numeric:tabular-nums}
 .node.told .chg{color:var(--ink);font-weight:700}
@@ -443,10 +443,7 @@ p,li,figcaption,.say-sub,.cap{text-wrap:pretty}
 .cross-k{display:flex;justify-content:space-between;font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px}
 .cross-say:empty{display:none}
 /* three columns, in visits: sources, the pages they landed on, then read on or left */
-.landed.outcome{height:340px}
-.outcome .lbl{max-width:30%}.outcome span.lbl{cursor:auto;text-decoration:none}
-.outcome .lbl.l{transform:translate(-100%,-50%);text-align:right}
-.outcome .lbl.m{text-shadow:0 0 3px var(--tile),0 0 3px var(--tile),0 0 3px var(--tile)}
+.outcome{height:340px}
 .svgc [tabindex]:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
 .node .left{color:var(--ink)}
 .rmap{position:relative;height:380px}
@@ -543,6 +540,7 @@ button.lrow:hover{background:var(--line)}
   .grid{flex:none;grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:minmax(240px,auto)}
   .t-days,.t-flow,.t-stay,.t-pages{grid-column:1;grid-row:auto}
   .t-flow{min-height:680px}
+  .outcome{height:560px}
   .rmap{height:340px}
   .kw .name{white-space:normal;overflow-wrap:anywhere}
   .sq-num{flex-direction:column;gap:0}
@@ -1975,84 +1973,140 @@ function drawCrossing(el,left,right,{edge=false,shares=false,bar='page'}={}){
   });
 }
 
-// Columns of nodes joined by ribbons, one scale for all, each column centred: a visit is as tall everywhere.
-// cols: node ids per column, left to right; links: {s,t,v}. Ribbons leave and arrive in the order of the node at
-// their other end, so they cross as little as they can. Returns each node's y and h, and each link's path.
-function columns(cols,links,xs,H,gap,barW){
-  const node={};
-  cols.forEach((c,ci)=>c.forEach(id=>node[id]={id,col:ci,in:0,out:0}));
-  for(const l of links){node[l.s].out+=l.v;node[l.t].in+=l.v}
-  const val=n=>Math.max(n.in,n.out);
-  const k=Math.min(...cols.map(c=>(H-gap*(c.length-1))/(sum(c.map(id=>val(node[id])))||1)));
-  cols.forEach((c,ci)=>{
-    let y=(H-sum(c.map(id=>val(node[id])*k))-gap*(c.length-1))/2;
-    for(const id of c){const n=node[id];n.x=xs[ci];n.y=y;n.h=Math.max(1,val(n)*k);y+=n.h+gap}
+// A step of a subject's colour: towards the ink at 0, the colour itself at .4, towards the tile at 1.
+const step=(tok,t)=>`color-mix(in oklab,var(--${tok}),var(${t<.4?`--ink) ${Math.round((.4-t)*75)}`:`--tile) ${Math.round((t-.4)*92)}`}%)`;
+// A name inside a band is dark or white, whichever reads on the band's step in this theme, so ribbons draw again
+// when the theme changes.
+const PX=document.createElement('canvas').getContext('2d',{willReadFrequently:true});
+function onStep(b,fill){
+  b.style.color=fill;PX.fillStyle=getComputedStyle(b).color;PX.fillRect(0,0,1,1);
+  const [R,G,B]=[...PX.getImageData(0,0,1,1).data].map(c=>(c/=255)<=.03928?c/12.92:((c+.055)/1.055)**2.4);
+  return .2126*R+.7152*G+.0722*B>.3?'var(--on-src)':'#fff';
+}
+matchMedia('(prefers-color-scheme:dark)').onchange=()=>document.querySelectorAll('.flow').forEach(b=>b.parentElement._draw?.());
+
+// The ribbons. One of what is counted is as wide everywhere. Each source comes in from the left as a band and turns
+// down into its own column; a column splits into one strand per page; strands cross and merge into each page's
+// column, which turns right into the page's row. The bands of a turn share one centre, so the space between two
+// stays the same round the corner. A name sits inside its band, and a band too thin to hold it starts after the name.
+// Each source has its own step of amber and each page its own step of violet, from towards the ink at the top of
+// its turn to towards the tile at the bottom, and nothing is see-through: neighbours differ, the last and least
+// stand back in both themes, and a strand keeps its source's step into the page it lands in.
+// left, right: rows of {html,hint,aria,open,told}; a page's `gone` is how many of its own left after it, drawn as a
+// lane of bounce red along its row. m[i][j]: how many went from source i to page j. hot(i,j): the sentence's strand.
+function ribbons(el,left,right,m,{aria,hint,hot=()=>false}){
+  const rowsOf=(list,vals,side)=>list.map((n,i)=>{
+    const b=document.createElement('button');b.type='button';b.className='node'+(side==='l'?'':' r')+(n.told?' told':'');b.dataset.key=side+i;
+    b.innerHTML=n.html;b.title=n.hint;b.setAttribute('aria-label',n.aria);b.onclick=e=>{e.stopPropagation();n.open(b)};
+    return {n,i,v:vals[i],b};
+  }).filter(r=>r.v>0).map((r,i,rs)=>{const at=rs.length>1?i/(rs.length-1):.4;return {...r,fill:step(side==='l'?'src':'page',at),lane:step('bnc',at)}});
+  const srcs=rowsOf(left,m.map(r=>sum(r)),'l'),pgs=rowsOf(right,right.map((_,j)=>sum(m.map(r=>r[j]))),'r'),all=[...srcs,...pgs];
+  const box=document.createElement('div');box.className='flow';box.append(...all.map(r=>r.b));
+  box.onclick=e=>{const k=e.target.dataset?.n;if(k){e.stopPropagation();box.querySelector(`[data-key="${k}"]`).click()}};
+  // Pointing at a source, a page or a strand keeps its strands and greys the others.
+  const only=e=>{
+    const at=e?.target.closest?.('[data-key],[data-n],.s'),k=at&&(at.dataset.n||at.dataset.key);
+    for(const q of box.querySelectorAll('.s'))q.style.fill=!at||(k?q.dataset[k[0]==='l'?'a':'p']===k.slice(1):q===at)?'':'var(--line)';
+  };
+  box.onpointerover=box.onfocusin=only;box.onpointerout=box.onfocusout=()=>only();
+  el.replaceChildren(box);
+  observe(el,()=>{
+    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+    for(const r of all){r.b.classList.remove('in');r.b.style.cssText='max-width:none';r.lw=r.b.offsetWidth;r.lh=r.b.offsetHeight}
+    const rmin=12,run=Math.min(W*.5,Math.max(...all.map(r=>r.lw))+14),f=v=>+v.toFixed(2);
+    // Rows of one turn, top to bottom: each as thick as its count, far enough apart for a name to sit on a thin one.
+    const rows=(items,u,y0)=>{let y=y0;return items.map((r,i)=>{const th=Math.max(2,r.v*u),nx=items[i+1],row={r,th,y};if(nx)y+=th+Math.max(6,(r.lh+nx.lh)/2+2-(th+Math.max(2,nx.v*u))/2);return row})};
+    const open=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(aria)}">`,isHot=q=>hot(q.a.r.i,q.l.r.i);
+    // Wide strands first and the story's last, so thin ones and the named one sit on top where strands cross; a wide
+    // strand has a hairline of the tile round it, which keeps two strands apart where they cross. The strand the
+    // sentence names, and the lane of those who left its page, have an outline of ink: nothing fades to point at them.
+    const INKED=' stroke="var(--ink)" stroke-width="1.5" stroke-linejoin="round"';
+    const strand=(q,d,w)=>`<path class="s" data-a="${q.a.r.i}" data-p="${q.l.r.i}" d="${d}" fill="${q.a.r.fill}"${isHot(q)?INKED:w>=3?' stroke="var(--tile)" stroke-width=".75"':''} data-hint="${esc(hint(q.a.r.i,q.l.r.i,q.v))}"/>`;
+    const order=qs=>qs.sort((p,q)=>isHot(p)-isHot(q)||q.v-p.v);
+    const name=(r,inside,side,top,max)=>{r.b.classList.toggle('in',inside);r.b.style.cssText=`${inside?`color:${onStep(r.b,r.fill)};`:''}${side}:${inside?8:0}px;top:${f(top)}px;max-width:${f(max)}px`};
+    const put=s=>{box.querySelector('svg')?.remove();box.insertAdjacentHTML('afterbegin',s+'</svg>')};
+    // In a wide box the bands run straight across: sources on the left, pages on the right, the crossing between.
+    if(W>H*1.5){
+      const end=R=>R.at(-1).y+R.at(-1).th;
+      let u=0,hi=10;for(let i=0;i<24;i++){const mid=(u+hi)/2;if(Math.max(end(rows(srcs,mid,0)),end(rows(pgs,mid,0)))<=H)u=mid;else hi=mid}
+      const A=rows(srcs,u,0),L=rows(pgs,u,0),xa=run+16,xb=W-xa,mx=W/2;
+      for(const R of [A,L]){const dy=(H-end(R))/2;for(const r of R)r.y+=dy}
+      const strands=[];
+      for(const a of A){let y=a.y;for(const l of L){const v=m[a.r.i][l.r.i];if(v){strands.push({a,l,v,y0:y});y+=a.th*v/a.r.v}}}
+      for(const l of L){let y=l.y;for(const q of strands.filter(q=>q.l===l)){q.y1=y;y+=l.th*q.v/l.r.v}}
+      let s=open+order(strands).map(q=>{const w0=q.a.th*q.v/q.a.r.v,w1=q.l.th*q.v/q.l.r.v;
+        return strand(q,`M${f(xa)},${f(q.y0)} C${f(mx)},${f(q.y0)} ${f(mx)},${f(q.y1)} ${f(xb)},${f(q.y1)} v${f(w1)} C${f(mx)},${f(q.y1+w1)} ${f(mx)},${f(q.y0+w0)} ${f(xa)},${f(q.y0+w0)} Z`,Math.min(w0,w1))}).join('');
+      const bar=(k,r,x,w,y,h,fill,ink='')=>`<rect data-n="${k}${r.i}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" fill="${fill}"${ink} data-hint="${esc(r.n.hint)}"/>`;
+      for(const a of A){const r=a.r,inside=a.th>=r.lh+2,x0=inside?0:Math.min(xa-8,r.lw+6);s+=bar('l',r,x0,xa-x0,a.y,a.th,r.fill);name(r,inside,'left',a.y+a.th/2,xa-10)}
+      for(const l of L){
+        const r=l.r,gone=l.th*(r.n.gone||0)/r.v,inside=l.th-gone>=r.lh+2,x1=inside?W:Math.max(xb+8,W-r.lw-6);
+        s+=bar('r',r,xb,x1-xb,l.y,l.th,r.fill)+(gone>=.5?bar('r',r,xb,x1-xb,l.y+l.th-gone,gone,r.lane,r.n.told?INKED:''):'');
+        name(r,inside,'right',l.y+(inside?l.th-gone:l.th)/2,W-xb-10);
+      }
+      return put(s);
+    }
+    const lay=(u,split)=>{
+      const A=rows(srcs,u,0),cy=A.at(-1).y+A.at(-1).th+rmin;for(const a of A){a.out=cy-a.y;a.in=a.out-a.th}
+      const ySplit=cy+16,yMerge=ySplit+split,my=yMerge+16;
+      const L=rows(pgs,u,my+rmin);for(const l of L){l.in=l.y-my;l.out=l.in+l.th}
+      return {A,L,cy,my,ySplit,yMerge,wide:Math.max(A[0].out,L.at(-1).out)-rmin,H:L.at(-1).y+L.at(-1).th};
+    };
+    // The widest one can be while the drawing fits its box and leaves each side a run for its names; the height
+    // that leaves over goes to the crossing, where longer strands are easier to follow.
+    const split=Math.max(70,H*.3);
+    let u=0,hi=10;for(let i=0;i<24;i++){const mid=(u+hi)/2,G=lay(mid,split);if(G.H<=H&&run+rmin+G.wide<=W)u=mid;else hi=mid}
+    const {A,L,cy,my,ySplit,yMerge}=lay(u,split+Math.max(0,H-lay(u,split).H));
+    // Each turn's centre: the columns sit mid-box when there is room, and never push a row's run under its names.
+    const cx=Math.min(W-A[0].out,Math.max(run,(W-(A[0].out-rmin))/2-rmin)),cx2=Math.max(L.at(-1).out,Math.min(W-run,(W+L.at(-1).out-rmin)/2+rmin));
+    for(const a of A)a.x=cx+a.in;for(const l of L)l.x=cx2-l.out;
+    // Strands leave a column in the order of where they go, and arrive in the order of where they came from.
+    const strands=[];
+    for(const a of A){let x=a.x;for(const l of [...L].reverse()){const v=m[a.r.i][l.r.i];if(v){strands.push({a,l,v,x0:x});x+=a.th*v/a.r.v}}}
+    for(const l of L){let x=l.x;for(const q of strands.filter(q=>q.l===l).sort((p,q)=>p.a.x-q.a.x)){q.x1=x;x+=l.th*q.v/l.r.v}}
+    const ym=(ySplit+yMerge)/2;
+    let s=open+order(strands).map(q=>{const w0=q.a.th*q.v/q.a.r.v,w1=q.l.th*q.v/q.l.r.v;
+      return strand(q,`M${f(q.x0)},${f(ySplit)} C${f(q.x0)},${f(ym)} ${f(q.x1)},${f(ym)} ${f(q.x1)},${f(yMerge)} h${f(w1)} C${f(q.x1+w1)},${f(ym)} ${f(q.x0+w0)},${f(ym)} ${f(q.x0+w0)},${f(ySplit)} Z`,Math.min(w0,w1))}).join('');
+    for(const a of A){
+      const r=a.r,inside=a.th>=r.lh+2,x0=inside?0:Math.min(cx-8,r.lw+6);
+      s+=`<path data-n="l${r.i}" d="M${f(x0)},${f(a.y)} H${f(cx)} A${f(a.out)},${f(a.out)} 0 0 1 ${f(cx+a.out)},${f(cy)} V${f(ySplit)} H${f(cx+a.in)} V${f(cy)} A${f(a.in)},${f(a.in)} 0 0 0 ${f(cx)},${f(a.y+a.th)} H${f(x0)} Z" fill="${r.fill}" data-hint="${esc(r.n.hint)}"/>`;
+      name(r,inside,'left',a.y+a.th/2,cx-10);
+    }
+    for(const l of L){
+      // The lane of those who left runs along the row's lower edge; the name sits in what is left of the row.
+      const r=l.r,gone=l.th*(r.n.gone||0)/r.v,inside=l.th-gone>=r.lh+2,x1=inside?W:Math.max(cx2+8,W-r.lw-6);
+      const row=(a,fill,ink='')=>`<path data-n="r${r.i}" d="M${f(l.x)},${f(yMerge)} V${f(my)} A${f(l.out)},${f(l.out)} 0 0 0 ${f(cx2)},${f(my+l.out)} H${f(x1)} V${f(my+a)} H${f(cx2)} A${f(a)},${f(a)} 0 0 1 ${f(cx2-a)},${f(my)} V${f(yMerge)} Z" fill="${fill}"${ink} data-hint="${esc(r.n.hint)}"/>`;
+      s+=row(l.in,r.fill)+(gone>=.5?row(l.out-gone,r.lane,r.n.told?INKED:''):'');
+      name(r,inside,'right',l.y+(inside?l.th-gone:l.th)/2,W-cx2-10);
+    }
+    put(s);
   });
-  const outs={},ins={};
-  for(const l of links){(outs[l.s]??=[]).push(l);(ins[l.t]??=[]).push(l)}
-  for(const ls of Object.values(outs)){ls.sort((a,b)=>node[a.t].y-node[b.t].y);let y=node[ls[0].s].y;for(const l of ls){l.y0=y;y+=l.v*k}}
-  for(const ls of Object.values(ins)){ls.sort((a,b)=>node[a.s].y-node[b.s].y);let y=node[ls[0].t].y;for(const l of ls){l.y1=y;y+=l.v*k}}
-  for(const l of links){
-    const x0=node[l.s].x+barW,x1=node[l.t].x,m=(x0+x1)/2,h=l.v*k;
-    l.d=`M${x0},${l.y0} C${m},${l.y0} ${m},${l.y1} ${x1},${l.y1} L${x1},${l.y1+h} C${m},${l.y1+h} ${m},${l.y0+h} ${x0},${l.y0+h} Z`;
-  }
-  return node;
 }
 
-// Where visits came from, the page they landed on, and whether they read on or left after it, all in visits, so
-// the third column adds up to the first. The five busiest sources and pages, and the pair the sentence names; the
-// rest go under "other". That pair's ribbons and its page's way out are solid.
+// Where visits came from and the page they landed on, as ribbons in visits, with those who left after that page as
+// a red lane along its row. The five busiest sources and pages, and the pair the sentence names; the rest go under
+// "other".
 function drawOutcome(el,flows,pair){
   if(!sum(flows.map(f=>f.visits))){el.innerHTML='<div class="empty">No visits yet</div>';return}
   const OTHER='\u0000';
   const busiest=key=>{
-    const m=new Map();for(const f of flows)m.set(f[key],(m.get(f[key])||0)+f.visits);
-    let r=[...m].sort((a,b)=>b[1]-a[1]).map(x=>x[0]);
-    const some=r.slice(0,5);if(pair&&!some.includes(pair[key]))some.splice(4,1,pair[key]);
+    const n=new Map();for(const f of flows)n.set(f[key],(n.get(f[key])||0)+f.visits);
+    const r=[...n].sort((a,b)=>b[1]-a[1]).map(x=>x[0]),some=r.slice(0,5);
+    if(pair&&!some.includes(pair[key]))some.splice(4,1,pair[key]);
     return r.length>some.length?[...some,OTHER]:some;
   };
-  const srcs=busiest('source'),pages=busiest('page'),of=(list,k)=>list.includes(k)?k:OTHER;
-  const pairs=new Map(),stay=new Map(pages.map(p=>[p,{visits:0,bounces:0}]));
-  for(const f of flows){
-    const s=of(srcs,f.source),p=of(pages,f.page),key=s+'\t'+p;
-    pairs.set(key,(pairs.get(key)||0)+f.visits);
-    const st=stay.get(p);st.visits+=f.visits;st.bounces+=f.bounces;
-  }
-  const label=(dim,k)=>k===OTHER?`other ${dim==='referrer'?'sources':'pages'}`:labelOf(dim,k);
-  observe(el,()=>{
-    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
-    const narrow=W<520,barW=6,xs=[Math.round(W*(narrow?.3:.22)),Math.round(W*.55),W-Math.round(W*(narrow?.27:.2))-barW];
-    const links=[...[...pairs].map(([key,v])=>{const [s,p]=key.split('\t');return {s:'s'+s,t:'p'+p,v,src:s,page:p}}),
-      ...pages.flatMap(p=>{const st=stay.get(p);return [{s:'p'+p,t:'oread',v:st.visits-st.bounces,page:p},{s:'p'+p,t:'oleft',v:st.bounces,page:p,left:true}]})].filter(l=>l.v>0);
-    const node=columns([srcs.map(s=>'s'+s),pages.map(p=>'p'+p),['oread','oleft']],links,xs,H,narrow?6:8,barW);
-    const layers=[[],[],[]];
-    for(const l of links){
-      let ink,hot=false;
-      if(l.src!=null){const mine=pair&&l.src===pair.source;hot=mine&&l.page===pair.page;ink=hot?'--src':mine?'--src-t':'--src-p'}
-      else if(l.left){hot=pair&&l.page===pair.page;ink=hot?'--bnc':'--bnc-p'}
-      else ink='--lost-p';
-      const hint=l.src!=null?`${label('referrer',l.src)} → ${label('path',l.page)}: ${fmtInt(l.v)} ${l.v===1?'visit':'visits'}`
-        :`${label('path',l.page)}: ${fmtInt(l.v)} ${l.v===1?'visit':'visits'} ${l.left?'left after this page':'read on'}`;
-      layers[hot?2:l.src!=null&&pair&&l.src===pair.source?1:0].push(`<path d="${l.d}" fill="var(${ink})" data-hint="${esc(hint)}"/>`);
-    }
-    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(`Visits from ${srcs.length} sources to the pages they landed on, then whether they read on or left after one page`)}">${layers.flat().join('')}`;
-    for(const n of Object.values(node)){
-      const k=n.id.slice(1),c=n.id[0]==='s'?(pair&&k===pair.source?'--src':'--src-ts'):n.id[0]==='p'?(pair&&k===pair.page?'--page':'--page-ts'):k==='left'?'--bnc':'--lost';
-      s+=`<rect x="${n.x}" y="${n.y}" width="${barW}" height="${n.h}" rx="1" fill="var(${c})"/>`;
-    }
-    el.innerHTML=s+'</svg>';
-    const place=(ids,make)=>{
-      const ns=ids.map(id=>node[id]).filter(Boolean),ys=spread(ns.map(n=>n.y+n.h/2),narrow?30:18,H);
-      ns.forEach((n,i)=>{const b=make(n);b.style.top=ys[i]+'px';el.appendChild(b)});
-    };
-    const button=(cls,html,open,hint)=>{const b=document.createElement(open?'button':'span');if(open){b.type='button';b.onclick=()=>open(b)}b.className='lbl '+cls;b.innerHTML=html;if(hint)b.title=hint;return b};
-    const strong=(on,t)=>on?`<b>${t}</b>`:t;
-    place(srcs.map(s=>'s'+s),n=>{const k=n.id.slice(1),v=n.out,b=button('l',`${strong(pair&&k===pair.source,esc(label('referrer',k)))}${narrow?'<br>':' '}<span>${fmtInt(v)}</span>`,
-      k===OTHER?el=>openView({v:'sources'},el):el=>openFilter({referrer:k},label('referrer',k),el));b.style.left=(n.x-8)+'px';return b});
-    place(pages.map(p=>'p'+p),n=>{const k=n.id.slice(1),st=stay.get(k),b=button('m',`${strong(pair&&k===pair.page,esc(label('path',k)))}${narrow?'':` <span>${leftWord(st.bounces,st.visits)}</span>`}`,
-      k===OTHER?el=>openView({v:'pages'},el):el=>openFilter({path:k},label('path',k),el),`${label('path',k)}: ${fmtInt(st.visits)} visits landed here, ${leftWord(st.bounces,st.visits)} after one page`);b.style.left=(n.x+barW+6)+'px';return b});
-    place(['oread','oleft'],n=>{const left=n.id==='oleft',b=button('',`${strong(left,left?`Left after${narrow?'<br>':' '}one page`:'Read on')}<br><span>${fmtInt(n.in)}</span>`);b.style.maxWidth='none';b.style.left=(n.x+barW+8)+'px';return b});
-  });
+  const srcs=busiest('source'),pages=busiest('page'),at=(list,k)=>list.includes(k)?list.indexOf(k):list.indexOf(OTHER);
+  const m=srcs.map(()=>pages.map(()=>0)),stay=pages.map(()=>({visits:0,bounces:0}));
+  for(const f of flows){const i=at(srcs,f.source),j=at(pages,f.page);m[i][j]+=f.visits;stay[j].visits+=f.visits;stay[j].bounces+=f.bounces}
+  const label=(dim,k)=>k===OTHER?`other ${dim==='referrer'?'sources':'pages'}`:labelOf(dim,k),vis=n=>`${fmtInt(n)} ${n===1?'visit':'visits'}`;
+  const row=(dim,k,on,word,hint,gone)=>{
+    const name=label(dim,k);
+    return {told:on,gone,hint,aria:`${hint}. Open`,html:`<span>${on?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${word}</span>`,
+      open:k===OTHER?b=>openView({v:dim==='referrer'?'sources':'pages'},b):b=>openFilter({[dim]:k},name,b)};
+  };
+  ribbons(el,srcs.map((k,i)=>row('referrer',k,pair&&k===pair.source,fmtInt(sum(m[i])),`${label('referrer',k)}: ${vis(sum(m[i]))}`)),
+    pages.map((k,j)=>{const left=leftWord(stay[j].bounces,stay[j].visits);return row('path',k,pair&&k===pair.page,left,`${label('path',k)}: ${vis(stay[j].visits)} landed here, ${left} after one page`,stay[j].bounces)}),m,
+    {aria:`Visits from ${srcs.length} sources to the pages they landed on, and how many left after that page`,
+      hot:(i,j)=>pair&&srcs[i]===pair.source&&pages[j]===pair.page,hint:(i,j,v)=>`${label('referrer',srcs[i])} → ${label('path',pages[j])}: ${vis(v)}`});
 }
 
 // Read or skimmed: each page by how long half its readers stay and how far down they get, on average, its dot as big
@@ -2161,7 +2215,7 @@ async function renderBounce(body){
     <div class="nums"><div class="hero"><span class="big">${totals.cur.visits?fmtPct(c):'–'}</span><span>bounce${totals.prev.visits&&totals.cur.visits?` · <b>${pts(c,p)}</b>`:''}</span><span class="hero-sq">${squaresSVG(c,22,5,'var(--bnc)')}</span></div></div>
     ${B&&B.cause!=='same'?`<section class="card"><div class="card-title">Why it ${B.total>0?'rose':'fell'} · in percentage points</div><div class="steps"></div>
       <div class="legend"><span>${fmtPct(c)} now</span><span>${fmtPct(p)} before</span></div></section>`:''}
-    <section class="card"><div class="card-title">Where visits came from, the page they landed on, and who left after it</div><p class="card-say oc-say"></p><div class="landed outcome"></div></section>
+    <section class="card"><div class="card-title">Where visits came from, the page they landed on, and who left after it</div><p class="card-say oc-say"></p><div class="outcome"></div><div class="legend oc-key"></div></section>
     <section class="card"><div class="card-title">Bounce per day${totals.prev.visits?`, against ${AGAINST()}`:''}</div><div class="chart"></div></section>
     <section class="card"><div class="card-title">Sources</div><div data-dim="referrer"></div></section>
     <section class="card"><div class="card-title">Pages they landed on</div><div data-dim="entry"></div></section>`;
@@ -2177,6 +2231,7 @@ async function renderBounce(body){
   const O=outcomeStory(flows.flows,c);
   body.querySelector('.oc-say').innerHTML=O.html;
   drawOutcome(body.querySelector('.outcome'),flows.flows,O.pair);
+  if(totals.cur.visits)body.querySelector('.oc-key').innerHTML=`<span><i class="sw" style="background:var(--bnc)"></i>Left after one page · ${fmtInt(sum(flows.flows.map(f=>f.bounces)))}</span><span><i class="sw" style="background:var(--page)"></i>Read on · ${fmtInt(sum(flows.flows.map(f=>f.visits-f.bounces)))}</span>`;
   // A day with no visits has no bounce rate, so the line leaves a gap there rather than dropping to 0%.
   const rates=side=>side.bounce.map((b,i)=>side.visits&&!side.visits[i]?null:b);
   // The highest day is labelled only when it stands out: 5 points or more above a usual day.
@@ -2430,7 +2485,6 @@ function drawPeriod(el,ser,getChart,restore){
   });
 }
 
-const DARK=matchMedia('(prefers-color-scheme:dark)');
 function drawFlow(el,S,T,flows,flowsPrev,pageRows){
   if(!flows.length){el.innerHTML=`<div class="empty">${noneYet('visitors',S.p.visitors>0,PER())}</div>`;return}
   // Left: the sources the sentence names and those that moved the total most, in order of change; named ones are bold.
@@ -2463,97 +2517,19 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
   for(const f of flows){const i=at(left,f.source),j=at(right,f.page);if(i>=0&&j>=0)m[i][j]+=f.visitors}
   const total=sum(m.flat());if(!total){el.innerHTML=`<div class="empty">${noneYet('visitors',S.p.visitors>0,PER())}</div>`;return}
 
-  // The ribbons. A visitor is as wide everywhere. Each source comes in from the left as a band and turns down into
-  // its own column; a column splits into one strand per page; strands cross and merge into each page's column, which
-  // turns right into the page's row. The bands of a turn share one centre, so the space between two stays the same
-  // round the corner. A name sits inside its band, and a band too thin to hold it starts after the name.
-  const node=(n,side,i,told,hint)=>{
-    const b=document.createElement('button');b.type='button';
-    b.className='node'+(side==='left'?'':' r')+(told?' told':'');b.dataset.key=side[0]+i;
-    const name=told?n.label:shorten(n.label);
-    if(side==='left')b.innerHTML=`<span>${told?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${n.prev?fmtSigned(n.change):'new'}</span>`;
-    else if(n.key==null)b.innerHTML=`<span class="muted">${esc(name)}</span>`;
-    else b.innerHTML=told?`<span><b>${pathHTML(name)}</b></span>${n.isNew?'<span class="chg">new</span>':''}${n.left?`<span class="left"><i class="sw" style="background:var(--bnc)"></i>${n.left}</span>`:''}`:`<span>${esc(name)}</span>`;
-    b.title=hint;
-    b.setAttribute('aria-label',side==='left'
-      ?`${n.label}, ${n.change>=0?'up':'down'} ${fmtInt(Math.abs(n.change))}, ${fmtInt(n.value)} ${S.unit}. Open`
-      :`${n.label}, ${fmtInt(n.value)} first visits landed here${n.leftHint?`. ${n.leftHint}`:''}. Open`);
-    b.onclick=e=>{e.stopPropagation();n.key==null?openView({v:side==='left'?'sources':'pages'},b)
-      :openFilter({[side==='left'?'referrer':'path']:n.key},n.label,b)};
-    return b;
+  const told=(n,side)=>n.key!=null&&(side==='left'?T.told.has(n.key):n.key===T.page);
+  const row=(n,side)=>{
+    const on=told(n,side),name=on?n.label:shorten(n.label);
+    return {told:on,hint:side==='left'?sourceHint(n.label,n.value,n.prev,S.unit):n.leftHint||pageHint(n.label,n.value),
+      aria:side==='left'?`${n.label}, ${n.change>=0?'up':'down'} ${fmtInt(Math.abs(n.change))}, ${fmtInt(n.value)} ${S.unit}. Open`
+        :`${n.label}, ${fmtInt(n.value)} first visits landed here${n.leftHint?`. ${n.leftHint}`:''}. Open`,
+      html:side==='left'?`<span>${on?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${n.prev?fmtSigned(n.change):'new'}</span>`
+        :n.key==null?`<span class="muted">${esc(name)}</span>`
+        :on?`<span><b>${pathHTML(name)}</b></span>${n.isNew?'<span class="chg">new</span>':''}${n.left?`<span class="left"><i class="sw" style="background:var(--bnc)"></i>${n.left}</span>`:''}`:`<span>${esc(name)}</span>`,
+      open:b=>n.key==null?openView({v:side==='left'?'sources':'pages'},b):openFilter({[side==='left'?'referrer':'path']:n.key},n.label,b)};
   };
-  // A row is a source or a page with first visits in the drawing: its people, its name and whether the sentence names it.
-  const rowsOf=(list,vals,side)=>list.map((n,i)=>{
-    const told=n.key!=null&&(side==='left'?T.told.has(n.key):n.key===T.page),hint=side==='left'?sourceHint(n.label,n.value,n.prev,S.unit):n.leftHint||pageHint(n.label,n.value);
-    return {n,i,v:vals[i],told,hint,b:node(n,side,i,told,hint)};
-  }).filter(r=>r.v>0).map((r,i,rs)=>({...r,fill:step(side==='left'?'src':'page',rs.length>1?i/(rs.length-1):.4)}));
-  // Each source has its own step of amber and each page its own step of violet, from towards the ink at the top of
-  // its turn to towards the tile at the bottom, and nothing is see-through: neighbours differ, the last and least
-  // stand back in both themes, and a strand keeps its source's step into the page it lands in.
-  function step(tok,t){return `color-mix(in oklab,var(--${tok}),var(${t<.4?`--ink) ${Math.round((.4-t)*75)}`:`--tile) ${Math.round((t-.4)*92)}`}%)`}
-  const srcs=rowsOf(left,m.map(r=>sum(r)),'left'),pgs=rowsOf(right,right.map((_,j)=>sum(m.map(r=>r[j]))),'right'),all=[...srcs,...pgs];
-  const box=document.createElement('div');box.className='flow';box.append(...all.map(r=>r.b));
-  box.onclick=e=>{const k=e.target.dataset?.n;if(k){e.stopPropagation();box.querySelector(`[data-key="${k}"]`).click()}};
-  // Pointing at a source, a page or a strand keeps its strands and greys the others.
-  const only=e=>{
-    const at=e?.target.closest?.('[data-key],[data-n],.s'),k=at&&(at.dataset.n||at.dataset.key);
-    for(const q of box.querySelectorAll('.s'))q.style.fill=!at||(k?q.dataset[k[0]==='l'?'a':'p']===k.slice(1):q===at)?'':'var(--line)';
-  };
-  box.onpointerover=box.onfocusin=only;box.onpointerout=box.onfocusout=()=>only();
-  // A name inside a band is dark or white, whichever reads on the band's step in this theme.
-  const px=document.createElement('canvas').getContext('2d',{willReadFrequently:true});
-  const onOf=r=>{
-    r.b.style.color=r.fill;px.fillStyle=getComputedStyle(r.b).color;px.fillRect(0,0,1,1);
-    const [R,G,B]=[...px.getImageData(0,0,1,1).data].map(c=>(c/=255)<=.03928?c/12.92:((c+.055)/1.055)**2.4);
-    return .2126*R+.7152*G+.0722*B>.3?'var(--on-src)':'#fff';
-  };
-  DARK.onchange=()=>el._draw?.();
-  el.replaceChildren(box);
-  observe(el,()=>{
-    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
-    for(const r of all){r.b.classList.remove('in');r.b.style.cssText='max-width:none';r.lw=r.b.offsetWidth;r.lh=r.b.offsetHeight}
-    const rmin=12,run=Math.min(W*.5,Math.max(...all.map(r=>r.lw))+14);
-    // Rows of one turn, top to bottom: each as thick as its visitors, far enough apart for a name to sit on a thin one.
-    const rows=(items,u,y0)=>{let y=y0;return items.map((r,i)=>{const th=Math.max(2,r.v*u),nx=items[i+1],row={r,th,y};if(nx)y+=th+Math.max(6,(r.lh+nx.lh)/2+2-(th+Math.max(2,nx.v*u))/2);return row})};
-    const lay=(u,split)=>{
-      const A=rows(srcs,u,0),cy=A.at(-1).y+A.at(-1).th+rmin;for(const a of A){a.out=cy-a.y;a.in=a.out-a.th}
-      const ySplit=cy+16,yMerge=ySplit+split,my=yMerge+16;
-      const L=rows(pgs,u,my+rmin);for(const l of L){l.in=l.y-my;l.out=l.in+l.th}
-      return {A,L,cy,my,ySplit,yMerge,wide:Math.max(A[0].out,L.at(-1).out)-rmin,H:L.at(-1).y+L.at(-1).th};
-    };
-    // The widest a visitor can be while the drawing fits the tile and leaves each side a run for its names; the
-    // height that leaves over goes to the crossing, where longer strands are easier to follow.
-    const split=Math.max(70,H*.3);
-    let u=0,hi=10;for(let i=0;i<24;i++){const mid=(u+hi)/2,G=lay(mid,split);if(G.H<=H&&run+rmin+G.wide<=W)u=mid;else hi=mid}
-    const {A,L,cy,my,ySplit,yMerge}=lay(u,split+Math.max(0,H-lay(u,split).H));
-    // Each turn's centre: the columns sit mid-tile when there is room, and never push a row's run under its names.
-    const cx=Math.min(W-A[0].out,Math.max(run,(W-(A[0].out-rmin))/2-rmin)),cx2=Math.max(L.at(-1).out,Math.min(W-run,(W+L.at(-1).out-rmin)/2+rmin));
-    for(const a of A)a.x=cx+a.in;for(const l of L)l.x=cx2-l.out;
-    // Strands leave a column in the order of where they go, and arrive in the order of where they came from.
-    const strands=[];
-    for(const a of A){let x=a.x;for(const l of [...L].reverse()){const v=m[a.r.i][l.r.i];if(v){strands.push({a,l,v,x0:x});x+=a.th*v/a.r.v}}}
-    for(const l of L){let x=l.x;for(const q of strands.filter(q=>q.l===l).sort((p,q)=>p.a.x-q.a.x)){q.x1=x;x+=l.th*q.v/l.r.v}}
-    const ym=(ySplit+yMerge)/2,f=v=>+v.toFixed(2);
-    // Wide strands first and the story's last, so thin ones and the named one sit on top where strands cross; a wide
-    // strand has a hairline of the tile round it, which keeps two strands apart where they cross.
-    const hot=q=>q.a.r.told&&S.lead&&q.a.r.n.key===S.lead.key&&q.l.r.told;
-    const drawn=strands.sort((p,q)=>hot(p)-hot(q)||q.v-p.v).map(q=>{
-      const w0=q.a.th*q.v/q.a.r.v,w1=q.l.th*q.v/q.l.r.v;
-      return `<path class="s" data-a="${q.a.r.i}" data-p="${q.l.r.i}" d="M${f(q.x0)},${f(ySplit)} C${f(q.x0)},${f(ym)} ${f(q.x1)},${f(ym)} ${f(q.x1)},${f(yMerge)} h${f(w1)} C${f(q.x1+w1)},${f(ym)} ${f(q.x0+w0)},${f(ym)} ${f(q.x0+w0)},${f(ySplit)} Z" fill="${q.a.r.fill}"${Math.min(w0,w1)>=3?' stroke="var(--tile)" stroke-width=".75"':''} data-hint="${esc(ribbonHint(q.a.r.n.label,q.l.r.n.label,q.v))}"/>`;
-    });
-    let s=`<svg width="${W}" height="${H}" role="img" aria-label="First visits from ${srcs.length} sources, named sources first then by change, to the pages they landed on">${drawn.join('')}`;
-    for(const a of A){
-      const r=a.r,inside=a.th>=r.lh+2,x0=inside?0:Math.min(cx-8,r.lw+6);
-      s+=`<path data-n="l${r.i}" d="M${f(x0)},${f(a.y)} H${f(cx)} A${f(a.out)},${f(a.out)} 0 0 1 ${f(cx+a.out)},${f(cy)} V${f(ySplit)} H${f(cx+a.in)} V${f(cy)} A${f(a.in)},${f(a.in)} 0 0 0 ${f(cx)},${f(a.y+a.th)} H${f(x0)} Z" fill="${r.fill}" data-hint="${esc(r.hint)}"/>`;
-      r.b.classList.toggle('in',inside);r.b.style.cssText=`${inside?`color:${onOf(r)};`:''}left:${inside?8:0}px;top:${f(a.y+a.th/2)}px;max-width:${f(cx-10)}px`;
-    }
-    for(const l of L){
-      const r=l.r,inside=l.th>=r.lh+2,x1=inside?W:Math.max(cx2+8,W-r.lw-6);
-      s+=`<path data-n="r${r.i}" d="M${f(l.x)},${f(yMerge)} V${f(my)} A${f(l.out)},${f(l.out)} 0 0 0 ${f(cx2)},${f(my+l.out)} H${f(x1)} V${f(my+l.in)} H${f(cx2)} A${f(l.in)},${f(l.in)} 0 0 1 ${f(cx2-l.in)},${f(my)} V${f(yMerge)} Z" fill="${r.fill}" data-hint="${esc(r.hint)}"/>`;
-      r.b.classList.toggle('in',inside);r.b.style.cssText=`${inside?`color:${onOf(r)};`:''}right:${inside?8:0}px;top:${f(l.y+l.th/2)}px;max-width:${f(W-cx2-10)}px`;
-    }
-    box.querySelector('svg')?.remove();box.insertAdjacentHTML('afterbegin',s+'</svg>');
-  });
+  ribbons(el,left.map(n=>row(n,'left')),right.map(n=>row(n,'right')),m,{aria:`First visits from ${left.length} sources, named sources first then by change, to the pages they landed on`,
+    hot:(i,j)=>S.lead&&left[i].key===S.lead.key&&told(left[i],'left')&&told(right[j],'right'),hint:(i,j,v)=>ribbonHint(left[i].label,right[j].label,v)});
 }
 
 function drawGrowth(el,W){

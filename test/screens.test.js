@@ -341,19 +341,31 @@ test('a quiet footer under the window names Lede and links to the project', () =
   assert.match(html, /\.foot\{/);
 });
 
-test('home’s ribbons use one width for a visitor, and put each name inside its band or just before a thin one', () => {
-  const draw = fn('drawFlow');
+test('the ribbons use one width for what they count, and put each name inside its band or just before a thin one', () => {
+  const draw = fn('ribbons');
   assert.match(draw, /th=Math\.max\(2,r\.v\*u\)/);
   assert.match(draw, /inside=a\.th>=r\.lh\+2,x0=inside\?0:Math\.min\(cx-8,r\.lw\+6\)/);
-  assert.match(draw, /b\.innerHTML=`<span>\$\{told\?`<b>\$\{esc\(name\)\}<\/b>`:esc\(name\)\}<\/span><span class="chg">/);
   assert.match(html, /\.flow\{height:100%;position:relative\}/);
 });
 
-test('home’s ribbons fade nothing: each source and page has its own step of its colour, and a strand keeps its source’s', () => {
-  const draw = fn('drawFlow');
-  assert.match(draw, /fill:step\(side==='left'\?'src':'page',rs\.length>1\?i\/\(rs\.length-1\):\.4\)/);
-  assert.match(draw, /class="s" data-a="\$\{q\.a\.r\.i\}" data-p="\$\{q\.l\.r\.i\}"[^`]*fill="\$\{q\.a\.r\.fill\}"/);
+test('the ribbons fade nothing: each source and page has its own step of its colour, and a strand keeps its source’s', () => {
+  const draw = fn('ribbons');
+  assert.match(draw, /fill:step\(side==='l'\?'src':'page',at\),lane:step\('bnc',at\)/);
+  assert.match(draw, /class="s" data-a="\$\{q\.a\.r\.i\}" data-p="\$\{q\.l\.r\.i\}" d="\$\{d\}" fill="\$\{q\.a\.r\.fill\}"/);
   assert.doesNotMatch(draw, /--src-[tp]|--page-[tp]|opacity/);
+  assert.match(draw, /\$\{isHot\(q\)\?INKED:w>=3\?/);
+});
+
+test('home and the Bounce screen draw sources to pages with the same ribbons, straight across in a wide box', () => {
+  assert.match(fn('drawFlow'), /ribbons\(el,left\.map\(n=>row\(n,'left'\)\),right\.map\(n=>row\(n,'right'\)\),m,/);
+  assert.match(fn('drawOutcome'), /ribbons\(el,srcs\.map\(/);
+  assert.match(fn('ribbons'), /if\(W>H\*1\.5\)\{/);
+  assert.doesNotMatch(html, /function columns\(/);
+});
+
+test('on the Bounce screen the visits that left after a page are a red lane along its row', () => {
+  assert.match(fn('drawOutcome'), /stay\[j\]\.bounces\)\}\),m,/);
+  assert.match(fn('ribbons'), /gone=l\.th\*\(r\.n\.gone\|\|0\)\/r\.v/);
 });
 
 test('popovers float with one shadow: the note editor, and Share and Setup, which a card’s outline can’t flatten', () => {
