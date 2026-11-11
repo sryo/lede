@@ -118,9 +118,9 @@ The second line's sheet is the model:
 
     Bench-Accepted: sheet queries: /; 0 -> 2; buys: goal 1, the second line's links need reading times, page speeds and search words (test/insight.test.js); tried: asked at most once an hour instead of every load (3 a load -> 2 an hour), site search and ad words in one query (overview 12 -> 10); owner: <their words>, 2026-10-28
 
-Small prices add up. Before `next` is merged into `main`, the owner reads every price since the
-last merge (`git log --format='%(trailers:key=Bench-Accepted)' main..next`) and each number's
-net change from `main`'s baseline. When the total since the last pass that made Lede cheaper has
+Small prices add up. The owner reads every price since the last pass that made Lede cheaper
+(`git log --format='%(trailers:key=Bench-Accepted)' <that pass>..main`) and each number's net
+change from that pass's baseline (`npm run bench:since -- <that pass>`). When the total since that pass has
 grown more than 10% on any number, or by any query per home load, the next work is such a pass,
 and it never removes features.
 

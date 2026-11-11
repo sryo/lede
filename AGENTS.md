@@ -17,4 +17,4 @@ A change that makes either doc wrong updates it in the same commit.
 npm test
 ```
 
-A change is done when `fium done` says so: it runs every How we know row of GOALS.md where the change started and now, and shows each number under its goal. lede works on `next`, so run `fium done --base main`.
+A change is done when `fium done` says so: it runs every How we know row of GOALS.md where the change started and now, and shows each number under its goal. lede works on `main`, with no other branch, so run `fium done` before committing.
