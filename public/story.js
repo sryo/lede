@@ -1157,8 +1157,16 @@ export function nextStory(next, days) {
 }
 
 // The steps after a page as the fan draws them: the top four pages, the rest as one, then leaving the site.
+// The n first of rows already in order, and the rest. A row the sentence names (its key in `keep`) that ranks lower
+// takes one of the last places, so what is said is always drawn.
+export function topRows(rows, n, keep = [], key = r => r.key) {
+  const kept = rows.slice(n).filter(r => keep.includes(key(r)));
+  const top = [...rows.slice(0, Math.max(0, n - kept.length)), ...kept];
+  return { top, rest: rows.filter(r => !top.includes(r)) };
+}
+
 export function nextItems(cur, told) {
-  const top = cur.next.slice(0, 4), rest = cur.next.slice(4);
+  const { top, rest } = topRows(cur.next, 4);
   const items = top.map(r => ({ key: r.key, label: r.key, value: r.views, kind: 'page', story: r.key === told }));
   if (rest.length) items.push({ key: null, label: `${rest.length} other ${rest.length === 1 ? 'page' : 'pages'}`, value: sum(rest.map(r => r.views)), kind: 'page', story: false });
   if (cur.left) items.push({ key: null, label: 'Left the site', value: cur.left, kind: 'left', story: false });

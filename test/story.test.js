@@ -4,7 +4,7 @@ import { moreFindings, findSpike, readStory, tellStory, bounceSplit, bounceCapti
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
   scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
   unitOf, countNotes, quietRuns, Span, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
-  ICONS, iconFor, iconSVG, figureScale, apportion, crowdFigures, laneScale, figureLetter, pageList, leftWord, pairStay, bounciestPair, outcomeStory, readingMap, lanes, laneX } from '../public/story.js';
+  ICONS, iconFor, iconSVG, figureScale, apportion, crowdFigures, laneScale, figureLetter, pageList, leftWord, pairStay, bounciestPair, outcomeStory, readingMap, lanes, laneX, topRows } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
 import { onEachWeekday } from './weekdays.js';
@@ -1450,4 +1450,18 @@ test('the figures beside each page are one a person while the busiest row fits i
   assert.equal(tableUnit([row(2, 78), row(0, 1)], 15), 10, 'round numbers: 5 a figure would still need 16');
   assert.equal(tableUnit([], 15), 1);
   assert.equal(tableUnit([row(0, 0)], 0), 1, 'a column too narrow to measure still draws one figure');
+});
+
+test('the top rows keep what the sentence names: a named row that ranks lower takes the last place', () => {
+  const rows = ['a', 'b', 'c', 'd', 'e', 'f'].map(key => ({ key }));
+  const keys = x => x.map(r => r.key).join('');
+  assert.equal(keys(topRows(rows, 4).top), 'abcd');
+  assert.equal(keys(topRows(rows, 4).rest), 'ef');
+  assert.equal(keys(topRows(rows, 4, ['f']).top), 'abcf', 'the named one takes the fourth place');
+  assert.equal(keys(topRows(rows, 4, ['f']).rest), 'de');
+  assert.equal(keys(topRows(rows, 4, ['b']).top), 'abcd', 'one already in the top changes nothing');
+  assert.equal(keys(topRows(rows, 4, ['e', 'f']).top), 'abef');
+  assert.equal(keys(topRows(rows, 4, [undefined, null]).top), 'abcd', 'no name keeps the top as it is');
+  assert.equal(topRows(['x', 'y', 'z'], 2, ['z'], k => k).top.join(''), 'xz', 'rows may be bare keys');
+  assert.equal(topRows([], 4).top.length, 0);
 });

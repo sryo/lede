@@ -626,7 +626,7 @@ import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWee
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
   dayHint, thenLine, usualDay, todayHint, Span, alignedGap, prevStart, fitWindows, windowSteps, resizeWindows, pickEdge, tableUnit, nowOf, beforeOf, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
-  ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX, cutSeries } from '/story.js';
+  ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX, cutSeries, topRows } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
 
@@ -798,6 +798,11 @@ const shorten=(s,max=22)=>s.length<=max?s:s.slice(0,Math.ceil(max/2)-1)+'…'+s.
 
 /* ---------- drawing ---------- */
 const ro=new ResizeObserver(es=>es.forEach(e=>e.target._draw&&e.target._draw()));
+// A chart that draws to its box's size: draw(W,H) runs once the box has one, and again whenever it changes.
+function sized(el,draw){observe(el,()=>{const W=el.clientWidth,H=el.clientHeight;if(W&&H)draw(W,H)})}
+// What a chart says in place of a drawing it has nothing for.
+function empty(el,text){el.innerHTML=`<div class="empty">${text}</div>`}
+const svgTag=(W,H,aria)=>`<svg width="${W}" height="${H}" role="img" aria-label="${esc(aria)}">`;
 // A redraw replaces a chart's buttons; the one that had focus gets it back, found by its data-key.
 function observe(el,fn){
   el._draw=()=>{
@@ -846,9 +851,8 @@ function labelWidth(t,f){
 function treemap(el,items,{gap=4}={}){
   // The long tail goes last whatever its size, so it fills the far corner instead of leading.
   items=items.filter(it=>it.value>0).sort((a,b)=>(a.last?1:0)-(b.last?1:0)||b.value-a.value);
-  if(!items.length){el.innerHTML='<div class="empty">No visitors yet</div>';return}
-  observe(el,()=>{
-    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+  if(!items.length)return empty(el,'No visitors yet')
+  sized(el,(W,H)=>{
     const rects=squarify(items.map(it=>it.value),W,H);
     el.replaceChildren(...rects.map((r,i)=>{
       const it=items[i],b=document.createElement(it.onClick?'button':'div');
@@ -885,8 +889,7 @@ function dayBars(el,o){
   const {cur,start,prev}=o,n=cur.length,gp=o.gap??gapNow(),last=(o.live??!AGO)?n-1:n,day=i=>i<last?fmtDay(dayDate(start,i)):'Today',subj=o.subj||'time';
   // The same weekday in the four weeks before today: a day d before today is in the period, or in the comparison.
   const u=last<n?usualDay(Array.from({length:29},(_,k)=>{const d=28-k;return d<n?cur[n-1-d]:prev&&d-gp>=0&&d-gp<n?prev[n-1-(d-gp)]:null})):0;
-  observe(el,()=>{
-    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+  sized(el,(W,H)=>{
     const top=o.label?40:o.scale?10:4,padB=o.axis?20:o.scale?4:0,base=H-padB,padR=o.scale?40:0,peakV=Math.max(maxOf(cur),prev?maxOf(prev):0,u);
     // With a scale, the top gridline is a round number just above the tallest bar, and never a fraction of a person.
     const step=o.scale?Math.max(1,nice(peakV||1).step):0,max=o.scale?Math.ceil((peakV||1)/step)*step:peakV*1.04||1;
@@ -896,7 +899,7 @@ function dayBars(el,o){
     // A bar is rounded only at its top, so it stands on the baseline. A day with any visitors is at least 2px tall,
     // so one visitor never looks like none.
     const bar=(i,y,lo,f)=>{const h=lo-y,r=Math.min(2,bw/2,h);return h>0?`<path d="M${x(i)},${lo}v${r-h}a${r},${r} 0 0 1 ${r},${-r}h${bw-2*r}a${r},${r} 0 0 1 ${r},${r}v${h-r}z" fill="var(--${f})"/>`:''};
-    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(o.aria)}">`;
+    let s=`${svgTag(W,H,o.aria)}`;
     if(o.scale)for(let k=1;k*step<=max+1e-9;k++){const v=k*step,y=Y(v)+.5;s+=`<line class="grid-l" x2="${W-padR}" y1="${y}" y2="${y}"/><text x="${W}" y="${y+4}" font-size="12" fill="var(--muted)" text-anchor="end">${v>=1000?`${+(v/1000).toFixed(1)}k`:v}</text>`}
     cur.forEach((v,i)=>{
       const y=v?Math.min(Y(v),base-2):base;
@@ -938,11 +941,10 @@ function dayBars(el,o){
 // span: the least the axis covers, so a small wobble isn't drawn as a big swing.
 function lines(el,{cur,prev,fmt,axis,start,peak,span=0,gap=gapNow()}){
   const day=i=>fmtDay(dayDate(start,i)),vals=[...cur,...(prev||[])].filter(v=>v!=null);
-  if(!vals.length){el.innerHTML='<div class="empty">No visits yet</div>';return}
+  if(!vals.length)return empty(el,'No visits yet')
   // The picked day outlives a redraw, so a resize doesn't send the keyboard back to the latest day.
   let on;
-  observe(el,()=>{
-    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+  sized(el,(W,H)=>{
     const padL=8,padR=40,padB=22,padT=peak?44:10,n=cur.length;
     let lo=Math.min(...vals),hi=Math.max(...vals);
     if(hi-lo<span){lo=Math.max(0,(lo+hi-span)/2);hi=lo+span}
@@ -959,7 +961,7 @@ function lines(el,{cur,prev,fmt,axis,start,peak,span=0,gap=gapNow()}){
     const gap=(W-padL-padR)/Math.max(1,n-1),X=i=>n>1?padL+i*gap:(padL+W-padR)/2,Y=v=>padT+(H-padT-padB)*(1-(v-min)/((max-min)||1));
     const path=a=>a.map((v,i)=>v==null?'':`${a[i-1]!=null?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('');
     const alone=(a,color)=>a.map((v,i)=>v!=null&&a[i-1]==null&&a[i+1]==null?`<circle cx="${X(i)}" cy="${Y(v)}" r="2" fill="${color}"/>`:'').join('');
-    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(peak?.aria||'This period compared with the previous one')}">`;
+    let s=`${svgTag(W,H,peak?.aria||'This period compared with the previous one')}`;
     for(let v=min;v<=max+1e-9;v+=step){const y=Math.round(Y(v))+.5;s+=`<line class="grid-l" x1="${padL}" x2="${W-padR}" y1="${y}" y2="${y}"/><text x="${W}" y="${y+4}" text-anchor="end">${axis(v)}</text>`}
     s+=`<text x="${X(0)}" y="${H-5}"${n>1?'':' text-anchor="middle"'}>${day(0)}</text>${n>1?`<text x="${X(n-1)}" y="${H-5}" text-anchor="end">${day(n-1)}</text>`:''}`;
     if(prev)s+=`<path d="${path(prev)}" fill="none" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="3 3"/>${alone(prev,'var(--rule)')}`;
@@ -1008,8 +1010,7 @@ function lines(el,{cur,prev,fmt,axis,start,peak,span=0,gap=gapNow()}){
 // openOf(step): what clicking that step does (given the button), or null when it opens nothing. Each step that
 // opens something gets a button over its bar and labels, as treemap blocks are buttons, so keys reach it too.
 function drawSteps(el,steps,{fmt,aria,colorOf,openOf=()=>null}){
-  observe(el,()=>{
-    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+  sized(el,(W,H)=>{
     const slot=W/steps.length,fit=Math.max(6,Math.floor(slot/6.6));
     // Names too long for their slot wrap onto a second line at a space, or before a dot ("google" / ".com").
     const names=steps.map(st=>{
@@ -1023,7 +1024,7 @@ function drawSteps(el,steps,{fmt,aria,colorOf,openOf=()=>null}){
     const ends=geo.flatMap(g=>[g.a,g.b]),lo=Math.min(0,...ends),hi=Math.max(0,...ends),span=hi-lo||1;
     const Y=v=>padT+(H-padT-padB)*(hi-v)/span;
     const bw=Math.min(70,slot*.62),x=i=>i*slot+(slot-bw)/2;
-    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(aria)}"><line x1="0" x2="${W}" y1="${Math.round(Y(0))+.5}" y2="${Math.round(Y(0))+.5}" stroke="var(--rule)"/>`;
+    let s=`${svgTag(W,H,aria)}<line x1="0" x2="${W}" y1="${Math.round(Y(0))+.5}" y2="${Math.round(Y(0))+.5}" stroke="var(--rule)"/>`;
     geo.forEach((g,i)=>{
       const st=steps[i],y=Math.min(Y(g.a),Y(g.b)),h=Math.max(2,Math.abs(Y(g.a)-Y(g.b))),total=st.kind==='total';
       s+=`<rect x="${x(i)}" y="${y}" width="${bw}" height="${h}" rx="${h>6?3:0}" fill="${colorOf(st)}"><title>${esc(st.label)}: ${esc(fmt(st.value,total))}</title></rect>`;
@@ -1060,8 +1061,7 @@ function squaresSVG(pct,size,gap,fill){
 function drawSquares(el,rows){
   el.innerHTML='<div class="sqs"></div>';
   const box=el.firstChild;
-  observe(el,()=>{
-    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+  sized(el,(W,H)=>{
     // Narrow boxes put the squares on their own line under the number, so they can use the full width.
     const under=W<320,stack=!under&&W<420,text=under?0:stack?72:140,n=rows.length,line=under?22:0;
     // Squares and their gaps shrink together; a gap is about a quarter of a square.
@@ -1553,8 +1553,7 @@ function drawInOut(sec,H){
   const io=sec.querySelector('.io');
   const sources=H.S.sources.filter(s=>s.value>0).sort((a,b)=>b.value-a.value);
   [[sources,'Sources','sources','referrer','src',src?.key],[H.pageRows.filter(r=>r.value>0),'Pages','pages','path','page',pg?.key]].forEach(([rows,title,group,f,subj,named])=>{
-    const all=sum(rows.map(r=>r.value)),on=rows.find(r=>r.key===named),far=rows.indexOf(on)>3;
-    const top=rows.slice(0,far?3:4).concat(far?[on]:[]),rest=all-sum(top.map(r=>r.value));
+    const all=sum(rows.map(r=>r.value)),on=rows.find(r=>r.key===named),top=topRows(rows,4,[named]).top,rest=all-sum(top.map(r=>r.value));
     const at=r=>top.indexOf(r),seg=(r,i)=>shadeSeg(subj,i);
     io.insertAdjacentHTML('beforeend',`<span class="k">${title}</span><div class="strip" aria-hidden="true">${top.map((r,i)=>`<i ${seg(r,i)} style="flex:${r.value}" title="${esc(r.label)}"></i>`).join('')}${rest>0?`<i ${seg(null,top.length)} style="flex:${rest}"></i>`:''}</div><p></p>`);
     const p=io.lastChild;
@@ -1635,8 +1634,8 @@ async function showPicture(sec,path){
 function drawAudience(sec,A){
   const S=audienceStory(A);if(!S)return;
   sec.innerHTML=`<div class="card-title">Where readers are and what they use</div><p class="sentence">${S.html}</p>${[['Countries','country'],['Devices','device'],['Browsers','browser']].map(([t,dim])=>{
-    const rows=A[dim].filter(r=>r.visitors),all=sum(rows.map(r=>r.visitors)),on=rows.find(r=>dim==S.dim&&r.key==S.key),far=rows.indexOf(on)>3;
-    const top=rows.slice(0,far?3:4).concat(far?[on]:[]).map(r=>[labelOf(dim,r.key),r.visitors,r==on]),n=rows.length-top.length;
+    const rows=A[dim].filter(r=>r.visitors),all=sum(rows.map(r=>r.visitors)),on=rows.find(r=>dim==S.dim&&r.key==S.key);
+    const top=topRows(rows,4,[on?.key]).top.map(r=>[labelOf(dim,r.key),r.visitors,r==on]),n=rows.length-top.length;
     if(n)top.push([`${n} more`,all-sum(top.map(r=>r[1])),0,'-p']);
     return all?`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v],i)=>`<i ${shadeSeg('time',i)} style="flex:${v}" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}</div>
       <p>${top.map(([l,v,b],i)=>`<span>${keySw('time',i)}${b?`<b>${esc(l)}</b>`:esc(l)} ${fmtPct(v/all)}</span>`).join('')}</p>
@@ -1798,7 +1797,7 @@ async function drawFunnels(body,gen){
 // pale violet (the biggest drop stronger, its count in bold), the count and its share of the first step after it.
 function drawFunnel(el,f,drop){
   const {steps,cur}=f;
-  if(!cur[0]){el.innerHTML='<div class="empty">No visits yet</div>';return}
+  if(!cur[0])return empty(el,'No visits yet')
   const B=funnelBars(cur,drop,100);
   el.innerHTML=`<div class="fsteps">${B.map((b,i)=>{
     const kept=b.v/cur[0]*100,gone=i?(cur[i-1]-b.v)/cur[0]*100:0,inside=gone>15;
@@ -1897,7 +1896,7 @@ async function renderSource(body,f){
 
 // One source fanning out into the pages its visitors landed on.
 function drawLanded(el,flows,label,pageRows){
-  if(!flows.length){el.innerHTML='<div class="empty">No visits yet</div>';return}
+  if(!flows.length)return empty(el,'No visits yet')
   // The busiest few on each side and the rest under "other": k(f) is a flow's source or page.
   const top=(k,n,what)=>{
     const by=new Map();for(const f of flows)by.set(k(f),(by.get(k(f))||0)+f.visitors);
@@ -1919,7 +1918,7 @@ function drawLanded(el,flows,label,pageRows){
 function cameFromItems(flows,told,visitors){
   const bySrc=new Map();
   for(const f of flows)bySrc.set(f.source,(bySrc.get(f.source)||0)+f.visitors);
-  const ranked=[...bySrc].sort((a,b)=>b[1]-a[1]),top=ranked.slice(0,4),rest=ranked.slice(4),landed=sum(ranked.map(r=>r[1]));
+  const ranked=[...bySrc].sort((a,b)=>b[1]-a[1]),{top,rest}=topRows(ranked,4),landed=sum(ranked.map(r=>r[1]));
   const items=top.map(([k,v])=>({key:k,label:labelOf('referrer',k),value:v,kind:'src',story:told.has(k),hint:pageHint(labelOf('referrer',k),v)}));
   if(rest.length)items.push({key:null,label:`${rest.length} other ${rest.length===1?'source':'sources'}`,value:sum(rest.map(r=>r[1])),kind:'src'});
   if(visitors>landed)items.push({key:null,label:'Your other pages',value:visitors-landed,kind:'page',hint:`${fmtInt(visitors-landed)} visitors came from another page`});
@@ -1930,7 +1929,7 @@ function cameFromItems(flows,told,visitors){
 // the middle, and where they went next on the right, as shares of its views once there are 20. from: cameFromItems;
 // next: story.js's nextItems, or none while they load.
 function drawCrossing(el,from,next,page,visitors){
-  if(!sum(from.map(i=>i.value))&&!next.length){el.innerHTML='<div class="empty">No visits yet</div>';return}
+  if(!sum(from.map(i=>i.value))&&!next.length)return empty(el,'No visits yet')
   const views=sum(next.map(i=>i.value)),share=it=>views>=20?fmtPct(it.value/views):fmtInt(it.value);
   const html=(it,v)=>`<span>${it.story?`<b>${esc(it.label)}</b>`:esc(it.label)}</span><span class="chg">${v}</span>`;
   // "38% of views of this page went on to /signup", or on few views "7 of 15 views went on to /signup".
@@ -1997,14 +1996,13 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
   };
   box.onpointerover=box.onfocusin=only;box.onpointerout=box.onfocusout=()=>only();
   el.replaceChildren(box);
-  observe(el,()=>{
-    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+  sized(el,(W,H)=>{
     for(const r of all){r.b.classList.remove('in','halo','wrap','bare');r.b.style.cssText='max-width:none';r.lw=r.b.offsetWidth;r.lh=r.b.offsetHeight}
     eb.forEach((b,k)=>{b.className='node r'+(ends[k].told?' told':'')+(ends[k].open?'':' still');b.style.cssText='max-width:none'});
     const rmin=12,run=Math.min(W*.5,Math.max(...all.map(r=>r.lw))+14),ow=Math.max(0,...eb.map(b=>b.offsetWidth))+24,f=v=>+v.toFixed(2);
     // Rows of one turn, top to bottom: each as thick as its count, far enough apart for a name to sit on a thin one.
     const rows=(items,u,y0)=>{let y=y0;return items.map((r,i)=>{const th=Math.max(2,r.v*u),nx=items[i+1],row={r,th,y};if(nx)y+=th+Math.max(6,(r.lh+nx.lh)/2+2-(th+Math.max(2,nx.v*u))/2);return row})};
-    const open=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(aria)}">`,isHot=q=>hot(q.a.r.i,q.l.r.i);
+    const open=`${svgTag(W,H,aria)}`,isHot=q=>hot(q.a.r.i,q.l.r.i);
     // Wide strands first and the story's last, so thin ones and the named one sit on top where strands cross; a wide
     // strand has a hairline of the tile round it, which keeps two strands apart where they cross.
     const edge=w=>w>=3?' stroke="var(--tile)" stroke-width=".75"':'';
@@ -2112,12 +2110,11 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
 // visits, three steps straight across. The five busiest sources and pages, and the pair the sentence names; the rest go under
 // "other".
 function drawOutcome(el,flows,pair){
-  if(!sum(flows.map(f=>f.visits))){el.innerHTML='<div class="empty">No visits yet</div>';return}
+  if(!sum(flows.map(f=>f.visits)))return empty(el,'No visits yet')
   const OTHER='\u0000';
   const busiest=key=>{
     const n=new Map();for(const f of flows)n.set(f[key],(n.get(f[key])||0)+f.visits);
-    const r=[...n].sort((a,b)=>b[1]-a[1]).map(x=>x[0]),some=r.slice(0,5);
-    if(pair&&!some.includes(pair[key]))some.splice(4,1,pair[key]);
+    const r=[...n].sort((a,b)=>b[1]-a[1]).map(x=>x[0]),some=topRows(r,5,pair?[pair[key]]:[],k=>k).top;
     return r.length>some.length?[...some,OTHER]:some;
   };
   const srcs=busiest('source'),pages=busiest('page'),at=(list,k)=>list.includes(k)?list.indexOf(k):list.indexOf(OTHER);
@@ -2143,15 +2140,14 @@ function drawOutcome(el,flows,pair){
 // are solid, a page slow to load has a red ring, and one with under 20 read views is hollow.
 function drawReadMap(el,M){
   const pts=M.points;if(!M.mid){el.remove();return}
-  observe(el,()=>{
-    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+  sized(el,(W,H)=>{
     const narrow=W<520,pl=40,pr=12,pt=12,pb=narrow?58:38,maxV=maxOf(pts.map(p=>p.views)),R=v=>3+Math.sqrt(v/maxV)*(narrow?18:28);
     const lo=Math.max(1,Math.min(...pts.map(p=>p.read))/1.4),hi=Math.max(...pts.map(p=>p.read))*1.4;
     const X=s=>pl+(Math.log(s)-Math.log(lo))/(Math.log(hi)-Math.log(lo))*(W-pl-pr);
     const d0=Math.max(0,Math.floor(Math.min(...pts.map(p=>p.depth))*10-.5)/10),d1=Math.min(1,Math.ceil(Math.max(...pts.map(p=>p.depth))*10+.5)/10);
     const Y=d=>pt+(1-(d-d0)/(d1-d0))*(H-pt-pb);
     const told=new Set(M.told);
-    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(`Pages by how long half their readers stay and how far down they read: ${pts.map(p=>`${p.key} ${fmtDur(p.read)}, ${fmtPct(p.depth)}`).join('; ')}`)}">`;
+    let s=`${svgTag(W,H,`Pages by how long half their readers stay and how far down they read: ${pts.map(p=>`${p.key} ${fmtDur(p.read)}, ${fmtPct(p.depth)}`).join('; ')}`)}`;
     const ticks=[2,5,10,20,30,60,120,300,600,1200].filter(v=>v>=lo&&v<=hi).filter((v,i,a)=>!narrow||i%2===0||i===a.length-1);
     for(const v of ticks)s+=`<line x1="${X(v)}" x2="${X(v)}" y1="${pt}" y2="${H-pb}" stroke="var(--line)"/><text x="${X(v)}" y="${H-pb+16}" text-anchor="middle" class="axis">${v<60?v+'s':v/60+'m'}</text>`;
     for(let d=d0;d<=d1+1e-9;d+=.1)s+=`<line x1="${pl}" x2="${W-pr}" y1="${Y(d)}" y2="${Y(d)}" stroke="var(--line)"/><text x="${pl-6}" y="${Y(d)+4}" text-anchor="end" class="axis">${Math.round(d*100)}%</text>`;
@@ -2191,7 +2187,7 @@ function drawLanes(el,L,named=[]){
     el.style.height=H+'px';
     const key=el.parentElement.querySelector('.lane-unit');
     if(key){key.hidden=unit===1;key.textContent=`a figure is ${fmtInt(unit)} people`}
-    let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(L.rows.map(r=>`${r.path??`${r.pages} other pages`}: ${fmtInt(r.here)} here now, ${fmtInt(r.n-r.here)} left`).join('; '))}">`;
+    let s=`${svgTag(W,H,L.rows.map(r=>`${r.path??`${r.pages} other pages`}: ${fmtInt(r.here)} here now, ${fmtInt(r.n-r.here)} left`).join('; '))}`;
     const BANDS=[['under 1 min',narrow?'<1m':'under 1 min'],['1–5 min','1–5m'],['5–15 min','5–15m'],['15–30 min','15–30m']];
     if(bands)BANDS.forEach(([,t],b)=>{const x=pl+b*span/4;s+=`<line x1="${x}" x2="${x}" y1="0" y2="${H-24}" stroke="var(--line)"/><text x="${x+4}" y="${H-6}" class="axis">${t}</text>`});
     else for(const [v,t] of narrow?[[0,'0'],[60,'1 min'],[300,'5 min'],[1800,'30 min']]:[[0,'just now'],[60,'1 min'],[300,'5 min'],[900,'15 min'],[1800,'30 min']])
@@ -2514,7 +2510,7 @@ function drawPeriod(el,ser,getChart,restore){
 }
 
 function drawFlow(el,S,T,flows,flowsPrev,pageRows){
-  if(!flows.length){el.innerHTML=`<div class="empty">${noneYet('visitors',S.p.visitors>0,PER())}</div>`;return}
+  if(!flows.length)return empty(el,noneYet('visitors',S.p.visitors>0,PER()))
   // Left: the sources the sentence names and those that moved the total most, in order of change; named ones are bold.
   const live=S.sources.filter(s=>s.value>0);
   const named=live.filter(s=>T.told.has(s.key));
@@ -2526,14 +2522,11 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
   const byPage=new Map();
   for(const f of flows)byPage.set(f.page,(byPage.get(f.page)||0)+f.visitors);
   const ranked=[...byPage].sort((a,b)=>b[1]-a[1]);
-  let top=ranked.slice(0,4);
-  if(T.page&&byPage.has(T.page)&&!top.some(r=>r[0]===T.page))top=[...top.slice(0,3),[T.page,byPage.get(T.page)]];
-  top.sort((a,b)=>b[1]-a[1]);
+  const {top,rest:restP}=topRows(ranked,4,[T.page],r=>r[0]);
   // A page's change compares first visits with first visits before, like the ribbons it ends.
   const before=new Map();
   for(const f of flowsPrev)before.set(f.page,(before.get(f.page)||0)+f.visitors);
   const right=top.map(([key,value])=>({key,label:key,value,prev:before.get(key),isNew:!pageRows.find(x=>x.key===key)?.prev}));
-  const restP=ranked.filter(r=>!top.includes(r));
   if(restP.length)right.push({key:null,label:'other pages',value:sum(restP.map(r=>r[1]))});
   // The story's own source and page get a line under the page when their visits left far more or less than the site's.
   const stay=S.lead&&T.page!=null?pairStay(flows,S.lead.key,T.page,S.c.bounce):null,toldPage=right.find(r=>stay&&r.key===T.page);
@@ -2543,7 +2536,7 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
   const at=(list,k)=>{const i=list.findIndex(s=>s.key===k);return i>=0?i:list.findIndex(s=>s.key==null)};
   const m=left.map(()=>right.map(()=>0));
   for(const f of flows){const i=at(left,f.source),j=at(right,f.page);if(i>=0&&j>=0)m[i][j]+=f.visitors}
-  const total=sum(m.flat());if(!total){el.innerHTML=`<div class="empty">${noneYet('visitors',S.p.visitors>0,PER())}</div>`;return}
+  const total=sum(m.flat());if(!total)return empty(el,noneYet('visitors',S.p.visitors>0,PER()))
 
   const told=(n,side)=>n.key!=null&&(side==='left'?T.told.has(n.key):n.key===T.page);
   const row=(n,side)=>{
@@ -2561,7 +2554,7 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
 }
 
 function drawGrowth(el,W){
-  if(!W){el.innerHTML='<div class="empty">Nothing to compare with yet</div>';return}
+  if(!W)return empty(el,'Nothing to compare with yet')
   const aria=`Change in ${HOME?.S?.unit||'visitors'}, against ${PER().before}: `+W.steps.map(s=>`${s.label} ${fmtSigned(s.value)}`).join(', ')+'.';
   drawSteps(el,W.steps,{fmt:v=>fmtSigned(v),aria,colorOf:s=>s.kind==='total'?'var(--ink)':s.kind==='else'?'var(--src-t)':'var(--src)',
     openOf:s=>s.kind==='total'?openOverview:s.channel?b=>openFilter({channel:s.channel},s.label,b):s.key!==null&&s.kind!=='else'?b=>openFilter({referrer:s.key},s.label,b):null});
@@ -2574,7 +2567,7 @@ const stayCaption=(S,B)=>B?.cause==='same'?bounceHeld(S.c.bounce,stayStandout(S,
 // that bounces most. With neither, the period before, unless bounce held. Under them, how long a visit lasts.
 function drawStay(el,S,B){
   const {c,p}=S;
-  if(!c.visits){el.innerHTML=`<div class="empty">${noneYet('visits',p.visits>0,PER())}</div>`;return}
+  if(!c.visits)return empty(el,noneYet('visits',p.visits>0,PER()))
   const rows=[{pct:c.bounce,label:`all visits${p.visits?` · ${pts(c.bounce,p.bounce)}`:''}`,story:false,
     aria:`All visits: ${fmtPct(c.bounce)} bounce${p.visits?`, was ${fmtPct(p.bounce)}`:''}. Open`,open:openBounce}];
   const s=B?.cause==='source'?S.sources.find(x=>x.key===B.top.key):stayStandout(S,B);
@@ -2593,8 +2586,7 @@ function drawStay(el,S,B){
 function drawPages(el,T,pageRows,also=null){
   const live=pageRows.filter(r=>r.value>0),told=new Set([T.page,also].filter(k=>k!=null));
   // The pages the sentence and the caption name always get their own block.
-  const keep=live.filter(r=>told.has(r.key)),top=[...live.filter(r=>!told.has(r.key)).slice(0,6-keep.length),...keep];
-  const rest=live.filter(r=>!top.includes(r));
+  const {top,rest}=topRows(live,6,[...told]);
   // With no earlier period at all (a new site), every page would read "new", which says nothing.
   const before=live.some(r=>r.prev);
   const items=top.map(r=>({label:r.label,value:r.value,sub:r.prev?change(r.value,r.prev):before?'new':'',short:r.prev||!before?null:'new',
@@ -2805,7 +2797,7 @@ function renderEvents(body,events,ser){
 }
 
 function drawHeat(el,S,ser,hourly){
-  if(!hourly){el.innerHTML='<div class="empty">Couldn’t load the hours. Check your connection, then reopen the overview.</div>';return false}
+  if(!hourly)return empty(el,'Couldn’t load the hours. Check your connection, then reopen the overview.'),false
   const cells=Array.from({length:7},()=>Array(24).fill(0)),spikeHours=Array(24).fill(0);
   const spikeDay=S.spike>=0?dayDate(ser.start,S.spike).toDateString():null;
   // Hours are placed by their real local time, so days on the other side of a DST change line up.
@@ -2816,7 +2808,7 @@ function drawHeat(el,S,ser,hourly){
   });
   const spikeRow=spikeDay?(new Date(spikeDay).getDay()+6)%7:-1;
   const max=maxOf(cells.flat());
-  if(!max){el.innerHTML='<div class="empty">No visitors yet</div>';return false}
+  if(!max)return empty(el,'No visitors yet'),false
   const say=el.parentNode.querySelector('.heat-say');if(say)say.innerHTML=hoursStory(cells);
   // The hour and the window the sentence names are marked: the cell outlined, the hours underlined.
   const W=busyWindow(cells),mark=s=>`<b class="hw" style="left:${s/24*100}%;width:calc(${(Math.min(24,s+3)-s)/24*100}% - 2px)"></b>`;
