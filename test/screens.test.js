@@ -361,23 +361,17 @@ test('the ribbons fade nothing: each source and page has its own step of its col
 test('home and the Bounce screen draw sources to pages with the same ribbons, straight across in a wide box', () => {
   assert.match(fn('drawFlow'), /ribbons\(el,left\.map\(n=>row\(n,'left'\)\),right\.map\(n=>row\(n,'right'\)\),m,/);
   assert.match(fn('drawOutcome'), /ribbons\(el,srcs\.map\(/);
-  assert.match(fn('ribbons'), /if\(W>H\*1\.5\)\{/);
   assert.doesNotMatch(html, /function columns\(/);
 });
 
-test('the Bounce screen keeps its third step in a wide box: each page goes on to Read on and Left after one page, with totals', () => {
+test('the Bounce screen keeps its third step at every width: each page goes on to Read on and Left after one page, with totals', () => {
   assert.match(fn('drawOutcome'), /ends:\[\['Read on','read on',sum\(stay\.map\(x=>x\.visits-x\.bounces\)\)\],\['<b>Left after one page<\/b>','left after this page',sum\(stay\.map\(x=>x\.bounces\)\)\]\]/);
   const draw = fn('ribbons');
-  assert.match(draw, /three=ends&&\(W-2\*xa-ow\)\/2>=50/);
+  assert.match(draw, /if\(W>H\*1\.5\|\|ends\)\{/);
+  assert.match(draw, /slim=ends&&\(W-2\*\(run\+16\)-ow\)\/2<50/);
   assert.match(draw, /fill="\$\{q\.o\.k\?q\.r\.lane:'var\(--lost-p\)'\}"/);
-  assert.match(draw, /bar\('o',o\.k,xd,W-xd,o\.y,o\.th,o\.fill,o\.e\.hint\)/);
-});
-
-test('in a tall box the visits that left after a page are a red lane along its row, with their words on it', () => {
-  assert.match(fn('drawOutcome'), /stay\[j\]\.bounces\)\}\),m,/);
-  assert.match(fn('ribbons'), /gone=l\.th\*\(r\.n\.gone\|\|0\)\/r\.v/);
-  assert.match(fn('ribbons'), /r\.lb\.style\.cssText=on\?`color:\$\{onStep\(r\.lb,r\.lane\)\};right:8px;top:\$\{f\(l\.y\+l\.th-gone\/2\)\}px`:'display:none'/);
-  assert.match(html, /\.node\.split \.chg\{display:none\}/);
+  assert.match(draw, /bar\('o',o\.k,xd,xe-xd,o\.y,o\.th,o\.fill,o\.e\.hint\)/);
+  assert.doesNotMatch(html, /oc-key/);
 });
 
 test('popovers float with one shadow: the note editor, and Share and Setup, which a card’s outline can’t flatten', () => {

@@ -267,13 +267,13 @@ button.tile-title:hover{color:var(--ink)}
 .flow path[data-n]{cursor:pointer}
 .node{all:unset;box-sizing:border-box;position:absolute;transform:translateY(-50%);cursor:pointer;font-size:var(--fs-xs);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .node.r{text-align:right}
-.node>span+span{margin-left:6px}
-.node>.left{display:block;margin-left:0}
+.node>span+span{margin-inline-start:6px}
+.node>.left{display:block;margin-inline-start:0}
 .node.in .chg,.node.in.told .chg,.node.in .muted,.node.in .left{color:inherit}
-.node.split .chg{display:none}
-.node.lane{pointer-events:none}
+.node.wrap>span{display:block;margin-inline-start:0;overflow:hidden;text-overflow:ellipsis}
+.node.down{writing-mode:vertical-rl}
+.node.bare .chg{display:none}
 .node.halo{text-shadow:0 0 3px var(--tile),0 0 3px var(--tile),0 0 3px var(--tile)}
-.legend.oc-key{display:none}
 .node b{font-weight:700}
 .node .chg{color:var(--muted);font-variant-numeric:tabular-nums}
 .node.told .chg{color:var(--ink);font-weight:700}
@@ -544,8 +544,7 @@ button.lrow:hover{background:var(--line)}
   .grid{flex:none;grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:minmax(240px,auto)}
   .t-days,.t-flow,.t-stay,.t-pages{grid-column:1;grid-row:auto}
   .t-flow{min-height:680px}
-  .outcome{height:560px}
-  .legend.oc-key{display:flex}
+  .outcome{height:420px}
   .rmap{height:340px}
   .kw .name{white-space:normal;overflow-wrap:anywhere}
   .sq-num{flex-direction:column;gap:0}
@@ -1998,26 +1997,23 @@ matchMedia('(prefers-color-scheme:dark)').onchange=()=>document.querySelectorAll
 // its turn to towards the tile at the bottom, and nothing is see-through: neighbours differ, the last and least
 // stand back in both themes, and a strand keeps its source's step into the page it lands in. The source and page
 // the sentence names have the colour itself, which no other row has.
-// left, right: rows of {html,hint,aria,open,told}; a page's `gone` is how many of its own left after it, drawn as a
-// lane of bounce red along its row in a tall box. m[i][j]: how many went from source i to page j. hot(i,j): the
-// sentence's strand. ends: the two ways on from a page, {html,hint,strand(j,v)}: those who stayed, then those gone.
+// left, right: rows of {html,hint,aria,open,told}; a page's `gone` is how many of its own left after it.
+// m[i][j]: how many went from source i to page j. hot(i,j): the sentence's strand. ends: the two ways on from a
+// page, {html,hint,strand(j,v)}, those who stayed and then those gone; with them the drawing has a third step.
 function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
   const rowsOf=(list,vals,side)=>list.map((n,i)=>{
     const b=document.createElement('button');b.type='button';b.className='node'+(side==='l'?'':' r')+(n.told?' told':'');b.dataset.key=side+i;
     b.innerHTML=n.html;b.title=n.hint;b.setAttribute('aria-label',n.aria);b.onclick=e=>{e.stopPropagation();n.open(b)};
-    // What is said of those who left sits on their lane, not on the part of the row that read on.
-    const lb=n.lane&&document.createElement('span');
-    if(lb){lb.className='node r lane';lb.innerHTML=n.lane;lb.setAttribute('aria-hidden','true')}
-    return {n,i,v:vals[i],b,lb};
+    return {n,i,v:vals[i],b};
   }).filter(r=>r.v>0).map((r,i,rs)=>{
     // What the sentence names keeps the colour itself; the others take the steps either side of it, in order.
     const rest=rs.filter(x=>!x.n.told),j=rest.indexOf(r),p=rest.length>1?j/(rest.length-1):.8,at=r.n.told?.4:p<.5?p*.5:.55+(p-.5)*.9;
     return {...r,fill:step(side==='l'?'src':'page',at),lane:step('bnc',at)}});
   const srcs=rowsOf(left,m.map(r=>sum(r)),'l'),pgs=rowsOf(right,right.map((_,j)=>sum(m.map(r=>r[j]))),'r'),all=[...srcs,...pgs];
-  const box=document.createElement('div');box.className='flow';const eb=(ends||[]).map((e,k)=>{const b=document.createElement('span');b.className='node r in';b.dataset.key='o'+k;b.innerHTML=e.html;b.title=e.hint;return b});
-  box.append(...all.flatMap(r=>r.lb?[r.b,r.lb]:[r.b]),...eb);
+  const eb=(ends||[]).map((e,k)=>{const b=document.createElement('span');b.dataset.key='o'+k;b.innerHTML=e.html;b.title=e.hint;return b});
+  const box=document.createElement('div');box.className='flow';box.append(...all.map(r=>r.b),...eb);
   box.onclick=e=>{const k=e.target.dataset?.n;if(k){e.stopPropagation();box.querySelector(`[data-key="${k}"]`).click()}};
-  // Pointing at a source, a page or a strand keeps its strands and greys the others.
+  // Pointing at a source, a page, an end or a strand keeps its strands and greys the others.
   const only=e=>{
     const at=e?.target.closest?.('[data-key],[data-n],.s'),k=at&&(at.dataset.n||at.dataset.key);
     for(const q of box.querySelectorAll('.s'))q.style.fill=!at||(k?q.dataset[{l:'a',r:'p',o:'o'}[k[0]]]===k.slice(1):q===at)?'':'var(--line)';
@@ -2026,68 +2022,67 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
   el.replaceChildren(box);
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
-    for(const r of all){r.b.classList.remove('in','split','halo');r.b.style.cssText='max-width:none';r.lw=r.b.offsetWidth;r.lh=r.b.offsetHeight}
-    const rmin=12,run=Math.min(W*.5,Math.max(...all.map(r=>r.lw))+14),f=v=>+v.toFixed(2);
+    for(const r of all){r.b.classList.remove('in','halo','wrap','bare');r.b.style.cssText='max-width:none';r.lw=r.b.offsetWidth;r.lh=r.b.offsetHeight}
+    for(const b of eb){b.className='node r';b.style.cssText='max-width:none'}
+    const rmin=12,run=Math.min(W*.5,Math.max(...all.map(r=>r.lw))+14),ow=Math.max(0,...eb.map(b=>b.offsetWidth))+24,f=v=>+v.toFixed(2);
     // Rows of one turn, top to bottom: each as thick as its count, far enough apart for a name to sit on a thin one.
     const rows=(items,u,y0)=>{let y=y0;return items.map((r,i)=>{const th=Math.max(2,r.v*u),nx=items[i+1],row={r,th,y};if(nx)y+=th+Math.max(6,(r.lh+nx.lh)/2+2-(th+Math.max(2,nx.v*u))/2);return row})};
     const open=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(aria)}">`,isHot=q=>hot(q.a.r.i,q.l.r.i);
     // Wide strands first and the story's last, so thin ones and the named one sit on top where strands cross; a wide
     // strand has a hairline of the tile round it, which keeps two strands apart where they cross.
+    const edge=w=>w>=3?' stroke="var(--tile)" stroke-width=".75"':'';
     // A strand has its source's step all the way, so a page's edge shows where its own came from; where it leaves
     // its source it has a cap in its page's step, so a source's edge is a stacked bar of where its own went.
-    const strand=(q,d,w,cap)=>`<path class="s" data-a="${q.a.r.i}" data-p="${q.l.r.i}" d="${d}" fill="${q.a.r.fill}"${w>=3?' stroke="var(--tile)" stroke-width=".75"':''} data-hint="${esc(hint(q.a.r.i,q.l.r.i,q.v))}"/>`
-      +`<rect ${cap} fill="${q.l.r.fill}"${w>=3?' stroke="var(--tile)" stroke-width=".75"':''} pointer-events="none"/>`;
+    const strand=(q,d,w,cap)=>`<path class="s" data-a="${q.a.r.i}" data-p="${q.l.r.i}" d="${d}" fill="${q.a.r.fill}"${edge(w)} data-hint="${esc(hint(q.a.r.i,q.l.r.i,q.v))}"/><rect ${cap} fill="${q.l.r.fill}"${edge(w)} pointer-events="none"/>`;
     const order=qs=>qs.sort((p,q)=>isHot(p)-isHot(q)||q.v-p.v);
-    const name=(r,inside,side,top,max)=>{r.b.classList.toggle('in',inside);r.b.style.cssText=`${inside?`color:${onStep(r.b,r.fill)};`:''}${side}:${inside?8:0}px;top:${f(top)}px;max-width:${f(max)}px`};
-    // A page's row: its name goes in the part that read on and the lane's words on the lane, when both fit; when
-    // either is too thin the row ends early and both stand after it, on neither.
-    const fits=(l,gone)=>l.th-gone>=l.r.lh+2&&(gone<.5||!l.r.lb||gone>=l.r.lh+2);
-    const laned=(l,gone,inside)=>{
-      const r=l.r,on=inside&&gone>=.5&&!!r.lb;r.b.classList.toggle('split',on);
-      if(r.lb)r.lb.style.cssText=on?`color:${onStep(r.lb,r.lane)};right:8px;top:${f(l.y+l.th-gone/2)}px`:'display:none';
-    };
+    // A name sits inside its band in the colour that reads on it, or beside a band too thin to hold it.
+    const name=(b,fill,inside,css)=>{b.classList.toggle('in',inside);b.style.cssText=(inside?`color:${onStep(b,fill)};`:'')+css};
     const put=s=>{box.querySelector('svg')?.remove();box.insertAdjacentHTML('afterbegin',s+'</svg>')};
-    // In a wide box the bands run straight across: sources on the left, then the pages, and when the pages have
-    // ends (read on, left), those as a third step on the right, each page's strands going on to them.
-    for(const b of eb)b.style.cssText='';
-    const ow=Math.max(0,...eb.map(b=>b.offsetWidth))+24;
-    for(const b of eb)b.style.cssText='display:none';
-    if(W>H*1.5){
-      const xa=run+16,three=ends&&(W-2*xa-ow)/2>=50,gapE=8,tot=sum(pgs.map(r=>r.v));
+    // Straight across, in a wide box or whenever there is a third step: sources, then pages, then the ends. In a
+    // box too narrow to hold the names inside three bands, the bands are thin bars with their names beside them.
+    if(W>H*1.5||ends){
+      const slim=ends&&(W-2*(run+16)-ow)/2<50,bw=slim?8:run+16,gapE=8,tot=sum(pgs.map(r=>r.v));
+      // Slim: the ends' names run down beside their bars, which leaves the pages' names the width of the second crossing.
+      const xe=slim?W-22:W,xa=slim?Math.round(W*.38):bw,xb=ends?slim?xa+Math.round((xe-2*bw-xa)*.36):xa+(W-2*bw-ow)/2:W-bw,xc=ends?xb+bw:W,xd=slim?xe-bw:xc+xb-xa;
+      if(slim){
+        // Sources' names wrap in their gutter; a page's name alone runs over its strands, on a halo of the tile.
+        for(const r of srcs){r.b.classList.add('wrap');r.b.style.maxWidth=f(xa-bw-6)+'px';r.lh=r.b.offsetHeight}
+        for(const r of pgs){r.b.classList.add('bare');r.lh=r.b.offsetHeight}
+        for(const b of eb)b.classList.add('down');
+      }
       const end=R=>R.at(-1).y+R.at(-1).th;
-      let u=0,hi=10;for(let i=0;i<24;i++){const mid=(u+hi)/2;if(Math.max(end(rows(srcs,mid,0)),end(rows(pgs,mid,0)),three?tot*mid+gapE:0)<=H)u=mid;else hi=mid}
-      const A=rows(srcs,u,0),L=rows(pgs,u,0),cross=three?(W-2*xa-ow)/2:W-2*xa,xb=xa+cross,xc=three?xb+xa:W,xd=xc+cross,mx=(xa+xb)/2;
+      let u=0,hi=10;for(let i=0;i<24;i++){const mid=(u+hi)/2;if(Math.max(end(rows(srcs,mid,0)),end(rows(pgs,mid,0)),ends?tot*mid+gapE:0)<=H)u=mid;else hi=mid}
+      const A=rows(srcs,u,0),L=rows(pgs,u,0);
       for(const R of [A,L]){const dy=(H-end(R))/2;for(const r of R)r.y+=dy}
       const strands=[];
       for(const a of A){let y=a.y;for(const l of L){const v=m[a.r.i][l.r.i];if(v){strands.push({a,l,v,y0:y});y+=a.th*v/a.r.v}}}
       for(const l of L){let y=l.y;for(const q of strands.filter(q=>q.l===l)){q.y1=y;y+=l.th*q.v/l.r.v}}
       const curve=(x0,y0,w0,x1,y1,w1)=>{const c=(x0+x1)/2;return `M${f(x0)},${f(y0)} C${f(c)},${f(y0)} ${f(c)},${f(y1)} ${f(x1)},${f(y1)} v${f(w1)} C${f(c)},${f(y1+w1)} ${f(c)},${f(y0+w0)} ${f(x0)},${f(y0+w0)} Z`};
       let s=open+order(strands).map(q=>{const w0=q.a.th*q.v/q.a.r.v,w1=q.l.th*q.v/q.l.r.v;
-        return strand(q,curve(xa,q.y0,w0,xb,q.y1,w1),Math.min(w0,w1),`x="${f(xa)}" y="${f(q.y0)}" width="8" height="${f(w0)}"`)}).join('');
+        return strand(q,curve(xa,q.y0,w0,xb,q.y1,w1),Math.min(w0,w1),`x="${f(xa)}" y="${f(q.y0)}" width="${slim?4:8}" height="${f(w0)}"`)}).join('');
       const bar=(k,i,x,w,y,h,fill,tip)=>`<rect data-n="${k}${i}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" fill="${fill}" data-hint="${esc(tip)}"/>`;
-      for(const a of A){const r=a.r,inside=a.th>=r.lh+2,x0=inside?0:Math.min(xa-8,r.lw+6);s+=bar('l',r.i,x0,xa-x0,a.y,a.th,r.fill,r.n.hint);name(r,inside,'left',a.y+a.th/2,xa-10)}
-      if(!three)for(const l of L){
-        const r=l.r,gone=l.th*(r.n.gone||0)/r.v,inside=fits(l,gone),x1=inside?W:Math.max(xb+8,W-r.lw-6);
-        s+=bar('r',r.i,xb,x1-xb,l.y,l.th,r.fill,r.n.hint)+(gone>=.5?bar('r',r.i,xb,x1-xb,l.y+l.th-gone,gone,r.lane,r.n.hint):'');
-        name(r,inside,'right',l.y+(inside?l.th-gone:l.th)/2,W-xb-10);laned(l,gone,inside);
+      for(const a of A){
+        const r=a.r,inside=!slim&&a.th>=r.lh+2,x0=slim?xa-bw:inside?0:Math.min(xa-8,r.lw+6),top=`top:${f(a.y+a.th/2)}px;`;
+        s+=bar('l',r.i,x0,xa-x0,a.y,a.th,r.fill,r.n.hint);
+        name(r.b,r.fill,inside,top+(slim?`right:${f(W-xa+bw+6)}px;max-width:${f(xa-bw-6)}px;text-align:right`:`left:${inside?8:0}px;max-width:${f(xa-10)}px`));
       }
-      else{
+      for(const l of L){
+        const r=l.r,inside=!slim&&l.th>=r.lh+2,x1=ends||inside?xc:Math.max(xb+8,W-r.lw-6),top=`top:${f(l.y+l.th/2)}px;`;
+        s+=bar('r',r.i,xb,x1-xb,l.y,l.th,r.fill,r.n.hint);r.b.classList.toggle('halo',!!ends&&!inside);
+        name(r.b,r.fill,inside,top+(ends?`left:${f(slim?xc+6:xb+8)}px;max-width:${f(slim?xd-xc-10:bw-10)}px;text-align:left`:`right:${inside?8:0}px;max-width:${f(W-xb-10)}px`));
+      }
+      if(ends){
         // Each page's strands go on: those who read on above, in grey, those who left below, in the page's step of
         // red. Where a strand lands it has a cap in its page's step, so an end's edge shows which pages fed it.
-        const E=ends.map((e,k)=>({e,k,v:sum(pgs.map(r=>k?r.n.gone:r.v-r.n.gone)),fill:k?'var(--bnc)':'var(--lost)'}));
+        const E=ends.map((e,k)=>({e,k,v:sum(pgs.map(r=>k?r.n.gone:r.v-r.n.gone)),fill:k?'var(--bnc)':'var(--lost)'})),on=[];
         let y=(H-tot*u-gapE)/2;for(const o of E){o.y=o.at=y;o.th=o.v*u;y+=o.th+gapE}
-        const on=[];
-        for(const l of L){
-          const r=l.r,inside=l.th>=r.lh+2;let y0=l.y;
-          for(const o of E){const v=o.k?r.n.gone:r.v-r.n.gone;if(!v)continue;const w0=l.th*v/r.v,w1=o.th*v/o.v;on.push({r,o,v,w:Math.min(w0,w1),d:curve(xc,y0,w0,xd,o.at,w1),cap:`x="${f(xd-8)}" y="${f(o.at)}" width="8" height="${f(w1)}"`});y0+=w0;o.at+=w1}
-          s+=bar('r',r.i,xb,xc-xb,l.y,l.th,r.fill,r.n.hint);
-          r.b.classList.toggle('in',inside);r.b.classList.toggle('halo',!inside);if(r.lb)r.lb.style.cssText='display:none';
-          r.b.style.cssText=`${inside?`color:${onStep(r.b,r.fill)};`:''}left:${f(xb+8)}px;top:${f(l.y+l.th/2)}px;max-width:${f(xa-10)}px;text-align:left`;
-        }
+        for(const l of L){let y0=l.y;for(const o of E){
+          const r=l.r,v=o.k?r.n.gone:r.v-r.n.gone;if(!v)continue;
+          const w0=l.th*v/r.v,w1=o.th*v/o.v;on.push({r,o,v,w:Math.min(w0,w1),d:curve(xc,y0,w0,xd,o.at,w1),cap:`x="${f(xd-(slim?4:8))}" y="${f(o.at)}" width="${slim?4:8}" height="${f(w1)}"`});y0+=w0;o.at+=w1}}
         // Grey first and red over it, the named page's red last.
-        s+=on.sort((p,q)=>p.o.k-q.o.k||p.r.n.told-q.r.n.told||q.v-p.v).map(q=>`<path class="s" data-p="${q.r.i}" data-o="${q.o.k}" d="${q.d}" fill="${q.o.k?q.r.lane:'var(--lost-p)'}"${q.w>=3?' stroke="var(--tile)" stroke-width=".75"':''} data-hint="${esc(q.o.e.strand(q.r.i,q.v))}"/>`
-          +`<rect ${q.cap} fill="${q.r.fill}"${q.w>=3?' stroke="var(--tile)" stroke-width=".75"':''} pointer-events="none"/>`).join('');
-        for(const o of E){s+=bar('o',o.k,xd,W-xd,o.y,o.th,o.fill,o.e.hint);eb[o.k].style.cssText=`color:${onStep(eb[o.k],o.fill)};right:8px;top:${f(o.y+o.th/2)}px;max-width:${f(W-xd-10)}px`}
+        s+=on.sort((p,q)=>p.o.k-q.o.k||p.r.n.told-q.r.n.told||q.v-p.v).map(q=>`<path class="s" data-p="${q.r.i}" data-o="${q.o.k}" d="${q.d}" fill="${q.o.k?q.r.lane:'var(--lost-p)'}"${edge(q.w)} data-hint="${esc(q.o.e.strand(q.r.i,q.v))}"/><rect ${q.cap} fill="${q.r.fill}"${edge(q.w)} pointer-events="none"/>`).join('');
+        // Slim: the first end's name starts at its bar's top and the last one's ends at its bar's bottom, so they never meet.
+        for(const o of E){s+=bar('o',o.k,xd,xe-xd,o.y,o.th,o.fill,o.e.hint);name(eb[o.k],o.fill,!slim,slim?`left:${f(xe+4)}px;transform:none;${o.k?`bottom:${f(H-o.y-o.th)}`:`top:${f(o.y)}`}px`:`top:${f(o.y+o.th/2)}px;right:8px;max-width:${f(W-xd-10)}px`)}
       }
       return put(s);
     }
@@ -2115,21 +2110,19 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
     for(const a of A){
       const r=a.r,inside=a.th>=r.lh+2,x0=inside?0:Math.min(cx-8,r.lw+6);
       s+=`<path data-n="l${r.i}" d="M${f(x0)},${f(a.y)} H${f(cx)} A${f(a.out)},${f(a.out)} 0 0 1 ${f(cx+a.out)},${f(cy)} V${f(ySplit)} H${f(cx+a.in)} V${f(cy)} A${f(a.in)},${f(a.in)} 0 0 0 ${f(cx)},${f(a.y+a.th)} H${f(x0)} Z" fill="${r.fill}" data-hint="${esc(r.n.hint)}"/>`;
-      name(r,inside,'left',a.y+a.th/2,cx-10);
+      name(r.b,r.fill,inside,`left:${inside?8:0}px;top:${f(a.y+a.th/2)}px;max-width:${f(cx-10)}px`);
     }
     for(const l of L){
-      // The lane of those who left runs along the row's lower edge.
-      const r=l.r,gone=l.th*(r.n.gone||0)/r.v,inside=fits(l,gone),x1=inside?W:Math.max(cx2+8,W-r.lw-6);
-      const row=(a,fill)=>`<path data-n="r${r.i}" d="M${f(l.x)},${f(yMerge)} V${f(my)} A${f(l.out)},${f(l.out)} 0 0 0 ${f(cx2)},${f(my+l.out)} H${f(x1)} V${f(my+a)} H${f(cx2)} A${f(a)},${f(a)} 0 0 1 ${f(cx2-a)},${f(my)} V${f(yMerge)} Z" fill="${fill}" data-hint="${esc(r.n.hint)}"/>`;
-      s+=row(l.in,r.fill)+(gone>=.5?row(l.out-gone,r.lane):'');
-      name(r,inside,'right',l.y+(inside?l.th-gone:l.th)/2,W-cx2-10);laned(l,gone,inside);
+      const r=l.r,inside=l.th>=r.lh+2,x1=inside?W:Math.max(cx2+8,W-r.lw-6);
+      s+=`<path data-n="r${r.i}" d="M${f(l.x)},${f(yMerge)} V${f(my)} A${f(l.out)},${f(l.out)} 0 0 0 ${f(cx2)},${f(my+l.out)} H${f(x1)} V${f(my+l.in)} H${f(cx2)} A${f(l.in)},${f(l.in)} 0 0 1 ${f(cx2-l.in)},${f(my)} V${f(yMerge)} Z" fill="${r.fill}" data-hint="${esc(r.n.hint)}"/>`;
+      name(r.b,r.fill,inside,`right:${inside?8:0}px;top:${f(l.y+l.th/2)}px;max-width:${f(W-cx2-10)}px`);
     }
     put(s);
   });
 }
 
 // Where visits came from, the page they landed on, and whether they read on or left after it, as ribbons in
-// visits: three steps in a wide box; in a tall one those who left are a red lane along their page's row. The five busiest sources and pages, and the pair the sentence names; the rest go under
+// visits, three steps straight across. The five busiest sources and pages, and the pair the sentence names; the rest go under
 // "other".
 function drawOutcome(el,flows,pair){
   if(!sum(flows.map(f=>f.visits))){el.innerHTML='<div class="empty">No visits yet</div>';return}
@@ -2146,7 +2139,7 @@ function drawOutcome(el,flows,pair){
   const label=(dim,k)=>k===OTHER?`other ${dim==='referrer'?'sources':'pages'}`:labelOf(dim,k),vis=n=>`${fmtInt(n)} ${n===1?'visit':'visits'}`;
   const row=(dim,k,on,word,hint,gone)=>{
     const name=label(dim,k);
-    return {told:on,gone,lane:gone!=null&&word,hint,aria:`${hint}. Open`,html:`<span>${on?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${word}</span>`,
+    return {told:on,gone,hint,aria:`${hint}. Open`,html:`<span>${on?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${word}</span>`,
       open:k===OTHER?b=>openView({v:dim==='referrer'?'sources':'pages'},b):b=>openFilter({[dim]:k},name,b)};
   };
   ribbons(el,srcs.map((k,i)=>row('referrer',k,pair&&k===pair.source,fmtInt(sum(m[i])),`${label('referrer',k)}: ${vis(sum(m[i]))}`)),
@@ -2263,7 +2256,7 @@ async function renderBounce(body){
     <div class="nums"><div class="hero"><span class="big">${totals.cur.visits?fmtPct(c):'–'}</span><span>bounce${totals.prev.visits&&totals.cur.visits?` · <b>${pts(c,p)}</b>`:''}</span><span class="hero-sq">${squaresSVG(c,22,5,'var(--bnc)')}</span></div></div>
     ${B&&B.cause!=='same'?`<section class="card"><div class="card-title">Why it ${B.total>0?'rose':'fell'} · in percentage points</div><div class="steps"></div>
       <div class="legend"><span>${fmtPct(c)} now</span><span>${fmtPct(p)} before</span></div></section>`:''}
-    <section class="card"><div class="card-title">Where visits came from, the page they landed on, and who left after it</div><p class="card-say oc-say"></p><div class="outcome"></div><div class="legend oc-key"></div></section>
+    <section class="card"><div class="card-title">Where visits came from, the page they landed on, and who left after it</div><p class="card-say oc-say"></p><div class="outcome"></div></section>
     <section class="card"><div class="card-title">Bounce per day${totals.prev.visits?`, against ${AGAINST()}`:''}</div><div class="chart"></div></section>
     <section class="card"><div class="card-title">Sources</div><div data-dim="referrer"></div></section>
     <section class="card"><div class="card-title">Pages they landed on</div><div data-dim="entry"></div></section>`;
@@ -2279,7 +2272,6 @@ async function renderBounce(body){
   const O=outcomeStory(flows.flows,c);
   body.querySelector('.oc-say').innerHTML=O.html;
   drawOutcome(body.querySelector('.outcome'),flows.flows,O.pair);
-  if(totals.cur.visits)body.querySelector('.oc-key').innerHTML=`<span><i class="sw" style="background:var(--bnc)"></i>Left after one page · ${fmtInt(sum(flows.flows.map(f=>f.bounces)))}</span><span><i class="sw" style="background:var(--page)"></i>Read on · ${fmtInt(sum(flows.flows.map(f=>f.visits-f.bounces)))}</span>`;
   // A day with no visits has no bounce rate, so the line leaves a gap there rather than dropping to 0%.
   const rates=side=>side.bounce.map((b,i)=>side.visits&&!side.visits[i]?null:b);
   // The highest day is labelled only when it stands out: 5 points or more above a usual day.
