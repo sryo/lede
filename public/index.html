@@ -15,6 +15,7 @@
    pages violet, bounce (people leaving) red, and people here now green. Colour is solid. Transparency means empty,
    before, those who left, or how much; and in crowded charts (Sankey ribbons, the spike day, the page treemap) the
    marks the sentence names stay solid while the rest fade, so the eye finds them. Small marks fade less so they show.
+   Home's ribbons fade nothing: each source and page has its own step of its colour, so a strand can be followed.
    Text stays ink; colour sits in marks, swatches and underlines. */
 @font-face{font-family:"WeePeople";src:url("/weepeople.woff2") format("woff2");font-display:block}
 :root{
@@ -252,7 +253,7 @@ button.tile-title:hover{color:var(--ink)}
   font-size:var(--fs-xs);line-height:1.3;border-radius:6px}
 .event .glyph{margin-top:4px}
 .event:hover b,.node:hover>span:first-child,.landed .lbl:hover b,.landed .lbl:hover,button.lrow:hover .name{text-decoration:underline}
-.event b,.node>span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.event b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .event>span>span{display:block;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .events-list,.list{display:flex;flex-direction:column;margin:0 -8px}
 .also{margin:0;padding-left:20px;display:grid;gap:6px;font-size:var(--fs-s)}
@@ -260,14 +261,15 @@ button.tile-title:hover{color:var(--ink)}
 .events-list .event b,.events-list .event>span>span{white-space:normal}
 .events-list .event:hover{background:var(--line)}
 
-/* sankey */
-.flow{height:100%;display:grid;grid-template-columns:120px minmax(0,1fr) 120px;gap:8px}
-.flow svg{width:100%;height:100%;display:block;overflow:visible}
-.nodes{position:relative}
-.node{all:unset;position:absolute;transform:translateY(-50%);cursor:pointer;font-size:var(--fs-xs);line-height:1.3;max-width:120px}
-.nodes.left .node{right:0;text-align:right}
-.nodes.right .node{left:0}
-.node.told>span:first-child{white-space:normal;overflow-wrap:normal}
+/* ribbons: names sit inside their bands, so the drawing needs no columns for them */
+.flow{height:100%;position:relative}
+.flow svg{position:absolute;inset:0;display:block;overflow:visible}
+.flow path[data-n]{cursor:pointer}
+.node{all:unset;box-sizing:border-box;position:absolute;transform:translateY(-50%);cursor:pointer;font-size:var(--fs-xs);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.node.r{text-align:right}
+.node>span+span{margin-left:6px}
+.node>.left{display:block;margin-left:0}
+.node.in .chg,.node.in .muted,.node.in .left{color:inherit}
 .node b{font-weight:700}
 .node .chg{color:var(--muted);font-variant-numeric:tabular-nums}
 .node.told .chg{color:var(--ink);font-weight:700}
@@ -540,11 +542,9 @@ button.lrow:hover{background:var(--line)}
   .now-body>span:last-child{white-space:normal}
   .grid{flex:none;grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:minmax(240px,auto)}
   .t-days,.t-flow,.t-stay,.t-pages{grid-column:1;grid-row:auto}
-  .t-flow{min-height:440px}
+  .t-flow{min-height:680px}
   .rmap{height:340px}
-  .flow{grid-template-columns:minmax(0,1fr) minmax(80px,1fr) minmax(0,1fr)}
-  .node{font-size:var(--fs-xs);max-width:none}
-  .node>span:first-child,.kw .name{white-space:normal;overflow-wrap:anywhere}
+  .kw .name{white-space:normal;overflow-wrap:anywhere}
   .sq-num{flex-direction:column;gap:0}
   .sqrow.under .sq-num{flex-direction:row;gap:8px}
   .stay-card .sq-box{height:124px}
@@ -2430,6 +2430,7 @@ function drawPeriod(el,ser,getChart,restore){
   });
 }
 
+const DARK=matchMedia('(prefers-color-scheme:dark)');
 function drawFlow(el,S,T,flows,flowsPrev,pageRows){
   if(!flows.length){el.innerHTML=`<div class="empty">${noneYet('visitors',S.p.visitors>0,PER())}</div>`;return}
   // Left: the sources the sentence names and those that moved the total most, in order of change; named ones are bold.
@@ -2462,36 +2463,18 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
   for(const f of flows){const i=at(left,f.source),j=at(right,f.page);if(i>=0&&j>=0)m[i][j]+=f.visitors}
   const total=sum(m.flat());if(!total){el.innerHTML=`<div class="empty">${noneYet('visitors',S.p.visitors>0,PER())}</div>`;return}
 
-  // Each side has its own gaps, so each gets its own scale; a ribbon is v*kL tall on the left and v*kR on the right.
-  const gap=3,scaleOf=n=>(100-gap*(n-1))/total,kL=scaleOf(left.length),kR=scaleOf(right.length);
-  const stack=(vals,k)=>{let y=0;return vals.map(v=>{const top=y;y+=v*k+gap;return {top,h:v*k}})};
-  const L=stack(m.map(r=>sum(r)),kL),R=stack(right.map((_,j)=>sum(m.map(r=>r[j]))),kR);
-  const lOff=L.map(n=>n.top),rOff=R.map(n=>n.top);
-  const layers=[[],[],[]];
-  m.forEach((row,i)=>row.forEach((v,j)=>{
-    if(!v)return;
-    const a=lOff[i],b=rOff[j],ha=v*kL,hb=v*kR;lOff[i]+=ha;rOff[j]+=hb;
-    const fromNamed=left[i].key!=null&&T.told.has(left[i].key);
-    const hot=fromNamed&&S.lead&&left[i].key===S.lead.key&&T.page!=null&&right[j].key===T.page;
-    // Pale ribbons first, the named one last, so the story's ribbon sits on top where ribbons cross.
-    layers[hot?2:fromNamed?1:0].push(`<path d="M2.2,${a} C50,${a} 50,${b} 97.8,${b} L97.8,${b+hb} C50,${b+hb} 50,${a+ha} 2.2,${a+ha} Z" fill="${hot?'var(--src)':fromNamed?'var(--src-t)':'var(--src-p)'}" data-hint="${esc(ribbonHint(left[i].label,right[j].label,v))}"/>`);
-  }));
-  let paths=layers.flat().join('');
-  L.forEach((n,i)=>{paths+=`<rect x="0" y="${n.top}" width="2.2" height="${n.h}" fill="${left[i].key!=null&&T.told.has(left[i].key)?'var(--src)':'var(--src-ts)'}"/>`});
-  R.forEach((n,j)=>{paths+=`<rect x="97.8" y="${n.top}" width="2.2" height="${n.h}" fill="${right[j].key!=null&&right[j].key===T.page?'var(--page)':'var(--page-ts)'}"/>`});
-  el.innerHTML=`<div class="flow"><div class="nodes left"></div>
-    <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="First visits from ${left.length} sources, named sources first then by change, to the pages they landed on">${paths}</svg>
-    <div class="nodes right"></div></div>`;
-
-  const node=(n,side)=>{
+  // The ribbons. A visitor is as wide everywhere. Each source comes in from the left as a band and turns down into
+  // its own column; a column splits into one strand per page; strands cross and merge into each page's column, which
+  // turns right into the page's row. The bands of a turn share one centre, so the space between two stays the same
+  // round the corner. A name sits inside its band, and a band too thin to hold it starts after the name.
+  const node=(n,side,i,told,hint)=>{
     const b=document.createElement('button');b.type='button';
-    const told=n.key!=null&&(side==='left'?T.told.has(n.key):n.key===T.page);
-    b.className='node'+(told?' told':'');
+    b.className='node'+(side==='left'?'':' r')+(told?' told':'');b.dataset.key=side[0]+i;
     const name=told?n.label:shorten(n.label);
     if(side==='left')b.innerHTML=`<span>${told?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${n.prev?fmtSigned(n.change):'new'}</span>`;
     else if(n.key==null)b.innerHTML=`<span class="muted">${esc(name)}</span>`;
     else b.innerHTML=told?`<span><b>${pathHTML(name)}</b></span>${n.isNew?'<span class="chg">new</span>':''}${n.left?`<span class="left"><i class="sw" style="background:var(--bnc)"></i>${n.left}</span>`:''}`:`<span>${esc(name)}</span>`;
-    b.title=side==='left'?sourceHint(n.label,n.value,n.prev,S.unit):n.leftHint||pageHint(n.label,n.value);
+    b.title=hint;
     b.setAttribute('aria-label',side==='left'
       ?`${n.label}, ${n.change>=0?'up':'down'} ${fmtInt(Math.abs(n.change))}, ${fmtInt(n.value)} ${S.unit}. Open`
       :`${n.label}, ${fmtInt(n.value)} first visits landed here${n.leftHint?`. ${n.leftHint}`:''}. Open`);
@@ -2499,17 +2482,78 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
       :openFilter({[side==='left'?'referrer':'path']:n.key},n.label,b)};
     return b;
   };
-  const place=(col,list,geo,side)=>{
-    const els=list.map(n=>node(n,side));col.replaceChildren(...els);
-    // Labels sit at the middle of their node, nudged apart when nodes are too thin to hold them.
-    observe(col,()=>{
-      const H=col.clientHeight;if(!H)return;
-      const ys=spread(geo.map(n=>(n.top+n.h/2)/100*H),Math.max(...els.map(b=>b.offsetHeight))+6,H);
-      els.forEach((b,i)=>b.style.top=ys[i]+'px');
-    });
+  // A row is a source or a page with first visits in the drawing: its people, its name and whether the sentence names it.
+  const rowsOf=(list,vals,side)=>list.map((n,i)=>{
+    const told=n.key!=null&&(side==='left'?T.told.has(n.key):n.key===T.page),hint=side==='left'?sourceHint(n.label,n.value,n.prev,S.unit):n.leftHint||pageHint(n.label,n.value);
+    return {n,i,v:vals[i],told,hint,b:node(n,side,i,told,hint)};
+  }).filter(r=>r.v>0).map((r,i,rs)=>({...r,fill:step(side==='left'?'src':'page',rs.length>1?i/(rs.length-1):.4)}));
+  // Each source has its own step of amber and each page its own step of violet, from towards the ink at the top of
+  // its turn to towards the tile at the bottom, and nothing is see-through: neighbours differ, the last and least
+  // stand back in both themes, and a strand keeps its source's step into the page it lands in.
+  function step(tok,t){return `color-mix(in oklab,var(--${tok}),var(${t<.4?`--ink) ${Math.round((.4-t)*75)}`:`--tile) ${Math.round((t-.4)*92)}`}%)`}
+  const srcs=rowsOf(left,m.map(r=>sum(r)),'left'),pgs=rowsOf(right,right.map((_,j)=>sum(m.map(r=>r[j]))),'right'),all=[...srcs,...pgs];
+  const box=document.createElement('div');box.className='flow';box.append(...all.map(r=>r.b));
+  box.onclick=e=>{const k=e.target.dataset?.n;if(k){e.stopPropagation();box.querySelector(`[data-key="${k}"]`).click()}};
+  // Pointing at a source, a page or a strand keeps its strands and greys the others.
+  const only=e=>{
+    const at=e?.target.closest?.('[data-key],[data-n],.s'),k=at&&(at.dataset.n||at.dataset.key);
+    for(const q of box.querySelectorAll('.s'))q.style.fill=!at||(k?q.dataset[k[0]==='l'?'a':'p']===k.slice(1):q===at)?'':'var(--line)';
   };
-  place(el.querySelector('.nodes.left'),left,L,'left');
-  place(el.querySelector('.nodes.right'),right,R,'right');
+  box.onpointerover=box.onfocusin=only;box.onpointerout=box.onfocusout=()=>only();
+  // A name inside a band is dark or white, whichever reads on the band's step in this theme.
+  const px=document.createElement('canvas').getContext('2d',{willReadFrequently:true});
+  const onOf=r=>{
+    r.b.style.color=r.fill;px.fillStyle=getComputedStyle(r.b).color;px.fillRect(0,0,1,1);
+    const [R,G,B]=[...px.getImageData(0,0,1,1).data].map(c=>(c/=255)<=.03928?c/12.92:((c+.055)/1.055)**2.4);
+    return .2126*R+.7152*G+.0722*B>.3?'var(--on-src)':'#fff';
+  };
+  DARK.onchange=()=>el._draw?.();
+  el.replaceChildren(box);
+  observe(el,()=>{
+    const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
+    for(const r of all){r.b.classList.remove('in');r.b.style.cssText='max-width:none';r.lw=r.b.offsetWidth;r.lh=r.b.offsetHeight}
+    const rmin=12,run=Math.min(W*.5,Math.max(...all.map(r=>r.lw))+14);
+    // Rows of one turn, top to bottom: each as thick as its visitors, far enough apart for a name to sit on a thin one.
+    const rows=(items,u,y0)=>{let y=y0;return items.map((r,i)=>{const th=Math.max(2,r.v*u),nx=items[i+1],row={r,th,y};if(nx)y+=th+Math.max(6,(r.lh+nx.lh)/2+2-(th+Math.max(2,nx.v*u))/2);return row})};
+    const lay=(u,split)=>{
+      const A=rows(srcs,u,0),cy=A.at(-1).y+A.at(-1).th+rmin;for(const a of A){a.out=cy-a.y;a.in=a.out-a.th}
+      const ySplit=cy+16,yMerge=ySplit+split,my=yMerge+16;
+      const L=rows(pgs,u,my+rmin);for(const l of L){l.in=l.y-my;l.out=l.in+l.th}
+      return {A,L,cy,my,ySplit,yMerge,wide:Math.max(A[0].out,L.at(-1).out)-rmin,H:L.at(-1).y+L.at(-1).th};
+    };
+    // The widest a visitor can be while the drawing fits the tile and leaves each side a run for its names; the
+    // height that leaves over goes to the crossing, where longer strands are easier to follow.
+    const split=Math.max(70,H*.3);
+    let u=0,hi=10;for(let i=0;i<24;i++){const mid=(u+hi)/2,G=lay(mid,split);if(G.H<=H&&run+rmin+G.wide<=W)u=mid;else hi=mid}
+    const {A,L,cy,my,ySplit,yMerge}=lay(u,split+Math.max(0,H-lay(u,split).H));
+    // Each turn's centre: the columns sit mid-tile when there is room, and never push a row's run under its names.
+    const cx=Math.min(W-A[0].out,Math.max(run,(W-(A[0].out-rmin))/2-rmin)),cx2=Math.max(L.at(-1).out,Math.min(W-run,(W+L.at(-1).out-rmin)/2+rmin));
+    for(const a of A)a.x=cx+a.in;for(const l of L)l.x=cx2-l.out;
+    // Strands leave a column in the order of where they go, and arrive in the order of where they came from.
+    const strands=[];
+    for(const a of A){let x=a.x;for(const l of [...L].reverse()){const v=m[a.r.i][l.r.i];if(v){strands.push({a,l,v,x0:x});x+=a.th*v/a.r.v}}}
+    for(const l of L){let x=l.x;for(const q of strands.filter(q=>q.l===l).sort((p,q)=>p.a.x-q.a.x)){q.x1=x;x+=l.th*q.v/l.r.v}}
+    const ym=(ySplit+yMerge)/2,f=v=>+v.toFixed(2);
+    // Wide strands first and the story's last, so thin ones and the named one sit on top where strands cross; a wide
+    // strand has a hairline of the tile round it, which keeps two strands apart where they cross.
+    const hot=q=>q.a.r.told&&S.lead&&q.a.r.n.key===S.lead.key&&q.l.r.told;
+    const drawn=strands.sort((p,q)=>hot(p)-hot(q)||q.v-p.v).map(q=>{
+      const w0=q.a.th*q.v/q.a.r.v,w1=q.l.th*q.v/q.l.r.v;
+      return `<path class="s" data-a="${q.a.r.i}" data-p="${q.l.r.i}" d="M${f(q.x0)},${f(ySplit)} C${f(q.x0)},${f(ym)} ${f(q.x1)},${f(ym)} ${f(q.x1)},${f(yMerge)} h${f(w1)} C${f(q.x1+w1)},${f(ym)} ${f(q.x0+w0)},${f(ym)} ${f(q.x0+w0)},${f(ySplit)} Z" fill="${q.a.r.fill}"${Math.min(w0,w1)>=3?' stroke="var(--tile)" stroke-width=".75"':''} data-hint="${esc(ribbonHint(q.a.r.n.label,q.l.r.n.label,q.v))}"/>`;
+    });
+    let s=`<svg width="${W}" height="${H}" role="img" aria-label="First visits from ${srcs.length} sources, named sources first then by change, to the pages they landed on">${drawn.join('')}`;
+    for(const a of A){
+      const r=a.r,inside=a.th>=r.lh+2,x0=inside?0:Math.min(cx-8,r.lw+6);
+      s+=`<path data-n="l${r.i}" d="M${f(x0)},${f(a.y)} H${f(cx)} A${f(a.out)},${f(a.out)} 0 0 1 ${f(cx+a.out)},${f(cy)} V${f(ySplit)} H${f(cx+a.in)} V${f(cy)} A${f(a.in)},${f(a.in)} 0 0 0 ${f(cx)},${f(a.y+a.th)} H${f(x0)} Z" fill="${r.fill}" data-hint="${esc(r.hint)}"/>`;
+      r.b.classList.toggle('in',inside);r.b.style.cssText=`${inside?`color:${onOf(r)};`:''}left:${inside?8:0}px;top:${f(a.y+a.th/2)}px;max-width:${f(cx-10)}px`;
+    }
+    for(const l of L){
+      const r=l.r,inside=l.th>=r.lh+2,x1=inside?W:Math.max(cx2+8,W-r.lw-6);
+      s+=`<path data-n="r${r.i}" d="M${f(l.x)},${f(yMerge)} V${f(my)} A${f(l.out)},${f(l.out)} 0 0 0 ${f(cx2)},${f(my+l.out)} H${f(x1)} V${f(my+l.in)} H${f(cx2)} A${f(l.in)},${f(l.in)} 0 0 1 ${f(cx2-l.in)},${f(my)} V${f(yMerge)} Z" fill="${r.fill}" data-hint="${esc(r.hint)}"/>`;
+      r.b.classList.toggle('in',inside);r.b.style.cssText=`${inside?`color:${onOf(r)};`:''}right:${inside?8:0}px;top:${f(l.y+l.th/2)}px;max-width:${f(W-cx2-10)}px`;
+    }
+    box.querySelector('svg')?.remove();box.insertAdjacentHTML('afterbegin',s+'</svg>');
+  });
 }
 
 function drawGrowth(el,W){

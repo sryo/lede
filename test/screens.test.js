@@ -341,9 +341,19 @@ test('a quiet footer under the window names Lede and links to the project', () =
   assert.match(html, /\.foot\{/);
 });
 
-test('home’s Sankey gives a source’s change its own line under the name, so the label column stays narrow', () => {
-  assert.match(fn('drawFlow'), /b\.innerHTML=`<span>\$\{told\?`<b>\$\{esc\(name\)\}<\/b>`:esc\(name\)\}<\/span><span class="chg">/);
-  assert.match(html, /\.flow\{height:100%;display:grid;grid-template-columns:120px minmax\(0,1fr\) 120px;/);
+test('home’s ribbons use one width for a visitor, and put each name inside its band or just before a thin one', () => {
+  const draw = fn('drawFlow');
+  assert.match(draw, /th=Math\.max\(2,r\.v\*u\)/);
+  assert.match(draw, /inside=a\.th>=r\.lh\+2,x0=inside\?0:Math\.min\(cx-8,r\.lw\+6\)/);
+  assert.match(draw, /b\.innerHTML=`<span>\$\{told\?`<b>\$\{esc\(name\)\}<\/b>`:esc\(name\)\}<\/span><span class="chg">/);
+  assert.match(html, /\.flow\{height:100%;position:relative\}/);
+});
+
+test('home’s ribbons fade nothing: each source and page has its own step of its colour, and a strand keeps its source’s', () => {
+  const draw = fn('drawFlow');
+  assert.match(draw, /fill:step\(side==='left'\?'src':'page',rs\.length>1\?i\/\(rs\.length-1\):\.4\)/);
+  assert.match(draw, /class="s" data-a="\$\{q\.a\.r\.i\}" data-p="\$\{q\.l\.r\.i\}"[^`]*fill="\$\{q\.a\.r\.fill\}"/);
+  assert.doesNotMatch(draw, /--src-[tp]|--page-[tp]|opacity/);
 });
 
 test('popovers float with one shadow: the note editor, and Share and Setup, which a card’s outline can’t flatten', () => {
