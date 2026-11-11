@@ -353,7 +353,9 @@ test('the ribbons fade nothing: each source and page has its own step of its col
   assert.match(draw, /fill:step\(side==='l'\?'src':'page',at\),lane:step\('bnc',at\)/);
   assert.match(draw, /class="s" data-a="\$\{q\.a\.r\.i\}" data-p="\$\{q\.l\.r\.i\}" d="\$\{d\}" fill="\$\{q\.a\.r\.fill\}"/);
   assert.doesNotMatch(draw, /--src-[tp]|--page-[tp]|opacity/);
-  assert.match(draw, /\$\{isHot\(q\)\?INKED:w>=3\?/);
+  assert.doesNotMatch(draw, /stroke="var\(--ink\)"|Gradient/);
+  assert.match(draw, /<rect \$\{cap\} fill="\$\{q\.l\.r\.fill\}"/);
+  assert.match(draw, /at=r\.n\.told\?\.4:/);
 });
 
 test('home and the Bounce screen draw sources to pages with the same ribbons, straight across in a wide box', () => {

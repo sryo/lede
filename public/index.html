@@ -1991,7 +1991,8 @@ matchMedia('(prefers-color-scheme:dark)').onchange=()=>document.querySelectorAll
 // stays the same round the corner. A name sits inside its band, and a band too thin to hold it starts after the name.
 // Each source has its own step of amber and each page its own step of violet, from towards the ink at the top of
 // its turn to towards the tile at the bottom, and nothing is see-through: neighbours differ, the last and least
-// stand back in both themes, and a strand keeps its source's step into the page it lands in.
+// stand back in both themes, and a strand keeps its source's step into the page it lands in. The source and page
+// the sentence names have the colour itself, which no other row has.
 // left, right: rows of {html,hint,aria,open,told}; a page's `gone` is how many of its own left after it, drawn as a
 // lane of bounce red along its row. m[i][j]: how many went from source i to page j. hot(i,j): the sentence's strand.
 function ribbons(el,left,right,m,{aria,hint,hot=()=>false}){
@@ -1999,7 +2000,10 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false}){
     const b=document.createElement('button');b.type='button';b.className='node'+(side==='l'?'':' r')+(n.told?' told':'');b.dataset.key=side+i;
     b.innerHTML=n.html;b.title=n.hint;b.setAttribute('aria-label',n.aria);b.onclick=e=>{e.stopPropagation();n.open(b)};
     return {n,i,v:vals[i],b};
-  }).filter(r=>r.v>0).map((r,i,rs)=>{const at=rs.length>1?i/(rs.length-1):.4;return {...r,fill:step(side==='l'?'src':'page',at),lane:step('bnc',at)}});
+  }).filter(r=>r.v>0).map((r,i,rs)=>{
+    // What the sentence names keeps the colour itself; the others take the steps either side of it, in order.
+    const rest=rs.filter(x=>!x.n.told),j=rest.indexOf(r),p=rest.length>1?j/(rest.length-1):.8,at=r.n.told?.4:p<.5?p*.5:.55+(p-.5)*.9;
+    return {...r,fill:step(side==='l'?'src':'page',at),lane:step('bnc',at)}});
   const srcs=rowsOf(left,m.map(r=>sum(r)),'l'),pgs=rowsOf(right,right.map((_,j)=>sum(m.map(r=>r[j]))),'r'),all=[...srcs,...pgs];
   const box=document.createElement('div');box.className='flow';box.append(...all.map(r=>r.b));
   box.onclick=e=>{const k=e.target.dataset?.n;if(k){e.stopPropagation();box.querySelector(`[data-key="${k}"]`).click()}};
@@ -2018,10 +2022,11 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false}){
     const rows=(items,u,y0)=>{let y=y0;return items.map((r,i)=>{const th=Math.max(2,r.v*u),nx=items[i+1],row={r,th,y};if(nx)y+=th+Math.max(6,(r.lh+nx.lh)/2+2-(th+Math.max(2,nx.v*u))/2);return row})};
     const open=`<svg width="${W}" height="${H}" role="img" aria-label="${esc(aria)}">`,isHot=q=>hot(q.a.r.i,q.l.r.i);
     // Wide strands first and the story's last, so thin ones and the named one sit on top where strands cross; a wide
-    // strand has a hairline of the tile round it, which keeps two strands apart where they cross. The strand the
-    // sentence names, and the lane of those who left its page, have an outline of ink: nothing fades to point at them.
-    const INKED=' stroke="var(--ink)" stroke-width="1.5" stroke-linejoin="round"';
-    const strand=(q,d,w)=>`<path class="s" data-a="${q.a.r.i}" data-p="${q.l.r.i}" d="${d}" fill="${q.a.r.fill}"${isHot(q)?INKED:w>=3?' stroke="var(--tile)" stroke-width=".75"':''} data-hint="${esc(hint(q.a.r.i,q.l.r.i,q.v))}"/>`;
+    // strand has a hairline of the tile round it, which keeps two strands apart where they cross.
+    // A strand has its source's step all the way, so a page's edge shows where its own came from; where it leaves
+    // its source it has a cap in its page's step, so a source's edge is a stacked bar of where its own went.
+    const strand=(q,d,w,cap)=>`<path class="s" data-a="${q.a.r.i}" data-p="${q.l.r.i}" d="${d}" fill="${q.a.r.fill}"${w>=3?' stroke="var(--tile)" stroke-width=".75"':''} data-hint="${esc(hint(q.a.r.i,q.l.r.i,q.v))}"/>`
+      +`<rect ${cap} fill="${q.l.r.fill}"${w>=3?' stroke="var(--tile)" stroke-width=".75"':''} pointer-events="none"/>`;
     const order=qs=>qs.sort((p,q)=>isHot(p)-isHot(q)||q.v-p.v);
     const name=(r,inside,side,top,max)=>{r.b.classList.toggle('in',inside);r.b.style.cssText=`${inside?`color:${onStep(r.b,r.fill)};`:''}${side}:${inside?8:0}px;top:${f(top)}px;max-width:${f(max)}px`};
     const put=s=>{box.querySelector('svg')?.remove();box.insertAdjacentHTML('afterbegin',s+'</svg>')};
@@ -2035,12 +2040,12 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false}){
       for(const a of A){let y=a.y;for(const l of L){const v=m[a.r.i][l.r.i];if(v){strands.push({a,l,v,y0:y});y+=a.th*v/a.r.v}}}
       for(const l of L){let y=l.y;for(const q of strands.filter(q=>q.l===l)){q.y1=y;y+=l.th*q.v/l.r.v}}
       let s=open+order(strands).map(q=>{const w0=q.a.th*q.v/q.a.r.v,w1=q.l.th*q.v/q.l.r.v;
-        return strand(q,`M${f(xa)},${f(q.y0)} C${f(mx)},${f(q.y0)} ${f(mx)},${f(q.y1)} ${f(xb)},${f(q.y1)} v${f(w1)} C${f(mx)},${f(q.y1+w1)} ${f(mx)},${f(q.y0+w0)} ${f(xa)},${f(q.y0+w0)} Z`,Math.min(w0,w1))}).join('');
-      const bar=(k,r,x,w,y,h,fill,ink='')=>`<rect data-n="${k}${r.i}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" fill="${fill}"${ink} data-hint="${esc(r.n.hint)}"/>`;
+        return strand(q,`M${f(xa)},${f(q.y0)} C${f(mx)},${f(q.y0)} ${f(mx)},${f(q.y1)} ${f(xb)},${f(q.y1)} v${f(w1)} C${f(mx)},${f(q.y1+w1)} ${f(mx)},${f(q.y0+w0)} ${f(xa)},${f(q.y0+w0)} Z`,Math.min(w0,w1),`x="${f(xa)}" y="${f(q.y0)}" width="8" height="${f(w0)}"`)}).join('');
+      const bar=(k,r,x,w,y,h,fill)=>`<rect data-n="${k}${r.i}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" fill="${fill}" data-hint="${esc(r.n.hint)}"/>`;
       for(const a of A){const r=a.r,inside=a.th>=r.lh+2,x0=inside?0:Math.min(xa-8,r.lw+6);s+=bar('l',r,x0,xa-x0,a.y,a.th,r.fill);name(r,inside,'left',a.y+a.th/2,xa-10)}
       for(const l of L){
         const r=l.r,gone=l.th*(r.n.gone||0)/r.v,inside=l.th-gone>=r.lh+2,x1=inside?W:Math.max(xb+8,W-r.lw-6);
-        s+=bar('r',r,xb,x1-xb,l.y,l.th,r.fill)+(gone>=.5?bar('r',r,xb,x1-xb,l.y+l.th-gone,gone,r.lane,r.n.told?INKED:''):'');
+        s+=bar('r',r,xb,x1-xb,l.y,l.th,r.fill)+(gone>=.5?bar('r',r,xb,x1-xb,l.y+l.th-gone,gone,r.lane):'');
         name(r,inside,'right',l.y+(inside?l.th-gone:l.th)/2,W-xb-10);
       }
       return put(s);
@@ -2065,7 +2070,7 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false}){
     for(const l of L){let x=l.x;for(const q of strands.filter(q=>q.l===l).sort((p,q)=>p.a.x-q.a.x)){q.x1=x;x+=l.th*q.v/l.r.v}}
     const ym=(ySplit+yMerge)/2;
     let s=open+order(strands).map(q=>{const w0=q.a.th*q.v/q.a.r.v,w1=q.l.th*q.v/q.l.r.v;
-      return strand(q,`M${f(q.x0)},${f(ySplit)} C${f(q.x0)},${f(ym)} ${f(q.x1)},${f(ym)} ${f(q.x1)},${f(yMerge)} h${f(w1)} C${f(q.x1+w1)},${f(ym)} ${f(q.x0+w0)},${f(ym)} ${f(q.x0+w0)},${f(ySplit)} Z`,Math.min(w0,w1))}).join('');
+      return strand(q,`M${f(q.x0)},${f(ySplit)} C${f(q.x0)},${f(ym)} ${f(q.x1)},${f(ym)} ${f(q.x1)},${f(yMerge)} h${f(w1)} C${f(q.x1+w1)},${f(ym)} ${f(q.x0+w0)},${f(ym)} ${f(q.x0+w0)},${f(ySplit)} Z`,Math.min(w0,w1),`x="${f(q.x0)}" y="${f(ySplit)}" width="${f(w0)}" height="8"`)}).join('');
     for(const a of A){
       const r=a.r,inside=a.th>=r.lh+2,x0=inside?0:Math.min(cx-8,r.lw+6);
       s+=`<path data-n="l${r.i}" d="M${f(x0)},${f(a.y)} H${f(cx)} A${f(a.out)},${f(a.out)} 0 0 1 ${f(cx+a.out)},${f(cy)} V${f(ySplit)} H${f(cx+a.in)} V${f(cy)} A${f(a.in)},${f(a.in)} 0 0 0 ${f(cx)},${f(a.y+a.th)} H${f(x0)} Z" fill="${r.fill}" data-hint="${esc(r.n.hint)}"/>`;
@@ -2074,8 +2079,8 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false}){
     for(const l of L){
       // The lane of those who left runs along the row's lower edge; the name sits in what is left of the row.
       const r=l.r,gone=l.th*(r.n.gone||0)/r.v,inside=l.th-gone>=r.lh+2,x1=inside?W:Math.max(cx2+8,W-r.lw-6);
-      const row=(a,fill,ink='')=>`<path data-n="r${r.i}" d="M${f(l.x)},${f(yMerge)} V${f(my)} A${f(l.out)},${f(l.out)} 0 0 0 ${f(cx2)},${f(my+l.out)} H${f(x1)} V${f(my+a)} H${f(cx2)} A${f(a)},${f(a)} 0 0 1 ${f(cx2-a)},${f(my)} V${f(yMerge)} Z" fill="${fill}"${ink} data-hint="${esc(r.n.hint)}"/>`;
-      s+=row(l.in,r.fill)+(gone>=.5?row(l.out-gone,r.lane,r.n.told?INKED:''):'');
+      const row=(a,fill)=>`<path data-n="r${r.i}" d="M${f(l.x)},${f(yMerge)} V${f(my)} A${f(l.out)},${f(l.out)} 0 0 0 ${f(cx2)},${f(my+l.out)} H${f(x1)} V${f(my+a)} H${f(cx2)} A${f(a)},${f(a)} 0 0 1 ${f(cx2-a)},${f(my)} V${f(yMerge)} Z" fill="${fill}" data-hint="${esc(r.n.hint)}"/>`;
+      s+=row(l.in,r.fill)+(gone>=.5?row(l.out-gone,r.lane):'');
       name(r,inside,'right',l.y+(inside?l.th-gone:l.th)/2,W-cx2-10);
     }
     put(s);
