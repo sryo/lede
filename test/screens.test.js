@@ -350,11 +350,11 @@ test('the ribbons use one width for what they count, and put each name inside it
 
 test('the ribbons fade nothing: each source and page has its own step of its colour, and a strand keeps its source’s', () => {
   const draw = fn('ribbons');
-  assert.match(draw, /fill:step\(side==='l'\?'src':'page',at\),lane:step\('bnc',at\)/);
+  assert.match(draw, /fill:step\(r\.n\.tok\|\|\(side==='l'\?'src':'page'\),at\),lane:step\('bnc',at\)/);
   assert.match(draw, /class="s" data-a="\$\{q\.a\.r\.i\}" data-p="\$\{q\.l\.r\.i\}" d="\$\{d\}" fill="\$\{q\.a\.r\.fill\}"/);
   assert.doesNotMatch(draw, /--src-[tp]|--page-[tp]|opacity/);
   assert.doesNotMatch(draw, /stroke="var\(--ink\)"|Gradient/);
-  assert.match(draw, /<rect \$\{cap\} fill="\$\{q\.l\.r\.fill\}"/);
+  assert.match(draw, /\$\{pgs\.length>1\?`<rect \$\{cap\} fill="\$\{q\.l\.r\.fill\}"/);
   assert.match(draw, /at=r\.n\.told\?\.4:/);
 });
 
@@ -365,12 +365,12 @@ test('home and the Bounce screen draw sources to pages with the same ribbons, st
 });
 
 test('the Bounce screen keeps its third step at every width: each page goes on to Read on and Left after one page, with totals', () => {
-  assert.match(fn('drawOutcome'), /ends:\[\['Read on','read on',sum\(stay\.map\(x=>x\.visits-x\.bounces\)\)\],\['<b>Left after one page<\/b>','left after this page',sum\(stay\.map\(x=>x\.bounces\)\)\]\]/);
+  assert.match(fn('drawOutcome'), /ends:\[\['Read on','read on',sum\(stay\.map\(x=>x\.visits-x\.bounces\)\),'var\(--lost\)','var\(--lost-p\)'\],\['<b>Left after one page<\/b>','left after this page',sum\(stay\.map\(x=>x\.bounces\)\),'var\(--bnc\)',r=>r\.lane\]\]/);
+  assert.match(fn('drawOutcome'), /\[stay\[j\]\.visits-stay\[j\]\.bounces,stay\[j\]\.bounces\]\)\}\),m,/);
   const draw = fn('ribbons');
   assert.match(draw, /if\(W>H\*1\.5\|\|ends\)\{/);
   assert.match(draw, /slim=ends&&\(W-2\*\(run\+16\)-ow\)\/2<50/);
-  assert.match(draw, /fill="\$\{q\.o\.k\?q\.r\.lane:'var\(--lost-p\)'\}"/);
-  assert.match(draw, /bar\('o',o\.k,xd,xe-xd,o\.y,o\.th,o\.fill,o\.e\.hint\)/);
+  assert.match(draw, /bar\('o',o\.r\.k,xd,x1-xd,o\.y,o\.th,e\.fill,e\.hint\)/);
   assert.doesNotMatch(html, /oc-key/);
 });
 
@@ -380,8 +380,17 @@ test('a source’s or channel’s view draws where they landed with the same rib
   assert.match(draw, /one\?label:labelOf\('referrer',k\)/);
   assert.match(draw, /'new page':fmtInt\(v\)/);
   assert.doesNotMatch(draw, /drawCrossing/);
-  assert.doesNotMatch(fn('drawCrossing'), /edge/);
   assert.match(fn('ribbons'), /document\.createElement\(n\.open\?'button':'span'\)/);
+});
+
+test('a page’s crossing is the shared ribbons too: sources, the page, then where its views went, in their own unit', () => {
+  const draw = fn('drawCrossing');
+  assert.match(draw, /ribbons\(el,from\.map\(/);
+  assert.match(draw, /to:next\.map\(i=>i\.value\)/);
+  assert.match(draw, /views>=20\?fmtPct\(it\.value\/views\):fmtInt\(it\.value\)/);
+  assert.match(draw, /'ended the visit: they left the site here'/);
+  assert.match(fn('ribbons'), /per=tot\/\(sum\(E\.map\(o=>o\.v\)\)\|\|1\)/);
+  assert.doesNotMatch(html, /const INK=|function spread\(/);
 });
 
 test('popovers float with one shadow: the note editor, and Share and Setup, which a card’s outline can’t flatten', () => {
