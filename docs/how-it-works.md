@@ -124,7 +124,7 @@ A share that rounds to 0% but isn't nothing reads "<1%".
 
 The Sources screen's waterfall names the three sources that moved most, AI assistants as one when more than one sent visitors, then Everyone else, the rest of the change. Its sentence says how much of the change they made ("Three sources brought 9 in 10 of the 7,283 extra visitors: google.com, AI assistants and facebook.com"), then a new source that isn't among them. The list of sites says which channel each is in.
 
-A source's view lists the pages on that site that linked to yours, when browsers sent more than the site (most send only the site; hidden when none did). It adds, under its sentence, the page that moved most with its readers and a page they read far more than everyone does (a tenth of them, half again everyone's share). Its Did they stay card gives how long a visit lasts beside the site's. A channel's view lists the sources in it; Direct's view says what Direct means.
+A source's or a channel's view draws where its visitors landed with the same ribbons as home's tile: the source as one band, or each of a channel's five busiest sources as its own, going to the five busiest pages and the rest. A page that had no visitors before says "new page". A source's view lists the pages on that site that linked to yours, when browsers sent more than the site (most send only the site; hidden when none did). It adds, under its sentence, the page that moved most with its readers and a page they read far more than everyone does (a tenth of them, half again everyone's share). Its Did they stay card gives how long a visit lasts beside the site's. A channel's view lists the sources in it; Direct's view says what Direct means.
 
 ### Pages
 

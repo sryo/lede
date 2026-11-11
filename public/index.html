@@ -267,6 +267,7 @@ button.tile-title:hover{color:var(--ink)}
 .flow path[data-n]{cursor:pointer}
 .node{all:unset;box-sizing:border-box;position:absolute;transform:translateY(-50%);cursor:pointer;font-size:var(--fs-xs);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .node.r{text-align:right}
+.node.still{cursor:auto}
 .node>span+span{margin-inline-start:6px}
 .node>.left{display:block;margin-inline-start:0}
 .node.in .chg,.node.in.told .chg,.node.in .muted,.node.in .left{color:inherit}
@@ -545,6 +546,7 @@ button.lrow:hover{background:var(--line)}
   .t-days,.t-flow,.t-stay,.t-pages{grid-column:1;grid-row:auto}
   .t-flow{min-height:680px}
   .outcome{height:420px}
+  .landed:not(.cross){height:440px}
   .rmap{height:340px}
   .kw .name{white-space:normal;overflow-wrap:anywhere}
   .sq-num{flex-direction:column;gap:0}
@@ -1889,7 +1891,7 @@ async function renderSource(body,f){
   if(channel)cutList(body.querySelector('.members'),memberRows(members),8,'sources',
     (box,rows)=>rowsInto(box,rows,{total:c.visitors,subj:'src',onClick:(r,el)=>openFilter({referrer:r.key},r.label,el)}),
     members.cut?()=>api('breakdown',{...f,dim:'referrer',all:1}).then(memberRows):null);
-  drawLanded(body.querySelector('.landed'),flows.flows.filter(x=>inside(x.source)),null,pages.rows);
+  drawLanded(body.querySelector('.landed'),flows.flows.filter(x=>inside(x.source)),label,pages.rows);
   drawSquares(body.querySelector('.sq-box'),[
     {pct:c.visits?c.bounce:null,label,story:bouncy,aria:`${label}: ${c.visits?`${fmtPct(c.bounce)} bounce`:'no visits'}`,open:openBounce},
     {pct:all.cur.bounce,label:'all visits',aria:`All visits: ${fmtPct(all.cur.bounce)} bounce`,open:openBounce},
@@ -1907,17 +1909,23 @@ async function renderSource(body,f){
 }
 
 // One source fanning out into the pages its visitors landed on.
-function drawLanded(el,flows,toldPage,pageRows){
-  const byPage=new Map();
-  for(const f of flows)byPage.set(f.page,(byPage.get(f.page)||0)+f.visitors);
-  const ranked=[...byPage].sort((a,b)=>b[1]-a[1]);
-  let top=ranked.slice(0,5);
-  if(toldPage&&byPage.has(toldPage)&&!top.some(r=>r[0]===toldPage))top=[...top.slice(0,4),[toldPage,byPage.get(toldPage)]];
-  top.sort((a,b)=>(b[0]===toldPage)-(a[0]===toldPage)||b[1]-a[1]);
-  const rest=ranked.filter(r=>!top.includes(r));
-  const items=top.map(([k,v])=>({key:k,label:k,value:v,story:k===toldPage,sub:!pageRows.find(r=>r.key===k)?.prev?'new page':''}));
-  if(rest.length)items.push({key:null,label:`${rest.length} other ${rest.length===1?'page':'pages'}`,value:sum(rest.map(r=>r[1]))});
-  drawCrossing(el,[],items,{edge:true,bar:'src'});
+function drawLanded(el,flows,label,pageRows){
+  if(!flows.length){el.innerHTML='<div class="empty">No visits yet</div>';return}
+  // The busiest few on each side and the rest under "other": k(f) is a flow's source or page.
+  const top=(k,n,what)=>{
+    const by=new Map();for(const f of flows)by.set(k(f),(by.get(k(f))||0)+f.visitors);
+    const r=[...by].sort((a,b)=>b[1]-a[1]).map(x=>x[0]),keys=r.slice(0,n);
+    return {keys,rest:r.length-n>0?`${r.length-n} other ${what}${r.length-n===1?'':'s'}`:null,at:f=>{const i=keys.indexOf(k(f));return i<0?n:i}};
+  };
+  // A channel's sources each get a band; one source is one band, named as the screen is.
+  const S=top(f=>f.source,5,'source'),P=top(f=>f.page,5,'page'),one=S.keys.length===1;
+  const m=[...S.keys,...(S.rest?[0]:[])].map(()=>[...P.keys,...(P.rest?[0]:[])].map(()=>0));
+  for(const f of flows)m[S.at(f)][P.at(f)]+=f.visitors;
+  const row=(name,v,sub,told,hint,open)=>({told,hint,aria:`${hint}. Open`,open,html:`<span>${told?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${sub}</span>`});
+  const names=[...S.keys.map(k=>one?label:labelOf('referrer',k)),...(S.rest?[S.rest]:[])],pages=[...P.keys,...(P.rest?[P.rest]:[])];
+  ribbons(el,names.map((name,i)=>{const v=sum(m[i]),k=S.keys[i];return row(name,v,fmtInt(v),one,`${name}: ${fmtInt(v)} ${v===1?'visitor':'visitors'}`,!one&&k!=null?b=>openFilter({referrer:k},name,b):null)}),
+    pages.map((name,j)=>{const v=sum(m.map(r=>r[j])),k=P.keys[j];return row(name,v,k!=null&&!pageRows.find(r=>r.key===k)?.prev?'new page':fmtInt(v),false,pageHint(name,v),k!=null?b=>openFilter({path:k},k,b):null)}),m,
+    {aria:`Visitors from ${label} to the pages they landed on`,hint:(i,j,v)=>ribbonHint(names[i],pages[j],v)});
 }
 
 // The sources of visits that landed on a page, and visitors who came from another page.
@@ -1932,9 +1940,9 @@ function cameFromItems(flows,told,visitors){
 }
 
 // Where readers came from fans into a bar from the left, where they went next out to the right, each side as
-// shares of its own total. edge: no left side, bar at the left edge. INK: ribbon, named ribbon, bar, named bar.
-const INK={src:['--src-p','--src','--src-ts','--src'],page:['--page-p','--page-t','--page-ts','--page'],left:['--line','--line','--muted','--muted'],landed:['--src-p','--src','--page-ts','--page']};
-function drawCrossing(el,left,right,{edge=false,shares=false,bar='page'}={}){
+// shares of its own total. INK: ribbon, named ribbon, bar, named bar.
+const INK={src:['--src-p','--src','--src-ts','--src'],page:['--page-p','--page-t','--page-ts','--page'],left:['--line','--line','--muted','--muted']};
+function drawCrossing(el,left,right,{shares=false}={}){
   const tl=sum(left.map(i=>i.value)),tr=sum(right.map(i=>i.value));
   if(!tl&&!tr){el.innerHTML='<div class="empty">No visits yet</div>';return}
   const share=it=>shares&&tr>=20?fmtPct(it.value/tr):fmtInt(it.value);
@@ -1944,8 +1952,8 @@ function drawCrossing(el,left,right,{edge=false,shares=false,bar='page'}={}){
   observe(el,()=>{
     const W=el.clientWidth,H=el.clientHeight;if(!W||!H)return;
     // On a phone, labels take two lines.
-    const narrow=!edge&&W<520,gap=10,hc=H-gap*(Math.max(left.length,right.length)-1),y0=(H-hc)/2;
-    const cx=edge?0:Math.round(W/2)-3,xl=Math.round(W*(narrow?.4:.32)),xr=Math.round(W*(edge||narrow?.6:.68))-(edge?0:6);
+    const narrow=W<520,gap=10,hc=H-gap*(Math.max(left.length,right.length)-1),y0=(H-hc)/2;
+    const cx=Math.round(W/2)-3,xl=Math.round(W*(narrow?.4:.32)),xr=Math.round(W*(narrow?.6:.68))-6;
     el.classList.toggle('narrow',narrow);
     let s=`<svg width="${W}" height="${H}" role="img" aria-label="${esc([...left,...right].map(i=>`${i.label} ${fmtInt(i.value)}`).join(', '))}">`;
     const labels=[];
@@ -1954,7 +1962,7 @@ function drawCrossing(el,left,right,{edge=false,shares=false,bar='page'}={}){
       const k=hc/total,from=isLeft?x+6:x,m=(from+to)/2;
       let yo=(H-hc-gap*(items.length-1))/2,yi=y0;const mids=[];
       for(const it of items){
-        const h=it.value*k,ink=INK[it.kind]||INK.landed;
+        const h=it.value*k,ink=INK[it.kind];
         s+=`<path d="M${from},${yo} C${m},${yo} ${m},${yi} ${to},${yi} L${to},${yi+h} C${m},${yi+h} ${m},${yo+h} ${from},${yo+h} Z" fill="var(${ink[+!!it.story]})"/>`
           +`<rect x="${x}" y="${yo}" width="6" height="${Math.max(1,h)}" fill="var(${ink[2+!!it.story]})"/>`;
         mids.push(yo+h/2);yo+=h+gap;yi+=h;
@@ -1964,7 +1972,7 @@ function drawCrossing(el,left,right,{edge=false,shares=false,bar='page'}={}){
     };
     side(left,tl,xl,cx,true);
     side(right,tr,xr,cx+6,false);
-    el.innerHTML=s+`<rect x="${cx}" y="${y0}" width="6" height="${hc}" fill="var(--${bar})"/></svg>`;
+    el.innerHTML=s+`<rect x="${cx}" y="${y0}" width="6" height="${hc}" fill="var(--page)"/></svg>`;
     for(const [it,y,isLeft] of labels){
       const b=document.createElement('button');b.type='button';b.className=isLeft?'lbl l':'lbl';b.dataset.key=`${isLeft?'l':'r'}:${it.key??it.label}`;
       b.style.left=(isLeft?xl-8:xr+14)+'px';b.style.top=(it.story||narrow?Math.max(y,20):y)+'px';
@@ -2002,8 +2010,9 @@ matchMedia('(prefers-color-scheme:dark)').onchange=()=>document.querySelectorAll
 // page, {html,hint,strand(j,v)}, those who stayed and then those gone; with them the drawing has a third step.
 function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
   const rowsOf=(list,vals,side)=>list.map((n,i)=>{
-    const b=document.createElement('button');b.type='button';b.className='node'+(side==='l'?'':' r')+(n.told?' told':'');b.dataset.key=side+i;
-    b.innerHTML=n.html;b.title=n.hint;b.setAttribute('aria-label',n.aria);b.onclick=e=>{e.stopPropagation();n.open(b)};
+    // A row with nothing to open is a plain name.
+    const b=document.createElement(n.open?'button':'span');b.className='node'+(side==='l'?'':' r')+(n.told?' told':'')+(n.open?'':' still');b.dataset.key=side+i;
+    b.innerHTML=n.html;b.title=n.hint;if(n.open){b.type='button';b.setAttribute('aria-label',n.aria);b.onclick=e=>{e.stopPropagation();n.open(b)}}
     return {n,i,v:vals[i],b};
   }).filter(r=>r.v>0).map((r,i,rs)=>{
     // What the sentence names keeps the colour itself; the others take the steps either side of it, in order.
@@ -2012,7 +2021,7 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
   const srcs=rowsOf(left,m.map(r=>sum(r)),'l'),pgs=rowsOf(right,right.map((_,j)=>sum(m.map(r=>r[j]))),'r'),all=[...srcs,...pgs];
   const eb=(ends||[]).map((e,k)=>{const b=document.createElement('span');b.dataset.key='o'+k;b.innerHTML=e.html;b.title=e.hint;return b});
   const box=document.createElement('div');box.className='flow';box.append(...all.map(r=>r.b),...eb);
-  box.onclick=e=>{const k=e.target.dataset?.n;if(k){e.stopPropagation();box.querySelector(`[data-key="${k}"]`).click()}};
+  box.onclick=e=>{const k=e.target.dataset?.n;if(k){e.stopPropagation();box.querySelector(`button[data-key="${k}"]`)?.click()}};
   // Pointing at a source, a page, an end or a strand keeps its strands and greys the others.
   const only=e=>{
     const at=e?.target.closest?.('[data-key],[data-n],.s'),k=at&&(at.dataset.n||at.dataset.key);

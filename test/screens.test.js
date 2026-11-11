@@ -374,6 +374,16 @@ test('the Bounce screen keeps its third step at every width: each page goes on t
   assert.doesNotMatch(html, /oc-key/);
 });
 
+test('a source’s or channel’s view draws where they landed with the same ribbons, a channel’s sources each as a band', () => {
+  const draw = fn('drawLanded');
+  assert.match(draw, /ribbons\(el,names\.map\(/);
+  assert.match(draw, /one\?label:labelOf\('referrer',k\)/);
+  assert.match(draw, /'new page':fmtInt\(v\)/);
+  assert.doesNotMatch(draw, /drawCrossing/);
+  assert.doesNotMatch(fn('drawCrossing'), /edge/);
+  assert.match(fn('ribbons'), /document\.createElement\(n\.open\?'button':'span'\)/);
+});
+
 test('popovers float with one shadow: the note editor, and Share and Setup, which a card’s outline can’t flatten', () => {
   assert.match(html, /--pop:0 0 0 1px var\(--line\),0 10px 28px -8px rgba\(0,0,0,\.3\)/);
   assert.match(html, /\.note-edit\{[^}]*box-shadow:var\(--pop\)/);
