@@ -373,7 +373,7 @@ test('the Bounce screen keeps its third step at every width: each page goes on t
   assert.match(draw, /solo=!ends&&srcs\.length<2/);
   assert.match(fn('drawLanded'), /straight:true/);
   assert.match(html, /\.landed\{position:relative;height:clamp\(276px,28vh,340px\)\}/);
-  assert.match(draw, /slim=ends\?\(W-2\*\(run\+16\)-ow\)\/2<50:!solo&&W-2\*\(run\+16\)<80/);
+  assert.match(draw, /slim=ends\?\(W-wL-wP-ow\)\/2<50:!solo&&W-wL-wP<80/);
   assert.match(draw, /bar\('o',o\.r\.k,xd,x1-xd,o\.y,o\.th,e\.fill,e\.hint\)/);
   assert.doesNotMatch(html, /oc-key/);
 });

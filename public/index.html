@@ -541,6 +541,8 @@ button.lrow:hover{background:var(--line)}
   .grid{flex:none;grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:minmax(240px,auto)}
   .t-days,.t-flow,.t-stay,.t-pages{grid-column:1;grid-row:auto}
   .t-flow{min-height:680px}
+  /* between a phone and a desk the tile is wide enough for the ribbons to run straight, in a shorter box */
+  @media (min-width:560px){.t-flow{min-height:420px}}
   .outcome{height:420px}
   .rmap{height:340px}
   .kw .name{white-space:normal;overflow-wrap:anywhere}
@@ -2029,11 +2031,15 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends,straight}){
     // box too narrow to hold the names inside three bands, the bands are thin bars with their names beside them.
     // One source has nothing to cross, so it runs straight too, as a bar at the edge: its name is the screen's.
     if(W>H*1.5||ends||straight||srcs.length<2){
-      const solo=!ends&&srcs.length<2,slim=ends?(W-2*(run+16)-ow)/2<50:!solo&&W-2*(run+16)<80,bw=slim?8:run+16,tot=sum(pgs.map(r=>r.v));
-      // Slim: two ends' names run down beside their bars, which leaves the pages' names the width of the second
-      // crossing; more ends have their names in a gutter like the sources', and a lone page needs no name.
-      const down=slim&&ends&&ends.length<3,gut=Math.round(W*.36);
-      const xe=slim?down?W-22:W-gut+bw:W,xa=solo?8:slim?down?Math.round(W*.38):gut:bw,xb=ends?slim?down?xa+Math.round((xe-2*bw-xa)*.36):Math.round((xa+xe-2*bw)/2):xa+(W-2*bw-ow)/2:slim?W-gut:W-bw,xc=ends||slim?xb+bw:W,xd=slim?xe-bw:xc+xb-xa;
+      // Each side's bands are as wide as its own longest name; when the names leave the strands no room, slim.
+      const wide=R=>Math.min(W*.5,Math.max(...R.map(r=>r.lw))+14)+16,wL=wide(srcs),wP=wide(pgs);
+      const solo=!ends&&srcs.length<2,slim=ends?(W-wL-wP-ow)/2<50:!solo&&W-wL-wP<80,bw=8,tot=sum(pgs.map(r=>r.v));
+      // Slim: in a box as narrow as a phone's, two ends' names run down beside their bars, which leaves the pages'
+      // names the width of the second crossing; otherwise the ends' names are in a gutter like the sources', and a
+      // lone page needs no name.
+      const down=slim&&ends&&ends.length<3&&W<440,first=b=>(b.firstElementChild||b).offsetWidth+bw+12,gut=R=>Math.round(Math.min(W*.36,Math.max(40,...R.map(first))));
+      const gL=slim&&gut(srcs.map(r=>r.b)),gR=slim&&gut(ends?eb:pgs.map(r=>r.b));
+      const xe=slim?down?W-22:W-gR+bw:W,xa=solo?8:slim?down?Math.round(W*.38):gL:wL,xb=ends?slim?down?xa+Math.round((xe-2*bw-xa)*.36):Math.round((xa+xe-2*bw)/2):xa+(W-wL-wP-ow)/2:slim?W-gR:W-wP,xc=ends||slim?xb+(slim?bw:wP):W,xd=slim?xe-bw:xc+xb-xa;
       if(slim){
         // Sources' names wrap in their gutter; a page's name alone runs over its strands, on a halo of the tile.
         for(const r of srcs){r.b.classList.add('wrap');r.b.style.maxWidth=f(xa-bw-6)+'px';r.lh=r.b.offsetHeight}
@@ -2062,7 +2068,7 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends,straight}){
       for(const l of L){
         const r=l.r,inside=!slim&&l.th>=r.lh+2,x1=ends||slim||inside?xc:Math.max(xb+8,W-r.lw-6),top=`top:${f(l.y+l.th/2)}px;`;
         s+=bar('r',r.i,xb,x1-xb,l.y,l.th,r.fill,r.n.hint);r.b.classList.toggle('halo',!!ends&&!inside);
-        name(r.b,r.fill,inside,top+(ends?`left:${f(slim?xc+6:xb+8)}px;max-width:${f(slim?xd-xc-10:bw-10)}px;text-align:left${slim&&!down&&L.length<2?';display:none':''}`:slim?`left:${f(xc+6)}px;max-width:${f(W-xc-6)}px;text-align:left`:`right:${inside?8:0}px;max-width:${f(W-xb-10)}px`));
+        name(r.b,r.fill,inside,top+(ends?`left:${f(slim?xc+6:xb+8)}px;max-width:${f(slim?xd-xc-10:wP-10)}px;text-align:left${slim&&!down&&L.length<2?';display:none':''}`:slim?`left:${f(xc+6)}px;max-width:${f(W-xc-6)}px;text-align:left`:`right:${inside?8:0}px;max-width:${f(W-xb-10)}px`));
       }
       if(ends){
         // Each page's strands go on to the ends. Where a strand lands it has a cap in its page's step, so an end's
