@@ -282,7 +282,7 @@ test('the overlapping bars draw as many as the box holds, each tall enough for i
   assert.match(t, /topRows\(items,n,told\)/, 'what the sentence names stays among them');
   assert.match(t, /stairHeights\(top\.map\(it=>it\.value\),bars\.map\(b=>b\.need\),H\)/);
   assert.match(t, /labelLines\(t,Array\(3\)\.fill\(w\),/, 'names break at their joints, on up to three lines');
-  assert.match(t, /i\+1<n\?W-bw\[i\+1\]-3:W/, 'a name keeps clear of the bar in front');
+  assert.match(t, /i\+1<n\?W-bw\[i\+1\]-over:W/, 'a name keeps clear of the bar in front');
   assert.doesNotMatch(t, /shorten\(/, 'no cut at a fixed number of letters');
   assert.doesNotMatch(html, /function treemap|function squarify|\.blk\{/, 'the treemap is gone');
 });
@@ -370,6 +370,22 @@ test('home and the Bounce screen draw sources to pages with the same ribbons, st
   assert.doesNotMatch(html, /function columns\(/);
 });
 
+test('what keeps marks apart is dictated: one gap on :root, and one share of a slot', () => {
+  assert.match(html, /\n  --gap:2px;\n/);
+  assert.doesNotMatch(html, /--gap-\w/, 'one gap, no others');
+  assert.match(html, /const apart=\(\)=>parseFloat\(getComputedStyle\(document\.documentElement\)\.getPropertyValue\('--gap'\)\),IN_SLOT=2\/3;/);
+  assert.match(html, /\.strip\{display:flex;gap:var\(--gap\);/);
+  assert.match(html, /\.stair\{[^}]*box-shadow:0 0 0 var\(--gap\) var\(--tile\)/);
+  // Strands that cross get half: the line is drawn on the strand.
+  assert.match(fn('ribbons'), /edge=w=>w>=3\?' style="stroke:var\(--tile\);stroke-width:calc\(var\(--gap\)\/2\)"':''/);
+  assert.match(fn('stairs'), /over=apart\(\)/);
+  assert.match(fn('dayBars'), /Math\.min\(cw\*IN_SLOT,28\)/);
+  assert.match(fn('drawSteps'), /Math\.min\(70,slot\*IN_SLOT\)/);
+  assert.match(fn('squaresSVG'), /gap=Math\.max\(2,Math\.round\(size\/4\)\)/);
+  // No chart keeps a gap of its own beside these.
+  assert.doesNotMatch(html, /stroke="var\(--tile\)" stroke-width="/);
+});
+
 test('a page is as dark in home’s ribbons as in its bars: its step is its place among the period’s pages', () => {
   const pageSteps = new Function(`${html.match(/const shadeAt=.*\n/)[0]}${html.match(/const pageSteps=.*\n/)[0]}return pageSteps`)();
   const rows = ['/', '/a', '/b', '/c', '/d', '/e', '/f', '/g'].map((key, i) => ({ key, value: 80 - i * 10 }));
@@ -384,11 +400,17 @@ test('a page is as dark in home’s ribbons as in its bars: its step is its plac
   assert.match(fn('drawPages'), /at:stepOf\(r\.key\)/);
   assert.match(fn('stairs'), /it\.told\?\.4:it\.at\?\?shadeAt\(/);
   assert.match(fn('ribbons'), /at=r\.n\.told\?\.4:r\.n\.at\?\?shadeAt\(p\)/);
+  // Past home too: a source's view, the Bounce screen and the pages a page's readers went on to.
+  assert.match(html, /const pageStep=k=>pageSteps\(HOME\?\.pageRows\|\|\[\]\)\(k\);/);
+  assert.match(fn('drawLanded'), /at:pageStep\(k\)/);
+  assert.match(fn('drawOutcome'), /at:pageStep\(k\)/);
+  assert.match(fn('drawCrossing'), /step\('page',pageStep\(it\.key\)\?\?shadeAt\(p\)\)/);
+  assert.equal(pageSteps([])('/'), undefined, 'before the period’s pages are known a row goes by its place');
 });
 
 test('the Bounce screen keeps its third step at every width: each page goes on to Read on and Left after one page, with totals', () => {
   assert.match(fn('drawOutcome'), /ends:\[\['Read on','read on',sum\(stay\.map\(x=>x\.visits-x\.bounces\)\),'var\(--lost\)','var\(--lost-p\)'\],\['<b>Left after one page<\/b>','left after this page',sum\(stay\.map\(x=>x\.bounces\)\),'var\(--bnc\)',r=>r\.lane\]\]/);
-  assert.match(fn('drawOutcome'), /\[stay\[j\]\.visits-stay\[j\]\.bounces,stay\[j\]\.bounces\]\)\}\),m,/);
+  assert.match(fn('drawOutcome'), /\[stay\[j\]\.visits-stay\[j\]\.bounces,stay\[j\]\.bounces\]\),at:pageStep\(k\)\}\}\),m,/);
   const draw = fn('ribbons');
   assert.match(draw, /if\(W>H\*1\.5\|\|ends\|\|straight\|\|srcs\.length<2\)\{/);
   assert.match(fn('drawLanded'), /straight:true/);

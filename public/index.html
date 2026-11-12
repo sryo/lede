@@ -38,6 +38,9 @@
   --fs-xs:12px; --fs-s:14px; --fs-m:17px; --fs-l:20px; --fs-xl:44px; --fs-xxl:56px;
   /* concentric corners: the window's radius is a tile's plus the 16px between them */
   --r-win:36px; --r-tile:20px;
+  /* what keeps marks that touch or overlap apart, always the tile showing; strands that cross get half of it,
+     since the line is drawn on the strand and more would eat a thin one */
+  --gap:2px;
 }
 @media (prefers-color-scheme:dark){:root{
   color-scheme:dark;
@@ -460,7 +463,7 @@ p,li,figcaption,.say-sub,.cap{text-wrap:pretty}
 
 .stairs{position:absolute;inset:0 0 auto}
 .stair{all:unset;box-sizing:border-box;position:absolute;bottom:0;cursor:pointer;display:flex;flex-direction:column;overflow:hidden;padding:7px 10px 4px;
-  border-radius:8px 8px 0 0;box-shadow:0 0 0 3px var(--tile);font-size:var(--fs-xs);line-height:14px;text-align:left;transition:filter .15s}
+  border-radius:8px 8px 0 0;box-shadow:0 0 0 var(--gap) var(--tile);font-size:var(--fs-xs);line-height:14px;text-align:left;transition:filter .15s}
 .stair:hover{filter:brightness(1.08)}
 .stair:focus-visible{outline:2px solid var(--tile);outline-offset:-2px;box-shadow:0 0 0 3px var(--tile),inset 0 0 0 4px var(--ink)}
 .stair .n{display:flex;align-items:baseline;gap:6px;flex:none;overflow:hidden;height:19px;font-size:18px;line-height:19px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -516,7 +519,7 @@ button.lrow:hover{background:var(--line)}
 .told-page{text-decoration:underline;text-decoration-color:var(--page);text-decoration-thickness:2.5px;text-underline-offset:4px}
 .mix{display:grid;grid-template-columns:88px minmax(0,1fr);gap:6px 16px;align-items:center;margin-top:8px}
 .mix .k{color:var(--muted)}
-.strip{display:flex;gap:2px;height:14px;border-radius:4px;overflow:hidden}
+.strip{display:flex;gap:var(--gap);height:14px;border-radius:4px;overflow:hidden}
 .strip i{min-width:2px}
 .mix p{grid-column:2;margin:0;display:flex;flex-wrap:wrap;gap:2px 16px}
 .mix-more{all:unset;grid-column:2;justify-self:start;cursor:pointer;font-size:var(--fs-xs);color:var(--muted);text-decoration:underline;text-underline-offset:2px}
@@ -849,7 +852,7 @@ function stairs(el,items,{tok='page',more,shown}={}){
   items=items.filter(it=>it.value>0).sort((a,b)=>b.value-a.value);
   if(!items.length)return empty(el,'No visitors yet')
   sized(el,(W,H0)=>{
-    const pad=10,told=items.filter(it=>it.told).map(it=>it.key);
+    const pad=10,over=apart(),told=items.filter(it=>it.told).map(it=>it.key);
     // A name's lines at a width, kept for the next count tried.
     const fit=new Map(),linesOf=(t,w)=>{const k=t+'|'+w;if(!fit.has(k))fit.set(k,labelLines(t,Array(3).fill(w),x=>labelWidth(x,12)));return fit.get(k)};
     let lay;
@@ -857,7 +860,7 @@ function stairs(el,items,{tok='page',more,shown}={}){
       if(lay)break;
       const {top,rest}=topRows(items,n,told),H=H0-(rest.length&&more?24:0),bw=top.map((_,i)=>n<2?W:Math.round(W*(56-4*(i>>1))/100));
       const bars=top.map((it,i)=>{
-        const tw=Math.min(bw[i],i+1<n?W-bw[i+1]-3:W)-2*pad,num=fmtN(it.value),f=i?18:24;
+        const tw=Math.min(bw[i],i+1<n?W-bw[i+1]-over:W)-2*pad,num=fmtN(it.value),f=i?18:24;
         if(tight&&i&&labelWidth(num,14)+6+labelWidth(it.label,12)<=tw)return {it,num,lines:[it.label],one:true,need:30};
         const lines=linesOf(it.label,tw);
         return {it,num,lines,sub:it.sub&&labelWidth(num,f)+6+labelWidth(it.sub,11)<=tw,need:7+(i?19:26)+lines.length*14+7};
@@ -873,7 +876,7 @@ function stairs(el,items,{tok='page',more,shown}={}){
       const e=opener('stair'+(b.one?' c':i?'':' big'),`<span class="n">${b.num}${subs&&b.it.sub?`<small>${esc(b.it.sub)}</small>`:''}</span><span class="t">${name}</span>`,it.open,
         {key:it.key,hint:it.hint,aria:it.aria});
       Object.assign(e.style,{[right?'right':'left']:0,width:Math.round(bw[i])+'px',height:Math.round(Math.min(H,h[i]))+'px',zIndex:i,background:fill,
-        paddingLeft:(right&&i+1<bars.length?Math.max(0,bw[i]+bw[i+1]+3-W):0)+pad+'px'});
+        paddingLeft:(right&&i+1<bars.length?Math.max(0,bw[i]+bw[i+1]+over-W):0)+pad+'px'});
       el.append(e);e.style.color=onStep(e,fill);
       return e;
     }));
@@ -905,7 +908,7 @@ function dayBars(el,o){
     const step=o.scale?Math.max(1,nice(peakV||1).step):0,max=o.scale?Math.ceil((peakV||1)/step)*step:peakV*1.04||1;
     if(base<top+8)return;
     // Whole pixels everywhere, so bar edges and 1px gridlines (drawn at +.5) are sharp, not smeared over two pixels.
-    const cw=(W-padR)/n,bw=Math.round(Math.max(2,Math.min(cw*.66,28))),Y=v=>Math.round(top+(base-top)*(1-v/max)),x=i=>Math.round(i*cw+(cw-bw)/2);
+    const cw=(W-padR)/n,bw=Math.round(Math.max(2,Math.min(cw*IN_SLOT,28))),Y=v=>Math.round(top+(base-top)*(1-v/max)),x=i=>Math.round(i*cw+(cw-bw)/2);
     // A bar is rounded only at its top, so it stands on the baseline. A day with any visitors is at least 2px tall,
     // so one visitor never looks like none.
     const bar=(i,y,lo,f)=>{const h=lo-y,r=Math.min(2,bw/2,h);return h>0?`<path d="M${x(i)},${lo}v${r-h}a${r},${r} 0 0 1 ${r},${-r}h${bw-2*r}a${r},${r} 0 0 1 ${r},${r}v${h-r}z" fill="var(--${f})"/>`:''};
@@ -925,7 +928,7 @@ function dayBars(el,o){
       let d=`M0,${Y(prev[0]).toFixed(1)}`;
       prev.forEach((v,i)=>{d+=`${i?`V${Y(v).toFixed(1)}`:''}H${((i+1)*cw).toFixed(1)}`});
       s+=`<path d="${d}" ${BEFORE}/>`;
-      if(o.prevDot>=0)s+=`<circle cx="${(o.prevDot+.5)*cw}" cy="${Y(prev[o.prevDot])}" r="4" fill="var(--${subj})" stroke="var(--tile)" stroke-width="2"/>`;
+      if(o.prevDot>=0)s+=`<circle cx="${(o.prevDot+.5)*cw}" cy="${Y(prev[o.prevDot])}" r="4" fill="var(--${subj})" stroke="var(--tile)" style="stroke-width:var(--gap)"/>`;
     }
     // One strip per day, the full height, so a short bar or an empty day is as easy to point at as a tall one.
     // On a chart that takes notes, a day's hint says so, with the note already on it.
@@ -1030,7 +1033,7 @@ function drawSteps(el,steps,{fmt,aria,colorOf,openOf=()=>null}){
     const geo=steps.map(s=>{if(s.kind==='total')return {a:0,b:s.value};const a=acc;acc+=s.value;return {a,b:acc}});
     const ends=geo.flatMap(g=>[g.a,g.b]),lo=Math.min(0,...ends),hi=Math.max(0,...ends),span=hi-lo||1;
     const Y=v=>padT+(H-padT-padB)*(hi-v)/span;
-    const bw=Math.min(70,slot*.62),x=i=>i*slot+(slot-bw)/2;
+    const bw=Math.min(70,slot*IN_SLOT),x=i=>i*slot+(slot-bw)/2;
     let s=`${svgTag(W,H,aria)}<line x1="0" x2="${W}" y1="${Math.round(Y(0))+.5}" y2="${Math.round(Y(0))+.5}" stroke="var(--rule)"/>`;
     geo.forEach((g,i)=>{
       const st=steps[i],y=Math.min(Y(g.a),Y(g.b)),h=Math.max(2,Math.abs(Y(g.a)-Y(g.b))),total=st.kind==='total';
@@ -1053,8 +1056,8 @@ function drawSteps(el,steps,{fmt,aria,colorOf,openOf=()=>null}){
 // Ids for SVG defs, new each drawing: screens stack, and a def with the same id on a hidden one would win.
 let defN=0;
 // Rows of ten squares: the filled share is how many of every 10 visits left after one page.
-function squaresSVG(pct,size,gap,fill){
-  const k=Math.max(0,Math.min(10,pct*10)),full=Math.floor(k),frac=k-full,r=Math.round(size*.18),w=10*size+9*gap;
+function squaresSVG(pct,size,fill){
+  const gap=Math.max(2,Math.round(size/4)),k=Math.max(0,Math.min(10,pct*10)),full=Math.floor(k),frac=k-full,r=Math.round(size*.18),w=10*size+9*gap;
   const at=i=>i*(size+gap);
   let s=`<svg width="${w}" height="${size}" aria-hidden="true">`;
   for(let i=0;i<10;i++)s+=`<rect x="${at(i)}" width="${size}" height="${size}" rx="${r}" fill="var(--bnc-p)"/>`;
@@ -1069,11 +1072,11 @@ function drawSquares(el,rows){
   sized(el,(W,H)=>{
     // Narrow boxes put the squares on their own line under the number, so they can use the full width.
     const under=W<320,stack=!under&&W<420,text=under?0:stack?72:140,n=rows.length,line=under?22:0;
-    // Squares and their gaps shrink together; a gap is about a quarter of a square.
-    const size=Math.max(6,Math.min(22,Math.floor((W-text-(under?0:12))/12.1),Math.floor((H-(n-1)*8)/n)-line)),gap=Math.max(2,Math.round(size*.23));
+    // Squares and their gaps shrink together; a gap is a quarter of a square (squaresSVG).
+    const size=Math.max(6,Math.min(22,Math.floor((W-text-(under?0:12))/12.3),Math.floor((H-(n-1)*8)/n)-line));
     box.style.gap=Math.min(20,Math.max(6,(H-n*(size+line))/(n+1)))+'px';
     box.replaceChildren(...rows.map(r=>{
-      return opener('sqrow'+(under?' under':stack?' stack':''),`<span class="sq-num"${under?'':` style="width:${text}px"`}><b${r.story?' class="told"':''}>${r.pct==null?'–':fmtPct(r.pct)}</b><span class="sq-label" title="${esc(r.label)}">${esc(r.label)}</span></span>${squaresSVG(r.pct||0,size,gap,r.fill||'var(--bnc)')}`,r.open,{key:r.label,aria:r.aria});
+      return opener('sqrow'+(under?' under':stack?' stack':''),`<span class="sq-num"${under?'':` style="width:${text}px"`}><b${r.story?' class="told"':''}>${r.pct==null?'–':fmtPct(r.pct)}</b><span class="sq-label" title="${esc(r.label)}">${esc(r.label)}</span></span>${squaresSVG(r.pct||0,size,r.fill||'var(--bnc)')}`,r.open,{key:r.label,aria:r.aria});
     }));
   });
 }
@@ -1341,7 +1344,7 @@ function rateRows(group,rows){
   group.replaceChildren(head,...rows.map(r=>{
     const b=document.createElement('button');b.type='button';b.className='lrow rate';
     b.innerHTML=`<span class="name"><span class="lbl">${r.story?`<b>${esc(r.label)}</b>`:esc(r.label)}</span><small>${fmtInt(r.visits)} visits</small></span>
-      <span class="bar">${squaresSVG(r.value,10,3,'var(--bnc)')}</span>
+      <span class="bar">${squaresSVG(r.value,10,'var(--bnc)')}</span>
       <span class="num">${fmtPct(r.value)}</span><span class="was">${r.prev!=null?pts(r.value,r.prev):'new'}</span>${CHEV}`;
     b.setAttribute('aria-label',`${r.label}: ${fmtPct(r.value)} of ${fmtInt(r.visits)} visits${r.prev!=null?`, was ${fmtPct(r.prev)}`:', new'}. Open`);
     b.onclick=()=>r.open(b);
@@ -1918,7 +1921,7 @@ function drawLanded(el,flows,label,pageRows){
   const row=(name,v,sub,told,hint,open)=>({told,hint,aria:`${hint}. Open`,open,html:`<span>${told?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${sub}</span>`});
   const names=[...S.keys.map(k=>one?label:labelOf('referrer',k)),...(S.rest?[S.rest]:[])],pages=[...P.keys,...(P.rest?[P.rest]:[])];
   ribbons(el,names.map((name,i)=>{const v=sum(m[i]),k=S.keys[i];return row(name,v,fmtInt(v),one,`${name}: ${fmtInt(v)} ${v===1?'visitor':'visitors'}`,!one&&k!=null?b=>openFilter({referrer:k},name,b):null)}),
-    pages.map((name,j)=>{const v=sum(m.map(r=>r[j])),k=P.keys[j];return {rest:k==null,...row(name,v,k!=null&&!pageRows.find(r=>r.key===k)?.prev?'new page':fmtInt(v),false,pageHint(name,v),k!=null?b=>openFilter({path:k},k,b):null)}}),m,
+    pages.map((name,j)=>{const v=sum(m.map(r=>r[j])),k=P.keys[j];return {rest:k==null,at:pageStep(k),...row(name,v,k!=null&&!pageRows.find(r=>r.key===k)?.prev?'new page':fmtInt(v),false,pageHint(name,v),k!=null?b=>openFilter({path:k},k,b):null)}}),m,
     {aria:`Visitors from ${label} to the pages they landed on`,straight:true,hint:(i,j,v)=>ribbonHint(names[i],pages[j],v)});
 }
 
@@ -1947,12 +1950,15 @@ function drawCrossing(el,from,next,page,visitors){
       return {told:it.story,tok:it.kind==='page'?'page':null,hint,aria:`${hint}. Open`,html:html(it,fmtInt(it.value)),open:it.key!=null?b=>openFilter({referrer:it.key},it.label,b):null}}),
     [{told:true,to:next.map(i=>i.value),hint:`${page}: ${fmtInt(visitors)} visitors`,html:`<span><b>${esc(page)}</b></span><span class="chg">${fmtInt(visitors)}</span>`}],from.map(it=>[it.value]),
     {aria:[...from,...next].map(i=>`${i.label} ${fmtInt(i.value)}`).join(', '),hint:(i,j,v)=>from[i].hint||`${from[i].label}: ${fmtInt(v)} visitors`,
-      // The pages they went on to take the steps of violet the page itself doesn't; leaving is grey.
+      // The pages they went on to have their own steps of violet, as on every screen; leaving is grey.
       ends:next.map(it=>{const j=pagesOn.indexOf(it),p=pagesOn.length>1?j/(pagesOn.length-1):.8,hint=went(it);
-        return {told:it.story,hint,aria:`${hint}. Open`,html:html(it,share(it)),fill:it.kind==='left'?'var(--lost)':step('page',p<.5?p*.5:.55+(p-.5)*.9),strand:()=>hint,
+        return {told:it.story,hint,aria:`${hint}. Open`,html:html(it,share(it)),fill:it.kind==='left'?'var(--lost)':step('page',pageStep(it.key)??shadeAt(p)),strand:()=>hint,
           open:it.key!=null?b=>openFilter({path:it.key},it.label,b):null}})});
 }
 
+// What keeps marks apart is the tile showing, --gap wide (DESIGN.md, "Do's and Don'ts"). apart() reads it for the
+// drawing code; a bar or column on an axis is IN_SLOT of its slot, the rest the gap to the next.
+const apart=()=>parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--gap')),IN_SLOT=2/3;
 // A step of a subject's colour: towards the light theme's ink at 0, the colour itself at .4, towards white at 1.
 // Fixed ends, not the theme's ink and tile, so a step is the same colour in both themes.
 const step=(tok,t)=>`color-mix(in oklab,var(--${tok}),${t<.4?`#1A1D2E ${Math.round((.4-t)*75)}`:`#FFFFFF ${Math.round((t-.4)*92)}`}%)`;
@@ -1960,11 +1966,13 @@ const step=(tok,t)=>`color-mix(in oklab,var(--${tok}),${t<.4?`#1A1D2E ${Math.rou
 // colour itself, which is kept for what the sentence names. The ribbons and the overlapping bars share it, so the
 // busiest page is the darkest violet in both.
 const shadeAt=p=>p<.5?p*.5:.55+(p-.5)*.9;
-// Home's pages take their step from their place among the period's pages by visitors, not from their row, so a page
-// is as dark in the ribbons as in the bars however many each draws and whichever one the sentence names. The seventh
-// page and later, and "other pages", share the last step, and only the first two are darker than the colour, far
-// enough apart to tell. A row's `at` is its step; without one it goes by its row.
-const pageSteps=rows=>{const by=new Map(rows.filter(r=>r.value>0).sort((a,b)=>b.value-a.value).map((r,i)=>[r.key,i]));return k=>[0,.2,.55,.66,.78,.89,1][Math.min(by.get(k)??6,6)]};
+// A page takes its step from its place among the period's pages by visitors, not from its row, so it is as dark on
+// every screen, in the ribbons as in the bars, however many each draws and whichever one the sentence names. The
+// seventh page and later, and "other pages", share the last step, and only the first two are darker than the colour,
+// far enough apart to tell. A row's `at` is its step; without one, or before the period's pages are known, it goes
+// by its row. pageStep is a page's step on the screens past home.
+const pageSteps=rows=>{const by=new Map(rows.filter(r=>r.value>0).sort((a,b)=>b.value-a.value).map((r,i)=>[r.key,i]));return k=>by.size?[0,.2,.55,.66,.78,.89,1][Math.min(by.get(k)??6,6)]:undefined};
+const pageStep=k=>pageSteps(HOME?.pageRows||[])(k);
 // A name inside a band is dark or white, whichever reads on the band's step in this theme, so ribbons draw again
 // when the theme changes. Above a luminance of .2 the dark name has more contrast than the white one, and both
 // pass AA either side of it.
@@ -2038,7 +2046,7 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends,straight}){
     const open=`${svgTag(W,H,aria)}`,isHot=q=>hot(q.a.r.i,q.l.r.i);
     // Wide strands first and the story's last, so thin ones and the named one sit on top where strands cross; a wide
     // strand has a hairline of the tile round it, which keeps two strands apart where they cross.
-    const edge=w=>w>=3?' stroke="var(--tile)" stroke-width=".75"':'';
+    const edge=w=>w>=3?' style="stroke:var(--tile);stroke-width:calc(var(--gap)/2)"':'';
     // A strand has its source's step all the way, so a page's edge shows where its own came from; where it leaves
     // its source it has a cap in its page's step, so a source's edge is a stacked bar of where its own went (With one
     // page there is nowhere else to go, and no cap.)
@@ -2168,7 +2176,7 @@ function drawOutcome(el,flows,pair){
       open:k===OTHER?b=>openView({v:dim==='referrer'?'sources':'pages'},b):b=>openFilter({[dim]:k},name,b)};
   };
   ribbons(el,srcs.map((k,i)=>row('referrer',k,pair&&k===pair.source,fmtInt(sum(m[i])),`${label('referrer',k)}: ${vis(sum(m[i]))}`)),
-    pages.map((k,j)=>{const left=leftWord(stay[j].bounces,stay[j].visits);return row('path',k,pair&&k===pair.page,left,`${label('path',k)}: ${vis(stay[j].visits)} landed here, ${left} after one page`,[stay[j].visits-stay[j].bounces,stay[j].bounces])}),m,
+    pages.map((k,j)=>{const left=leftWord(stay[j].bounces,stay[j].visits);return {...row('path',k,pair&&k===pair.page,left,`${label('path',k)}: ${vis(stay[j].visits)} landed here, ${left} after one page`,[stay[j].visits-stay[j].bounces,stay[j].bounces]),at:pageStep(k)}}),m,
     {aria:`Visits from ${srcs.length} sources to the pages they landed on, and how many left after that page`,
       hot:(i,j)=>pair&&srcs[i]===pair.source&&pages[j]===pair.page,hint:(i,j,v)=>`${label('referrer',srcs[i])} → ${label('path',pages[j])}: ${vis(v)}`,
       // Those who read on are grey; those who left are red, each strand in its page's step of it.
@@ -2278,7 +2286,7 @@ async function renderBounce(body){
   }else if(B.cause==='mix')say=`It’s mostly a change in where visitors came from: ${B.total>0?'more':'fewer'} of the visits came from sources that often bounce.`;
   else say='The change was spread across sources; no one source made up even a third of it.';
   body.innerHTML=`<p class="say">${say}</p>
-    <div class="nums"><div class="hero"><span class="big">${totals.cur.visits?fmtPct(c):'–'}</span><span>bounce${totals.prev.visits&&totals.cur.visits?` · <b>${pts(c,p)}</b>`:''}</span><span class="hero-sq">${squaresSVG(c,22,5,'var(--bnc)')}</span></div></div>
+    <div class="nums"><div class="hero"><span class="big">${totals.cur.visits?fmtPct(c):'–'}</span><span>bounce${totals.prev.visits&&totals.cur.visits?` · <b>${pts(c,p)}</b>`:''}</span><span class="hero-sq">${squaresSVG(c,22,'var(--bnc)')}</span></div></div>
     ${B&&B.cause!=='same'?`<section class="card"><div class="card-title">Why it ${B.total>0?'rose':'fell'} · in percentage points</div><div class="steps"></div>
       <div class="legend"><span>${fmtPct(c)} now</span><span>${fmtPct(p)} before</span></div></section>`:''}
     <section class="card"><div class="card-title">Where visits came from, the page they landed on, and who left after it</div><p class="card-say oc-say"></p><div class="outcome"></div></section>
@@ -2468,7 +2476,7 @@ function drawPeriod(el,ser,getChart,restore){
     const W=view.clientWidth;if(W<=0)return;
     const first=Math.min(counted,as()-off),cw=W/N,x=i=>i*cw,max=maxOf(all.slice(first));
     const lab=(x,y,s,at,ink)=>`<text x="${x}" y="${y}" font-size="12" text-anchor="${at}" fill="var(--${ink?'ink)" font-weight="600':'muted)'}">${s}</text>`;
-    const knob=x=>`<rect x="${x-3}" y="${TOP+4}" width="6" height="${BAR-8}" rx="3" fill="var(--time)" stroke="var(--tile)" stroke-width="1.5"/>`;
+    const knob=x=>`<rect x="${x-3}" y="${TOP+4}" width="6" height="${BAR-8}" rx="3" fill="var(--time)" stroke="var(--tile)" style="stroke-width:var(--gap)"/>`;
     const hatch=`mmh${++defN}`;
     const draw=()=>{
       const a=as(),b=a-off,be=ae-off,n=L,wd=i=>fmtWeekday(date(i),'long'),k=off%7===0?`the same weekday ${off===7?'a week':off/7+' weeks'} earlier`:`just before`;
