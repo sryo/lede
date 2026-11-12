@@ -802,6 +802,14 @@ const ro=new ResizeObserver(es=>es.forEach(e=>e.target._draw&&e.target._draw()))
 function sized(el,draw){observe(el,()=>{const W=el.clientWidth,H=el.clientHeight;if(W&&H)draw(W,H)})}
 // What a chart says in place of a drawing it has nothing for.
 function empty(el,text){el.innerHTML=`<div class="empty">${text}</div>`}
+// A button that opens something: what it shows, the key that gives it focus back after its chart is drawn again,
+// its hint and what a screen reader hears. Its click never reaches the tile or card under it.
+function opener(cls,html,open,{key,hint,aria}={}){
+  const b=document.createElement('button');b.type='button';b.className=cls;b.innerHTML=html;
+  if(key!=null)b.dataset.key=key;if(hint)b.title=hint;if(aria)b.setAttribute('aria-label',aria);
+  b.onclick=e=>{e.stopPropagation();open(b)};
+  return b;
+}
 const svgTag=(W,H,aria)=>`<svg width="${W}" height="${H}" role="img" aria-label="${esc(aria)}">`;
 // A redraw replaces a chart's buttons; the one that had focus gets it back, found by its data-key.
 function observe(el,fn){
@@ -882,6 +890,12 @@ function treemap(el,items,{gap=4}={}){
 // Bars per day in a subject's colour (time unless `subj` says otherwise), with the comparison's days (prev, the same
 // length, gap days earlier) as a dashed step line over them.
 // With `hot` days, those stay solid and the rest turn transparent; without, every bar is solid.
+// The parts a chart of days is built from, whatever its marks: a gridline with its value at the right edge, the
+// dashed stroke of the days before, and the label over the day that stands out.
+const gridLine=(x1,x2,y,W,text)=>`<line class="grid-l" x1="${x1}" x2="${x2}" y1="${y}" y2="${y}"/><text x="${W}" y="${y+4}" font-size="12" fill="var(--muted)" text-anchor="end">${text}</text>`;
+const BEFORE='fill="none" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="3 3"';
+const peakHTML=(x,L)=>`<div class="peak" style="${anchorStyle(x)}"><b>${esc(L.title)}</b>${L.sub?`<br><span${L.swatch?' class="told"':''}>${L.swatch?`<i class="sw" style="background:${L.swatch}"></i>`:''}${esc(L.sub)}</span>`:''}</div>`;
+
 // The last day is today when the period ends today (live), and it isn't over: it stands in a pale track as tall as a usual
 // whole day of its weekday, taken from the days shown that fall on it (so a 7-day chart, with one earlier week, has none).
 // o: {cur, prev?, start, gap?, live?, aria, subj?, seg?:{day,top,subj}, hot?:Set, label?:{i,title,sub,swatch}, prevDot?, axis?, scale?, note?}
@@ -900,7 +914,7 @@ function dayBars(el,o){
     // so one visitor never looks like none.
     const bar=(i,y,lo,f)=>{const h=lo-y,r=Math.min(2,bw/2,h);return h>0?`<path d="M${x(i)},${lo}v${r-h}a${r},${r} 0 0 1 ${r},${-r}h${bw-2*r}a${r},${r} 0 0 1 ${r},${r}v${h-r}z" fill="var(--${f})"/>`:''};
     let s=`${svgTag(W,H,o.aria)}`;
-    if(o.scale)for(let k=1;k*step<=max+1e-9;k++){const v=k*step,y=Y(v)+.5;s+=`<line class="grid-l" x2="${W-padR}" y1="${y}" y2="${y}"/><text x="${W}" y="${y+4}" font-size="12" fill="var(--muted)" text-anchor="end">${v>=1000?`${+(v/1000).toFixed(1)}k`:v}</text>`}
+    if(o.scale)for(let k=1;k*step<=max+1e-9;k++){const v=k*step,y=Y(v)+.5;s+=gridLine(0,W-padR,y,W,v>=1000?`${+(v/1000).toFixed(1)}k`:v)}
     cur.forEach((v,i)=>{
       const y=v?Math.min(Y(v),base-2):base;
       // Flat-topped, so the track reads as room still empty rather than as a bar of what today will be.
@@ -914,7 +928,7 @@ function dayBars(el,o){
     if(prev){
       let d=`M0,${Y(prev[0]).toFixed(1)}`;
       prev.forEach((v,i)=>{d+=`${i?`V${Y(v).toFixed(1)}`:''}H${((i+1)*cw).toFixed(1)}`});
-      s+=`<path d="${d}" fill="none" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="3 3"/>`;
+      s+=`<path d="${d}" ${BEFORE}/>`;
       if(o.prevDot>=0)s+=`<circle cx="${(o.prevDot+.5)*cw}" cy="${Y(prev[o.prevDot])}" r="4" fill="var(--${subj})" stroke="var(--tile)" stroke-width="2"/>`;
     }
     // One strip per day, the full height, so a short bar or an empty day is as easy to point at as a tall one.
@@ -928,10 +942,7 @@ function dayBars(el,o){
       s+=at.map((i,k)=>`<text x="${k===0?x(i):k===at.length-1?x(i)+bw:x(i)+bw/2}" y="${H-4}" font-size="12" fill="var(--muted)" text-anchor="${k===0?'start':k===at.length-1?'end':'middle'}">${day(i)}</text>`).join('');
     }
     s+='</svg>';
-    if(o.label){
-      const L=o.label;
-      s+=`<div class="peak" style="${anchorStyle((L.i+.5)*cw/W)}"><b>${esc(L.title)}</b>${L.sub?`<br><span${L.swatch?' class="told"':''}>${L.swatch?`<i class="sw" style="background:${L.swatch}"></i>`:''}${esc(L.sub)}</span>`:''}</div>`;
-    }
+    if(o.label)s+=peakHTML((o.label.i+.5)*cw/W,o.label);
     el.innerHTML=s;
   });
 }
@@ -962,14 +973,14 @@ function lines(el,{cur,prev,fmt,axis,start,peak,span=0,gap=gapNow()}){
     const path=a=>a.map((v,i)=>v==null?'':`${a[i-1]!=null?'L':'M'}${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join('');
     const alone=(a,color)=>a.map((v,i)=>v!=null&&a[i-1]==null&&a[i+1]==null?`<circle cx="${X(i)}" cy="${Y(v)}" r="2" fill="${color}"/>`:'').join('');
     let s=`${svgTag(W,H,peak?.aria||'This period compared with the previous one')}`;
-    for(let v=min;v<=max+1e-9;v+=step){const y=Math.round(Y(v))+.5;s+=`<line class="grid-l" x1="${padL}" x2="${W-padR}" y1="${y}" y2="${y}"/><text x="${W}" y="${y+4}" text-anchor="end">${axis(v)}</text>`}
+    for(let v=min;v<=max+1e-9;v+=step){const y=Math.round(Y(v))+.5;s+=gridLine(padL,W-padR,y,W,axis(v))}
     s+=`<text x="${X(0)}" y="${H-5}"${n>1?'':' text-anchor="middle"'}>${day(0)}</text>${n>1?`<text x="${X(n-1)}" y="${H-5}" text-anchor="end">${day(n-1)}</text>`:''}`;
-    if(prev)s+=`<path d="${path(prev)}" fill="none" stroke="var(--rule)" stroke-width="1.5" stroke-dasharray="3 3"/>${alone(prev,'var(--rule)')}`;
+    if(prev)s+=`<path d="${path(prev)}" ${BEFORE}/>${alone(prev,'var(--rule)')}`;
     s+=`<path d="${path(cur)}" fill="none" stroke="var(--bnc)" stroke-width="2.2" stroke-linejoin="round"/>${alone(cur,'var(--bnc)')}`;
     if(peak)s+=`<circle cx="${X(peak.i)}" cy="${Y(cur[peak.i])}" r="5" fill="var(--bnc)"/>`;
     s+=`<g class="guide" opacity="0"><line y1="${padT}" y2="${H-padB}" stroke="var(--muted)" stroke-width="1"/><circle r="4" fill="var(--bnc)"/></g>`;
     let html=s+'</svg><div class="tip" hidden></div>';
-    if(peak)html+=`<div class="peak" style="${anchorStyle(X(peak.i)/W)}"><b>${esc(peak.title)}</b>${peak.sub?`<br><span>${esc(peak.sub)}</span>`:''}</div>`;
+    if(peak)html+=peakHTML(X(peak.i)/W,peak);
     el.innerHTML=html;
     const g=el.querySelector('.guide'),t=el.querySelector('.tip');
     // The pointer and the keyboard show a day the same way; a screen reader hears the tip's words as the slider's value.
@@ -1035,11 +1046,9 @@ function drawSteps(el,steps,{fmt,aria,colorOf,openOf=()=>null}){
     el.innerHTML=s+'</svg>';
     geo.forEach((g,i)=>{
       const st=steps[i],open=openOf(st);if(!open)return;
-      const top=Math.max(0,Math.min(Y(g.a),Y(g.b))-26),b=document.createElement('button');
-      b.type='button';b.className='step';b.dataset.key=st.key??st.channel??st.label;b.title=`${st.label}: ${fmt(st.value,st.kind==='total')}`;
+      const top=Math.max(0,Math.min(Y(g.a),Y(g.b))-26),hint=`${st.label}: ${fmt(st.value,st.kind==='total')}`;
+      const b=opener('step','',open,{key:st.key??st.channel??st.label,hint,aria:`${hint}. Open`});
       Object.assign(b.style,{left:x(i)-4+'px',top:top+'px',width:bw+8+'px',height:H-top+'px'});
-      b.setAttribute('aria-label',`${b.title}. Open`);
-      b.onclick=e=>{e.stopPropagation();open(b)};
       el.appendChild(b);
     });
   });
@@ -1068,11 +1077,7 @@ function drawSquares(el,rows){
     const size=Math.max(6,Math.min(22,Math.floor((W-text-(under?0:12))/12.1),Math.floor((H-(n-1)*8)/n)-line)),gap=Math.max(2,Math.round(size*.23));
     box.style.gap=Math.min(20,Math.max(6,(H-n*(size+line))/(n+1)))+'px';
     box.replaceChildren(...rows.map(r=>{
-      const b=document.createElement('button');b.type='button';b.className='sqrow'+(under?' under':stack?' stack':'');b.dataset.key=r.label;
-      b.innerHTML=`<span class="sq-num"${under?'':` style="width:${text}px"`}><b${r.story?' class="told"':''}>${r.pct==null?'–':fmtPct(r.pct)}</b><span class="sq-label" title="${esc(r.label)}">${esc(r.label)}</span></span>${squaresSVG(r.pct||0,size,gap,r.fill||'var(--bnc)')}`;
-      b.setAttribute('aria-label',r.aria);
-      b.onclick=e=>{e.stopPropagation();r.open(b)};
-      return b;
+      return opener('sqrow'+(under?' under':stack?' stack':''),`<span class="sq-num"${under?'':` style="width:${text}px"`}><b${r.story?' class="told"':''}>${r.pct==null?'–':fmtPct(r.pct)}</b><span class="sq-label" title="${esc(r.label)}">${esc(r.label)}</span></span>${squaresSVG(r.pct||0,size,gap,r.fill||'var(--bnc)')}`,r.open,{key:r.label,aria:r.aria});
     }));
   });
 }
@@ -1290,13 +1295,17 @@ async function view(body,fn){
 // A list that shows its first n rows, with a button under it that shows all of full in place.
 // draw(box,rows) fills a box of its own, so the button stays under whatever it draws.
 // more: when the server's answer was cut short, asks for the whole list; until then the count isn't known.
+// "All 12 pages ›", the button under a list cut short. n is null when the server cut the list, so its length isn't known.
+function allButton(n,what,press){
+  const b=document.createElement('button');b.type='button';b.className='more-link';b.innerHTML=`<span>All ${n==null?'':`${fmtInt(n)} `}${what}</span>${CHEV}`;
+  b.onclick=()=>press(b);
+  return b;
+}
 function cutList(el,full,n,what,draw,more=null){
   const show=all=>{
     const box=document.createElement('div');el.replaceChildren(box);draw(box,all?full:full.slice(0,n));
     if(all||(full.length<=n&&!more))return;
-    const b=document.createElement('button');b.type='button';b.className='more-link';b.innerHTML=`<span>All ${more?'':`${fmtInt(full.length)} `}${what}</span>${CHEV}`;
-    b.onclick=async()=>{if(more){b.disabled=true;full=await more().catch(()=>full);more=null}show(true);announce(`Showing all ${full.length} ${what}`)};
-    el.append(b);
+    el.append(allButton(more?null:full.length,what,async b=>{if(more){b.disabled=true;full=await more().catch(()=>full);more=null}show(true);announce(`Showing all ${full.length} ${what}`)}));
   };
   show(false);
 }
@@ -1409,9 +1418,7 @@ function dimSection(sec,group,f,compact,boldKeys=null,engagement=null){
     rowsInto(b.firstChild,compact?rows.slice(0,8):rows,{total,subj:group==='pages'?'page':'src',goalable:group==='pages',named,onClick:(r,el)=>go(r)(el)});
     // A list the server cut short shows its top 1,000 when pressed; until then its length isn't known.
     if(compact?rows.length>8||data.cut:data.cut&&!whole){
-      const more=document.createElement('button');more.type='button';more.className='more-link';more.innerHTML=`<span>All ${data.cut?'':`${rows.length} `}${group}</span>${CHEV}`;
-      more.onclick=()=>compact?openView({v:group},more):(whole=true,draw());
-      b.appendChild(more);
+      b.appendChild(allButton(data.cut?null:rows.length,group,more=>compact?openView({v:group},more):(whole=true,draw())));
     }
   })};
   onSeg(sec,i=>{mode=modes[i][1];whole=false;draw()});
@@ -1507,7 +1514,7 @@ async function renderFilter(body,f){
       if(n.cur.reached!=null)api('conversions',{goal:GOALS}).then(conv=>{
         // A number beside the others, as on a source's view; the sentence is its hover.
         const g=!stale(body,gen)&&goalFromPage(n.cur,conv,GOALS,f.path);
-        if(g)body.querySelector('.nums').insertAdjacentHTML('beforeend',`<div class="num" title="${esc(g.replace(/<[^>]+>/g,''))}"><span class="k">Reached ${esc(goalWhat())}</span><span class="v">${fmtRate(n.cur.reached/n.cur.visits)}</span><span class="delta"><span class="muted">all visits ${fmtRate(conv.reached/conv.visits)}</span></span></div>`);
+        if(g)body.querySelector('.nums').insertAdjacentHTML('beforeend',numHTML(`Reached ${esc(goalWhat())}`,fmtRate(n.cur.reached/n.cur.visits),`<span class="muted">all visits ${fmtRate(conv.reached/conv.visits)}</span>`,{tip:esc(g.replace(/<[^>]+>/g,''))}));
       },()=>{});
       body.querySelector('.cross-say').innerHTML=st.html;
       if(st.note)note.textContent=arrived?`${arrived} ${st.note}`:st.note;
@@ -1521,7 +1528,7 @@ async function renderFilter(body,f){
   if(f.path!=null)api('engagement',p).then(e=>{
     const r=e.rows.find(x=>x.key===f.path);
     if(stale(body,gen)||!r?.views)return;
-    const n=(k,v,sub,tip)=>`<div class="num" title="${tip}"><span class="k">${k}</span><span class="v">${v}</span><span class="delta">${sub}</span></div>`;
+    const n=(k,v,sub,tip)=>numHTML(k,v,sub,{tip});
     // The middle view, when the answer has it: a few tabs left open for hours pull an average far from most readers.
     const mid=r.median!=null,time=x=>!x?null:mid?(x.median!=null?x.median/1000:null):x.time,t=time(r),was=time(r.prev);
     body.querySelector('.nums').insertAdjacentHTML('beforeend',
@@ -1545,6 +1552,23 @@ async function renderFilter(body,f){
 const GLYPHS4=['diag','dots','back','squiggle'];
 const shadeSeg=(subj,i)=>i?`class="${subj}-h achura-${GLYPHS4[Math.min(4,i)-1]} w${Math.min(4,i)}"`:`class="${subj}-s"`;
 const keySw=(subj,i)=>`<span ${shadeSeg(subj,i).replace('class="','class="sw hk ')}></span>`;
+// A strip of shares in one colour: the first part plain, the others told apart by texture. parts: [title, size].
+function stripHTML(subj,parts,hidden){
+  return `<div class="strip"${hidden?' aria-hidden="true"':''}>${parts.map(([title,v],i)=>`<i ${shadeSeg(subj,i)} style="flex:${v}"${title?` title="${esc(title)}"`:''}></i>`).join('')}</div>`;
+}
+// One list of readers as a strip with its key. rows: [name, visitors, named?], in the order to show; top: the ones
+// with a part of their own, the first four unless given. The others are one part, "N more", and "All N" opens every
+// row under the strip, with its share and visitors.
+function mixHTML(title,rows,top=rows.slice(0,4)){
+  const all=sum(rows.map(r=>r[1])),n=rows.length-top.length;if(!all)return '';
+  const parts=n?[...top,[`${n} more`,all-sum(top.map(r=>r[1]))]]:top;
+  return `<div class="mix"><span class="k">${title}</span>${stripHTML('time',parts.map(([l,v])=>[`${l}: ${fmtInt(v)} visitors`,v]))}
+    <p>${parts.map(([l,v,b],i)=>`<span>${keySw('time',i)}${b?`<b>${esc(l)}</b>`:esc(l)} ${fmtPct(v/all)}</span>`).join('')}</p>
+    ${n?`<button type="button" class="mix-more" aria-expanded="false">All ${fmtInt(rows.length)}</button><p hidden>${rows.map(([l,v])=>`<span>${esc(l)} ${fmtPct(v/all)} · ${fmtInt(v)}</span>`).join('')}</p>`:''}</div>`;
+}
+function bindMix(sec){
+  sec.querySelectorAll('.mix-more').forEach(b=>b.onclick=()=>{const p=b.nextElementSibling,open=p.hidden;p.hidden=!open;b.setAttribute('aria-expanded',open);b.textContent=open?'Fewer':`All ${p.children.length}`});
+}
 function drawInOut(sec,H){
   const src=findings(H.S,H.T.told,PER().before)[0],pg=pagesFinding(H.pageRows,H.T.page);
   const said=[src,pg].filter(Boolean).map(x=>x.html.replace(/\.?$/,'.')).join(' ');
@@ -1554,16 +1578,14 @@ function drawInOut(sec,H){
   const sources=H.S.sources.filter(s=>s.value>0).sort((a,b)=>b.value-a.value);
   [[sources,'Sources','sources','referrer','src',src?.key],[H.pageRows.filter(r=>r.value>0),'Pages','pages','path','page',pg?.key]].forEach(([rows,title,group,f,subj,named])=>{
     const all=sum(rows.map(r=>r.value)),on=rows.find(r=>r.key===named),top=topRows(rows,4,[named]).top,rest=all-sum(top.map(r=>r.value));
-    const at=r=>top.indexOf(r),seg=(r,i)=>shadeSeg(subj,i);
-    io.insertAdjacentHTML('beforeend',`<span class="k">${title}</span><div class="strip" aria-hidden="true">${top.map((r,i)=>`<i ${seg(r,i)} style="flex:${r.value}" title="${esc(r.label)}"></i>`).join('')}${rest>0?`<i ${seg(null,top.length)} style="flex:${rest}"></i>`:''}</div><p></p>`);
+    io.insertAdjacentHTML('beforeend',`<span class="k">${title}</span>${stripHTML(subj,[...top.map(r=>[r.label,r.value]),...(rest>0?[[null,rest]]:[])],true)}<p></p>`);
     const p=io.lastChild;
     for(const r of top){
-      const b=document.createElement('button');b.type='button';b.className='io-k';
-      const sw=keySw(subj,at(r));
-      b.innerHTML=r===on?`${sw}<b>${esc(r.label)}</b> ${fmtShare(r.value,all)}<small>${change(r.value,r.prev)}</small>`:`${sw}${esc(r.label)} ${fmtShare(r.value,all)}`;
-      b.setAttribute('aria-label',`${rowLabel(r.label,r.value,r.prev,all)}. Open`);b.onclick=()=>openFilter({[f]:r.key},r.label,b);p.append(b);
+      const sw=keySw(subj,top.indexOf(r));
+      p.append(opener('io-k',r===on?`${sw}<b>${esc(r.label)}</b> ${fmtShare(r.value,all)}<small>${change(r.value,r.prev)}</small>`:`${sw}${esc(r.label)} ${fmtShare(r.value,all)}`,
+        b=>openFilter({[f]:r.key},r.label,b),{aria:`${rowLabel(r.label,r.value,r.prev,all)}. Open`}));
     }
-    const more=document.createElement('button');more.type='button';more.className='io-k io-more';more.textContent=`All ${H.cut?.[group]?'':`${rows.length} `}${group} ›`;more.onclick=()=>openView({v:group},more);p.append(more);
+    p.append(opener('io-k io-more',`All ${H.cut?.[group]?'':`${rows.length} `}${group} ›`,b=>openView({v:group},b)));
   });
 }
 // How far down the page is read, over a picture of the page: darker further down where fewer still read, a
@@ -1634,14 +1656,9 @@ async function showPicture(sec,path){
 function drawAudience(sec,A){
   const S=audienceStory(A);if(!S)return;
   sec.innerHTML=`<div class="card-title">Where readers are and what they use</div><p class="sentence">${S.html}</p>${[['Countries','country'],['Devices','device'],['Browsers','browser']].map(([t,dim])=>{
-    const rows=A[dim].filter(r=>r.visitors),all=sum(rows.map(r=>r.visitors)),on=rows.find(r=>dim==S.dim&&r.key==S.key);
-    const top=topRows(rows,4,[on?.key]).top.map(r=>[labelOf(dim,r.key),r.visitors,r==on]),n=rows.length-top.length;
-    if(n)top.push([`${n} more`,all-sum(top.map(r=>r[1])),0,'-p']);
-    return all?`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v],i)=>`<i ${shadeSeg('time',i)} style="flex:${v}" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}</div>
-      <p>${top.map(([l,v,b],i)=>`<span>${keySw('time',i)}${b?`<b>${esc(l)}</b>`:esc(l)} ${fmtPct(v/all)}</span>`).join('')}</p>
-      ${n?`<button type="button" class="mix-more" aria-expanded="false">All ${fmtInt(rows.length)}</button><p hidden>${rows.map(r=>`<span>${esc(labelOf(dim,r.key))} ${fmtPct(r.visitors/all)} · ${fmtInt(r.visitors)}</span>`).join('')}</p>`:''}</div>`:''}).join('')}<p class="say-sub">${audienceNote(A,PER())}</p>`;
-  // "All N" opens every part of a list under its strip, with its share and visitors.
-  sec.querySelectorAll('.mix-more').forEach(b=>b.onclick=()=>{const p=b.nextElementSibling,open=p.hidden;p.hidden=!open;b.setAttribute('aria-expanded',open);b.textContent=open?'Fewer':`All ${p.children.length}`});
+    const rows=A[dim].filter(r=>r.visitors).map(r=>[labelOf(dim,r.key),r.visitors,dim==S.dim&&r.key==S.key]);
+    return mixHTML(t,rows,topRows(rows,4,[true],r=>r[2]).top)}).join('')}<p class="say-sub">${audienceNote(A,PER())}</p>`;
+  bindMix(sec);
   sec.hidden=false;
 }
 
@@ -1671,14 +1688,8 @@ async function drawAudienceMore(sec,gen,body){
   const parts=[['Systems',os.map(r=>[r.key==='other'?'Other systems':r.key,r.visitors])],['Languages',lang.map(r=>[languageName(r.key),r.visitors])],
     ['Screens',BY_WIDTH.map(([k,l])=>[l,width.get(k)||0]).filter(x=>x[1])],['Places',place.map(r=>{const [city,region]=r.key.split('|');return [[city,region].filter(Boolean).join(', '),r.visitors]})]];
   const note=sec.querySelector('.say-sub');
-  for(const [t,items] of parts){
-    const all=sum(items.map(x=>x[1]));if(!all)continue;
-    const sorted=t==='Screens'?items:items.slice().sort((a,b)=>b[1]-a[1]),top=sorted.slice(0,4),rest=all-sum(top.map(x=>x[1]));
-    note.insertAdjacentHTML('beforebegin',`<div class="mix"><span class="k">${t}</span><div class="strip">${top.map(([l,v],i)=>`<i ${shadeSeg('time',i)} style="flex:${v}" title="${esc(l)}: ${fmtInt(v)} visitors"></i>`).join('')}${rest>0?`<i ${shadeSeg('time',top.length)} style="flex:${rest}"></i>`:''}</div>
-      <p>${top.map(([l,v],i)=>`<span>${keySw('time',i)}${esc(l)} ${fmtPct(v/all)}</span>`).join('')}${rest>0?`<span>${keySw('time',top.length)}${sorted.length-top.length} more ${fmtPct(rest/all)}</span>`:''}</p>
-      ${sorted.length>4?`<button type="button" class="mix-more" aria-expanded="false">All ${fmtInt(sorted.length)}</button><p hidden>${sorted.map(([l,v])=>`<span>${esc(l)} ${fmtPct(v/all)} · ${fmtInt(v)}</span>`).join('')}</p>`:''}</div>`);
-  }
-  sec.querySelectorAll('.mix-more').forEach(b=>b.onclick=()=>{const p=b.nextElementSibling,open=p.hidden;p.hidden=!open;b.setAttribute('aria-expanded',open);b.textContent=open?'Fewer':`All ${p.children.length}`});
+  for(const [t,items] of parts)note.insertAdjacentHTML('beforebegin',mixHTML(t,t==='Screens'?items:items.slice().sort((a,b)=>b[1]-a[1])));
+  bindMix(sec);
 }
 
 // Links to other sites and files people clicked, as a share of the visitors; a switch when there are both.
@@ -1717,8 +1728,7 @@ function drawKeywords(sec,K){
     list.innerHTML=C.empty?`<p class="muted" style="margin:0">${esc(C.empty)}</p>`:'<div></div>';
     if(!C.empty){rowsInto(list.firstChild,C.rows,{total:C.total,subj:k==='site'?'muted':'src'});list.firstChild.classList.add('kw')}
     if(C.all){
-      list.insertAdjacentHTML('beforeend',`<button type="button" class="more-link"><span>All ${C.all} words</span>${CHEV}</button>`);
-      list.lastChild.onclick=()=>{const n=C.all;draw(k,1);const r=list.firstChild.children[6];r.tabIndex=-1;r.focus();announce(`Showing all ${n} words`)};
+      list.append(allButton(C.all,'words',()=>{const n=C.all;draw(k,1);const r=list.firstChild.children[6];r.tabIndex=-1;r.focus();announce(`Showing all ${n} words`)}));
     }
     note.textContent='Google doesn’t share what people searched for to find you.';
   };
@@ -1811,8 +1821,10 @@ function drawFunnel(el,f,drop){
 const pts=(c,p)=>{const d=Math.round((c-p)*100);return d?`${d>0?'+':'−'}${Math.abs(d)} ${Math.abs(d)===1?'point':'points'}`:'same'};
 // The link to the bounce page says what bounce did overall, not what it did for this slice.
 const bounceLink=()=>{const H=home(),d=H?Math.round((H.S.c.bounce-H.S.p.bounce)*100):0;return `<span>${d>0?'Why bounce rose':d<0?'Why bounce fell':'Bounce by source'}</span>${CHEV}`};
+// One number beside the others: what it is, the number, what it was or is against. told: the sentence names it.
+const numHTML=(k,v,sub,{told,tip}={})=>`<div class="num"${tip?` title="${tip}"`:''}><span class="k">${k}</span><span class="v${told?' told':''}">${v}</span><span class="delta">${sub}</span></div>`;
 const numsHTML=(c,pr,{story=false}={})=>{
-  const n=(k,v,sub,told)=>`<div class="num"><span class="k">${k}</span><span class="v${told?' told':''}">${v}</span><span class="delta">${sub}</span></div>`;
+  const n=(k,v,sub,told)=>numHTML(k,v,sub,{told});
   // With no visits there is no rate or time to show; a 0% bounce and its change would be made up.
   const ch=changeWord,none=!c.visits;
   return n('Visits',fmtInt(c.visits),ch(c.visits,pr.visits))+n('Views',fmtInt(c.views),ch(c.views,pr.views))
@@ -1836,7 +1848,7 @@ async function renderSource(body,f){
   if(GOALS.length)api('conversions',{goal:GOALS}).then(conv=>{
     if(stale(body,gen))return;
     const mine=conv.rows.filter(x=>inside(x.key)),r={visits:sum(mine.map(x=>x.visits)),reached:sum(mine.map(x=>x.reached))};if(!r.visits||!conv.visits)return;
-    body.querySelector('.nums')?.insertAdjacentHTML('beforeend',`<div class="num"><span class="k">Reached ${esc(goalWhat())}</span><span class="v">${fmtRate(r.reached/r.visits)}</span><span class="delta"><span class="muted">all visits ${fmtRate(conv.reached/conv.visits)}</span></span></div>`);
+    body.querySelector('.nums')?.insertAdjacentHTML('beforeend',numHTML(`Reached ${esc(goalWhat())}`,fmtRate(r.reached/r.visits),`<span class="muted">all visits ${fmtRate(conv.reached/conv.visits)}</span>`));
   }).catch(()=>{});
   const share=channel?channelShare(totals,all,label):'';
   // What this source's own readers did: the page that moved most with them, and one they read far more than everyone.
@@ -1971,22 +1983,22 @@ matchMedia('(prefers-color-scheme:dark)').onchange=()=>document.querySelectorAll
 // `to` saying how many of its own took each. Its counts may be in another unit than m's (views after visitors): a
 // page's strands fill its band, and the ends together stand as tall as the pages. ink is a strand's colour, or a
 // function of its page's row; without it a strand has its end's fill.
+// A row's or an end's name: a button when it opens something, a plain name when it doesn't.
+function named(cls,key,n){
+  if(n.open)return opener(cls,n.html,n.open,{key,hint:n.hint,aria:n.aria});
+  const b=document.createElement('span');b.className=cls+' still';b.dataset.key=key;b.innerHTML=n.html;b.title=n.hint;
+  return b;
+}
 function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
   const rowsOf=(list,vals,side)=>list.map((n,i)=>{
-    // A row with nothing to open is a plain name.
-    const b=document.createElement(n.open?'button':'span');b.className='node'+(side==='l'?'':' r')+(n.told?' told':'')+(n.open?'':' still');b.dataset.key=side+i;
-    b.innerHTML=n.html;b.title=n.hint;if(n.open){b.type='button';b.setAttribute('aria-label',n.aria);b.onclick=e=>{e.stopPropagation();n.open(b)}}
+    const b=named('node'+(side==='l'?'':' r')+(n.told?' told':''),side+i,n);
     return {n,i,v:vals[i],b};
   }).filter(r=>r.v>0).map((r,i,rs)=>{
     // What the sentence names keeps the colour itself; the others take the steps either side of it, in order.
     const rest=rs.filter(x=>!x.n.told),j=rest.indexOf(r),p=rest.length>1?j/(rest.length-1):.8,at=r.n.told?.4:p<.5?p*.5:.55+(p-.5)*.9;
     return {...r,fill:step(r.n.tok||(side==='l'?'src':'page'),at),lane:step('bnc',at)}});
   const srcs=rowsOf(left,m.map(r=>sum(r)),'l'),pgs=rowsOf(right,right.map((_,j)=>sum(m.map(r=>r[j]))),'r'),all=[...srcs,...pgs];
-  const eb=(ends||[]).map((e,k)=>{
-    const b=document.createElement(e.open?'button':'span');b.dataset.key='o'+k;b.innerHTML=e.html;b.title=e.hint;
-    if(e.open){b.type='button';b.setAttribute('aria-label',e.aria);b.onclick=ev=>{ev.stopPropagation();e.open(b)}}
-    return b;
-  });
+  const eb=(ends||[]).map((e,k)=>named('node r','o'+k,e));
   const box=document.createElement('div');box.className='flow';box.append(...all.map(r=>r.b),...eb);
   box.onclick=e=>{const k=e.target.dataset?.n;if(k){e.stopPropagation();box.querySelector(`button[data-key="${k}"]`)?.click()}};
   // Pointing at a source, a page, an end or a strand keeps its strands and greys the others.

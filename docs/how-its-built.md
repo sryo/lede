@@ -189,6 +189,10 @@ All of this is in `public/story.js` unless it says otherwise. Every sentence is 
 - **Size.** `observe(el, fn)` redraws a chart when its box changes size; `release()` stops that when a view closes.
 - **Shared chart parts.** A drawing is built from these, not from its own copy:
   - `sized(el, draw)` calls `draw(W, H)` once the box has a size and again when it changes; `svgTag(W, H, aria)` opens a chart's svg; `empty(el, text)` is what a chart says when it has nothing to draw.
+  - `opener(cls, html, open, {key, hint, aria})` is every button that opens something from a chart; `named()` gives a ribbon's row a plain name when it opens nothing; `allButton(n, what, press)` is the "All 12 pages" under a list cut short.
+  - A chart of days is `dayBars()` for counts and `lines()` for a rate. Both draw their gridlines with `gridLine()`, the days before with `BEFORE` and the day that stands out with `peakHTML()`.
+  - `stripHTML(subj, parts)` is every strip of shares; `mixHTML(title, rows, top)` is a strip with its key and its "All N", for readers' countries, devices, systems and the like.
+  - `numHTML(k, v, sub, {told, tip})` is every number beside the others; `rowsInto()` every list of bars; `treemap()`, `drawSquares()` and `drawSteps()` the blocks, the rows of ten squares and the waterfalls.
   - `topRows(rows, n, keep)` in `public/story.js` is the one rule for "the first n and the rest": a row the sentence names that ranks lower takes one of the last places.
   - `ribbons(el, left, right, m, opts)` draws every "from where to where": home's tile, the Bounce screen, a source's or channel's view and a page's crossing. Rows carry their own name, hint and what they open; `ends` adds a third step, in its own unit when it counts something else. It runs straight across in a wide box or with a third step, as thin bars with names beside them in a narrow one, and turns in a tall one.
 - **Names.** Every hostname on screen goes through `public/hosts.js`, which shows accented names as people write them.

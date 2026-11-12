@@ -214,8 +214,9 @@ test('the speed card’s note keeps the layout score, on hover', () => {
 
 test('the overview shows sources and pages as two strips shaded by position, its rows a tap away', () => {
   const d = fn('drawInOut');
-  assert.match(d, /class="strip"/);
-  assert.match(d, /shadeSeg\(subj,i\)/);
+  assert.match(d, /stripHTML\(subj,/);
+  assert.match(fn('stripHTML'), /class="strip"/);
+  assert.match(fn('stripHTML'), /shadeSeg\(subj,i\)/);
   assert.doesNotMatch(d, /rowsInto\(/);
 });
 
@@ -380,7 +381,8 @@ test('a source’s or channel’s view draws where they landed with the same rib
   assert.match(draw, /one\?label:labelOf\('referrer',k\)/);
   assert.match(draw, /'new page':fmtInt\(v\)/);
   assert.doesNotMatch(draw, /drawCrossing/);
-  assert.match(fn('ribbons'), /document\.createElement\(n\.open\?'button':'span'\)/);
+  assert.match(fn('named'), /if\(n\.open\)return opener\(cls,n\.html,n\.open,\{key,hint:n\.hint,aria:n\.aria\}\)/);
+  assert.match(fn('opener'), /b\.onclick=e=>\{e\.stopPropagation\(\);open\(b\)\}/);
 });
 
 test('a page’s crossing is the shared ribbons too: sources, the page, then where its views went, in their own unit', () => {
@@ -422,11 +424,15 @@ test('a read-only link shows goal results, with no way to change the goals', () 
 });
 
 test('no list stops without a way to see the rest: links, a channel’s sources, bounce rows and audience parts', () => {
-  assert.match(fn('cutList'), /All \$\{more\?'':`\$\{fmtInt\(full\.length\)\} `\}\$\{what\}/);
+  assert.match(fn('cutList'), /allButton\(more\?null:full\.length,what,/);
+  assert.match(fn('allButton'), /All \$\{n==null\?'':`\$\{fmtInt\(n\)\} `\}\$\{what\}/);
+  assert.match(fn('dimSection'), /allButton\(data\.cut\?null:rows\.length,group,/);
   assert.match(fn('drawLinks'), /cutList\([\s\S]*?\),8,'links'/);
   assert.match(fn('renderSource'), /cutList\([\s\S]*?\),8,'sources'/);
   assert.match(fn('renderBounce'), /cutList\([\s\S]*?,toRows\(data\),12,/);
-  assert.match(fn('drawAudience'), /class="mix-more"/);
+  assert.match(fn('drawAudience'), /mixHTML\(t,rows,topRows\(rows,4,\[true\],r=>r\[2\]\)\.top\)/);
+  assert.match(fn('drawAudienceMore'), /mixHTML\(t,/);
+  assert.match(fn('mixHTML'), /class="mix-more"/);
 });
 
 test('a source’s bounce link is the one under its squares, not the first list button on the page', () => {
