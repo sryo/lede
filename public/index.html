@@ -271,10 +271,9 @@ button.tile-title:hover{color:var(--ink)}
 .node>span+span{margin-inline-start:6px}
 .node>.left{display:block;margin-inline-start:0}
 .node.in .chg,.node.in.told .chg,.node.in .muted,.node.in .left{color:inherit}
+.node.bare .chg{display:none}
 .node.wrap{white-space:normal}
 .node.wrap>span{display:block;margin-inline-start:0;overflow:hidden;text-overflow:ellipsis}
-.node.down{writing-mode:vertical-rl}
-.node.bare .chg{display:none}
 .node.halo{text-shadow:0 0 3px var(--tile),0 0 3px var(--tile),0 0 3px var(--tile)}
 .node b{font-weight:700}
 .node .chg{color:var(--muted);font-variant-numeric:tabular-nums}
@@ -543,7 +542,8 @@ button.lrow:hover{background:var(--line)}
   .t-flow{min-height:680px}
   /* between a phone and a desk the tile is wide enough for the ribbons to run straight, in a shorter box */
   @media (min-width:560px){.t-flow{min-height:420px}}
-  .outcome{height:420px}
+  .outcome{height:460px}
+  .landed.cross{height:320px}
   .rmap{height:340px}
   .kw .name{white-space:normal;overflow-wrap:anywhere}
   .sq-num{flex-direction:column;gap:0}
@@ -2012,9 +2012,11 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends,straight}){
   sized(el,(W,H)=>{
     for(const r of all){r.b.classList.remove('in','halo','wrap','bare');r.b.style.cssText='max-width:none';r.lw=r.b.offsetWidth;r.lh=r.b.offsetHeight}
     eb.forEach((b,k)=>{b.className='node r'+(ends[k].told?' told':'')+(ends[k].open?'':' still');b.style.cssText='max-width:none'});
-    const rmin=12,run=Math.min(W*.5,Math.max(...all.map(r=>r.lw))+14),ow=Math.max(0,...eb.map(b=>b.offsetWidth))+24,f=v=>+v.toFixed(2);
-    // Rows of one turn, top to bottom: each as thick as its count, far enough apart for a name to sit on a thin one.
-    const rows=(items,u,y0)=>{let y=y0;return items.map((r,i)=>{const th=Math.max(2,r.v*u),nx=items[i+1],row={r,th,y};if(nx)y+=th+Math.max(6,(r.lh+nx.lh)/2+2-(th+Math.max(2,nx.v*u))/2);return row})};
+    const rmin=12,run=Math.min(W*.5,Math.max(...all.map(r=>r.lw))+14),f=v=>+v.toFixed(2);
+    // Rows of one turn, top to bottom: each as thick as its count. A name taller than its row stands out above and
+    // below it, so two rows are as far apart as their names stand out, and no name reaches the row beside it.
+    const out=(r,th)=>Math.max(0,(r.lh-th)/2);
+    const rows=(items,u,y0)=>{let y=y0;return items.map((r,i)=>{const th=Math.max(2,r.v*u),nx=items[i+1],row={r,th,y};if(nx)y+=th+Math.max(6,out(r,th)+out(nx,Math.max(2,nx.v*u))+2);return row})};
     const open=`${svgTag(W,H,aria)}`,isHot=q=>hot(q.a.r.i,q.l.r.i);
     // Wide strands first and the story's last, so thin ones and the named one sit on top where strands cross; a wide
     // strand has a hairline of the tile round it, which keeps two strands apart where they cross.
@@ -2027,27 +2029,29 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends,straight}){
     // A name sits inside its band in the colour that reads on it, or beside a band too thin to hold it.
     const name=(b,fill,inside,css)=>{b.classList.toggle('in',inside);b.style.cssText=(inside?`color:${onStep(b,fill)};`:'')+css};
     const put=s=>{box.querySelector('svg')?.remove();box.insertAdjacentHTML('afterbegin',s+'</svg>')};
-    // Straight across, in a wide box or whenever there is a third step: sources, then pages, then the ends. In a
-    // box too narrow to hold the names inside three bands, the bands are thin bars with their names beside them.
-    // One source has nothing to cross, so it runs straight too, as a bar at the edge: its name is the screen's.
+    // Straight across, in a wide box or whenever there is a third step: sources, then pages, then the ends, each a
+    // band with its names inside. One source has nothing to cross, so it runs straight too.
     if(W>H*1.5||ends||straight||srcs.length<2){
-      // Each side's bands are as wide as its own longest name; when the names leave the strands no room, slim.
-      const wide=R=>Math.min(W*.5,Math.max(...R.map(r=>r.lw))+14)+16,wL=wide(srcs),wP=wide(pgs);
-      const solo=!ends&&srcs.length<2,slim=ends?(W-wL-wP-ow)/2<50:!solo&&W-wL-wP<80,bw=8,tot=sum(pgs.map(r=>r.v));
-      // Slim: in a box as narrow as a phone's, two ends' names run down beside their bars, which leaves the pages'
-      // names the width of the second crossing; otherwise the ends' names are in a gutter like the sources', and a
-      // lone page needs no name.
-      const down=slim&&ends&&ends.length<3&&W<440,first=b=>(b.firstElementChild||b).offsetWidth+bw+12,gut=R=>Math.round(Math.min(W*.36,Math.max(40,...R.map(first))));
-      const gL=slim&&gut(srcs.map(r=>r.b)),gR=slim&&gut(ends?eb:pgs.map(r=>r.b));
-      const xe=slim?down?W-22:W-gR+bw:W,xa=solo?8:slim?down?Math.round(W*.38):gL:wL,xb=ends?slim?down?xa+Math.round((xe-2*bw-xa)*.36):Math.round((xa+xe-2*bw)/2):xa+(W-wL-wP-ow)/2:slim?W-gR:W-wP,xc=ends||slim?xb+(slim?bw:wP):W,xd=slim?xe-bw:xc+xb-xa;
-      if(slim){
-        // Sources' names wrap in their gutter; a page's name alone runs over its strands, on a halo of the tile.
-        for(const r of srcs){r.b.classList.add('wrap');r.b.style.maxWidth=f(xa-bw-6)+'px';r.lh=r.b.offsetHeight}
-        for(const r of pgs){r.b.classList.add(ends?'bare':'wrap');if(!ends)r.b.style.maxWidth=f(W-xc-6)+'px';r.lh=r.b.offsetHeight}
-        for(const b of eb){b.classList.add(down?'down':'wrap');if(!down)b.style.maxWidth=f(W-xe-6)+'px'}
+      // Each side's bands are as wide as its own longest name. When the names leave the strands no room, the bands
+      // give ground a step at a time: each name goes on two lines, its count under it; then a page between two
+      // crossings keeps its name alone; then the last step's names wrap; then all the bands shrink together and a
+      // name ends in an ellipsis inside its band. The bands never give way to bars with the names beside them.
+      const tot=sum(pgs.map(r=>r.v)),ebs=eb.map(b=>({b})),sides=[srcs,pgs,ends?ebs:[]],cross=ends?2:1;
+      const wide=R=>R.length?Math.max(...R.map(r=>r.b.offsetWidth))+16:0;
+      let [wL,wP,wE]=sides.map(wide),pad=8,bare=false;
+      const room=()=>(W-wL-wP-wE)/cross;
+      if(room()<50){
+        for(const r of sides.flat())r.b.classList.add('wrap');
+        [wL,wP,wE]=sides.map(wide);
+        if(ends&&room()<36){bare=true;for(const r of pgs)r.b.classList.add('bare');wP=wide(pgs)}
+        if(ends&&room()<36)wE=Math.min(wE,96);
+        if(room()<36){const k=(W-cross*24)/(wL+wP+wE);wL*=k;wP*=k;wE*=k;pad=6}
+        sides.forEach((R,i)=>{for(const r of R)r.b.style.maxWidth=f([wL,wP,wE][i]-pad-4)+'px'});
+        for(const r of all){r.lw=r.b.offsetWidth;r.lh=r.b.offsetHeight}
       }
+      const xa=wL,xb=ends?xa+room():W-wP,xc=ends?xb+wP:W,xd=xc+xb-xa,cw=room()<40?4:8;
       // The ends that anyone took, as rows in their own unit: together as tall as the pages.
-      const E=eb.map((b,k)=>({b,k,e:ends[k],v:sum(pgs.map(r=>r.n.to?.[k]||0)),lw:b.offsetWidth,lh:down?0:b.offsetHeight})).filter(o=>o.v>0),per=tot/(sum(E.map(o=>o.v))||1);
+      const E=eb.map((b,k)=>({b,k,e:ends[k],v:sum(pgs.map(r=>r.n.to?.[k]||0)),lw:b.offsetWidth,lh:b.offsetHeight})).filter(o=>o.v>0),per=tot/(sum(E.map(o=>o.v))||1);
       for(const b of eb)b.style.display='none';
       const end=R=>R.length?R.at(-1).y+R.at(-1).th:0;
       let u=0,hi=10;for(let i=0;i<24;i++){const mid=(u+hi)/2;if(Math.max(end(rows(srcs,mid,0)),end(rows(pgs,mid,0)),end(rows(E,mid*per,0)))<=H)u=mid;else hi=mid}
@@ -2058,17 +2062,19 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends,straight}){
       for(const l of L){let y=l.y;for(const q of strands.filter(q=>q.l===l)){q.y1=y;y+=l.th*q.v/l.r.v}}
       const curve=(x0,y0,w0,x1,y1,w1)=>{const c=(x0+x1)/2;return `M${f(x0)},${f(y0)} C${f(c)},${f(y0)} ${f(c)},${f(y1)} ${f(x1)},${f(y1)} v${f(w1)} C${f(c)},${f(y1+w1)} ${f(c)},${f(y0+w0)} ${f(x0)},${f(y0+w0)} Z`};
       let s=open+order(strands).map(q=>{const w0=q.a.th*q.v/q.a.r.v,w1=q.l.th*q.v/q.l.r.v;
-        return strand(q,curve(xa,q.y0,w0,xb,q.y1,w1),Math.min(w0,w1),`x="${f(xa)}" y="${f(q.y0)}" width="${slim?4:8}" height="${f(w0)}"`)}).join('');
+        return strand(q,curve(xa,q.y0,w0,xb,q.y1,w1),Math.min(w0,w1),`x="${f(xa)}" y="${f(q.y0)}" width="${cw}" height="${f(w0)}"`)}).join('');
       const bar=(k,i,x,w,y,h,fill,tip)=>`<rect data-n="${k}${i}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" fill="${fill}" data-hint="${esc(tip)}"/>`;
+      // A name sits inside its band; a band too thin to hold it starts after the name (a source), ends before it
+      // (a last step), or runs under it on a halo of the tile (a page between two crossings).
       for(const a of A){
-        const r=a.r,inside=!slim&&!solo&&a.th>=r.lh+2,x0=solo?0:slim?xa-bw:inside?0:Math.min(xa-8,r.lw+6),top=`${solo?'display:none;':''}top:${f(a.y+a.th/2)}px;`;
+        const r=a.r,inside=a.th>=r.lh+2,x0=inside?0:Math.min(xa-8,r.lw+6);
         s+=bar('l',r.i,x0,xa-x0,a.y,a.th,r.fill,r.n.hint);
-        name(r.b,r.fill,inside,top+(slim?`right:${f(W-xa+bw+6)}px;max-width:${f(xa-bw-6)}px;text-align:right`:`left:${inside?8:0}px;max-width:${f(xa-10)}px`));
+        name(r.b,r.fill,inside,`top:${f(a.y+a.th/2)}px;left:${inside?pad:0}px;max-width:${f(xa-pad-4)}px`);
       }
       for(const l of L){
-        const r=l.r,inside=!slim&&l.th>=r.lh+2,x1=ends||slim||inside?xc:Math.max(xb+8,W-r.lw-6),top=`top:${f(l.y+l.th/2)}px;`;
-        s+=bar('r',r.i,xb,x1-xb,l.y,l.th,r.fill,r.n.hint);r.b.classList.toggle('halo',!!ends&&!inside);
-        name(r.b,r.fill,inside,top+(ends?`left:${f(slim?xc+6:xb+8)}px;max-width:${f(slim?xd-xc-10:wP-10)}px;text-align:left${slim&&!down&&L.length<2?';display:none':''}`:slim?`left:${f(xc+6)}px;max-width:${f(W-xc-6)}px;text-align:left`:`right:${inside?8:0}px;max-width:${f(W-xb-10)}px`));
+        const r=l.r,inside=l.th>=r.lh+2,x1=ends||inside?xc:Math.max(xb+8,W-r.lw-6),top=`top:${f(l.y+l.th/2)}px;`;
+        s+=bar('r',r.i,xb,x1-xb,l.y,l.th,r.fill,r.n.hint);r.b.classList.toggle('halo',!!ends&&!inside);if(ends)r.b.classList.toggle('bare',bare||!inside);
+        name(r.b,r.fill,inside,top+(ends?`${bare&&L.length<2?'display:none;':''}left:${f(xb+pad)}px;max-width:${f(wP-pad-4)}px;text-align:left`:`right:${inside?pad:0}px;max-width:${f(W-xb-pad-4)}px`));
       }
       if(ends){
         // Each page's strands go on to the ends. Where a strand lands it has a cap in its page's step, so an end's
@@ -2077,15 +2083,14 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends,straight}){
         for(const l of L){let y0=l.y;const all=sum(l.r.n.to||[]);for(const o of O){
           const r=l.r,v=r.n.to?.[o.r.k];if(!v)continue;
           const w0=l.th*v/all,w1=o.th*v/o.r.v,ink=o.r.e.ink;
-          on.push({r,o,v,w:Math.min(w0,w1),ink:ink?ink.call?ink(r):ink:o.r.e.fill,d:curve(xc,y0,w0,xd,o.at,w1),cap:`x="${f(xd-(slim?4:8))}" y="${f(o.at)}" width="${slim?4:8}" height="${f(w1)}"`});y0+=w0;o.at+=w1}}
+          on.push({r,o,v,w:Math.min(w0,w1),ink:ink?ink.call?ink(r):ink:o.r.e.fill,d:curve(xc,y0,w0,xd,o.at,w1),cap:`x="${f(xd-cw)}" y="${f(o.at)}" width="${cw}" height="${f(w1)}"`});y0+=w0;o.at+=w1}}
         // The first end's strands under the later ones', and the named page's last.
         s+=on.sort((p,q)=>p.o.r.k-q.o.r.k||p.r.n.told-q.r.n.told||q.v-p.v).map(q=>`<path class="s" data-p="${q.r.i}" data-o="${q.o.r.k}" d="${q.d}" fill="${q.ink}"${edge(q.w)} data-hint="${esc(q.o.r.e.strand(q.r.i,q.v))}"/>${L.length>1?`<rect ${q.cap} fill="${q.r.fill}"${edge(q.w)} pointer-events="none"/>`:''}`).join('');
-        O.forEach((o,i)=>{
-          const e=o.r.e,b=o.r.b,inside=!slim&&o.th>=o.r.lh+2,x1=slim||inside?xe:Math.max(xd+8,W-o.r.lw-6);
+        for(const o of O){
+          const e=o.r.e,inside=o.th>=o.r.lh+2,x1=inside?W:Math.max(xd+8,W-o.r.lw-6);
           s+=bar('o',o.r.k,xd,x1-xd,o.y,o.th,e.fill,e.hint);
-          // Slim, running down: the first name starts at its bar's top and the last ends at its bar's bottom, so they never meet.
-          name(b,e.fill,inside,down?`left:${f(xe+4)}px;transform:none;${i?`bottom:${f(H-o.y-o.th)}`:`top:${f(o.y)}`}px`:`top:${f(o.y+o.th/2)}px;`+(slim?`left:${f(xe+6)}px;max-width:${f(W-xe-6)}px;text-align:left`:`right:${inside?8:0}px;max-width:${f(W-xd-10)}px`));
-        });
+          name(o.r.b,e.fill,inside,`top:${f(o.y+o.th/2)}px;right:${inside?pad:0}px;max-width:${f(W-xd-pad-4)}px`);
+        }
       }
       return put(s);
     }

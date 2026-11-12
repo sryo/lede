@@ -345,6 +345,7 @@ test('a quiet footer under the window names Lede and links to the project', () =
 test('the ribbons use one width for what they count, and put each name inside its band or just before a thin one', () => {
   const draw = fn('ribbons');
   assert.match(draw, /th=Math\.max\(2,r\.v\*u\)/);
+  assert.match(draw, /out=\(r,th\)=>Math\.max\(0,\(r\.lh-th\)\/2\)/);
   assert.match(draw, /inside=a\.th>=r\.lh\+2,x0=inside\?0:Math\.min\(cx-8,r\.lw\+6\)/);
   assert.match(html, /\.flow\{height:100%;position:relative\}/);
 });
@@ -370,10 +371,13 @@ test('the Bounce screen keeps its third step at every width: each page goes on t
   assert.match(fn('drawOutcome'), /\[stay\[j\]\.visits-stay\[j\]\.bounces,stay\[j\]\.bounces\]\)\}\),m,/);
   const draw = fn('ribbons');
   assert.match(draw, /if\(W>H\*1\.5\|\|ends\|\|straight\|\|srcs\.length<2\)\{/);
-  assert.match(draw, /solo=!ends&&srcs\.length<2/);
   assert.match(fn('drawLanded'), /straight:true/);
   assert.match(html, /\.landed\{position:relative;height:clamp\(276px,28vh,340px\)\}/);
-  assert.match(draw, /slim=ends\?\(W-wL-wP-ow\)\/2<50:!solo&&W-wL-wP<80/);
+  assert.match(draw, /room=\(\)=>\(W-wL-wP-wE\)\/cross/);
+  assert.match(draw, /if\(room\(\)<50\)\{/);
+  assert.match(draw, /if\(room\(\)<36\)\{const k=/);
+  assert.doesNotMatch(draw, /slim|writing-mode/, 'the bands never give way to bars with names beside them');
+  assert.doesNotMatch(html, /\.node\.down/);
   assert.match(draw, /bar\('o',o\.r\.k,xd,x1-xd,o\.y,o\.th,e\.fill,e\.hint\)/);
   assert.doesNotMatch(html, /oc-key/);
 });
