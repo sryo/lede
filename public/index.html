@@ -25,8 +25,9 @@
   --ink:#1A1D2E; --muted:#5F6275;
   /* a page with no picture yet: light, as most pages are, so the shade over it shows in both themes */
   --paper:#EEEBE4;
-  /* violet is a shade darker than it might be, so white names on a solid block read at AA */
-  --time:#2F5BEA; --src:#FFAA00; --page:#8452F2; --bnc:#D7263D; --live:#12974A;
+  /* the same in both themes; violet is a shade darker than it might be, so white names on a solid block read at AA,
+     and blue a shade lighter, so it still stands out on the dark tile */
+  --time:#305EEC; --src:#FFAA00; --page:#8452F2; --bnc:#D7263D; --live:#12974A;
   /* text on a solid subject colour */
   --on-time:#FFFFFF; --on-src:#1A1D2E; --on-page:#FFFFFF; --on-bnc:#FFFFFF; --on-live:#FFFFFF;
   /* how opaque "the rest" and "empty" are; small marks (glyphs, thin bars, figures) get the stronger pair */
@@ -43,9 +44,6 @@
   --canvas:#0E0F13; --win:#15161C; --tile:#1D1F27; --line:#2C2F3A;
   --ink:#EDEEF3; --muted:#A3A6B6;
   --paper:#B4B7C2;
-  --time:#6B8CFF; --src:#FFC14D; --page:#A585FF; --bnc:#FF5C6B; --live:#3DDC84;
-  --on-time:#0E0F13; --on-src:#0E0F13; --on-page:#0E0F13; --on-bnc:#0E0F13; --on-live:#0E0F13;
-  --a-rest:62%; --a-pale:24%; --a-rest-s:82%; --a-pale-s:40%;
 }}
 /* transparency, not white: a colour keeps its hue, and overlapping marks (crossing ribbons) show it */
 :root{
@@ -1955,8 +1953,9 @@ function drawCrossing(el,from,next,page,visitors){
           open:it.key!=null?b=>openFilter({path:it.key},it.label,b):null}})});
 }
 
-// A step of a subject's colour: towards the ink at 0, the colour itself at .4, towards the tile at 1.
-const step=(tok,t)=>`color-mix(in oklab,var(--${tok}),var(${t<.4?`--ink) ${Math.round((.4-t)*75)}`:`--tile) ${Math.round((t-.4)*92)}`}%)`;
+// A step of a subject's colour: towards the light theme's ink at 0, the colour itself at .4, towards white at 1.
+// Fixed ends, not the theme's ink and tile, so a step is the same colour in both themes.
+const step=(tok,t)=>`color-mix(in oklab,var(--${tok}),${t<.4?`#1A1D2E ${Math.round((.4-t)*75)}`:`#FFFFFF ${Math.round((t-.4)*92)}`}%)`;
 // Where a row stands among its colour's steps, first (0) to last (1): the darker half, then the lighter, never the
 // colour itself, which is kept for what the sentence names. The ribbons and the overlapping bars share it, so the
 // busiest page is the darkest violet in both.

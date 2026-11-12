@@ -12,7 +12,7 @@ colors:
   ink: "#1A1D2E"
   muted: "#5F6275"
   paper: "#EEEBE4"
-  time: "#2F5BEA"
+  time: "#305EEC"
   src: "#FFAA00"
   page: "#8452F2"
   bnc: "#D7263D"
@@ -30,16 +30,6 @@ colors:
   ink-dark: "#EDEEF3"
   muted-dark: "#A3A6B6"
   paper-dark: "#B4B7C2"
-  time-dark: "#6B8CFF"
-  src-dark: "#FFC14D"
-  page-dark: "#A585FF"
-  bnc-dark: "#FF5C6B"
-  live-dark: "#3DDC84"
-  on-time-dark: "#0E0F13"
-  on-src-dark: "#0E0F13"
-  on-page-dark: "#0E0F13"
-  on-bnc-dark: "#0E0F13"
-  on-live-dark: "#0E0F13"
 typography:
   font:
     fontFamily: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif
@@ -68,7 +58,7 @@ bench/checks fails when the two differ. -->
 Lede is a site's stats, told as a story. The home screen tells the period's story in reading order: how much changed and why, then the charts that prove it.
 
 ## Colors
-Color says what kind of thing a mark is, on every tile and sub-page: visitors over time are blue (`time`), sources amber (`src`), pages violet (`page`), bounce (people leaving) red (`bnc`), and people here now green (`live`). Violet is a shade darker than it might be, so white names on a solid bar read at AA. `on-*` is the text on a solid subject color.
+Color says what kind of thing a mark is, on every tile and sub-page: visitors over time are blue (`time`), sources amber (`src`), pages violet (`page`), bounce (people leaving) red (`bnc`), and people here now green (`live`). The subject colors are the same in both themes. Violet is a shade darker than it might be, so white names on a solid bar read at AA, and blue a shade lighter, so it still stands out on the dark tile. `on-*` is the text on a solid subject color.
 
 The grays plus ink are the canvas, window, tile, line (edges, tracks, hover, skeletons) and muted text. `paper` is a page with no picture yet: light, as most pages are, so the shade over it shows in both themes. Focus rings use `page`.
 
