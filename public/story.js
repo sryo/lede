@@ -912,7 +912,7 @@ export function readsMore(rows, site, label) {
 // Under the sentence on Direct's view, since the word alone says little.
 export const DIRECT_MEANS = 'Direct means the visit came with no referrer: an address typed or bookmarked, or a link opened from an app, an email or a chat that doesn’t say where it was.';
 
-/* ---------- treemap labels ---------- */
+/* ---------- page names in lines ---------- */
 
 // A path in pieces that each end at a joint: "/robin-", "songs-", "by-", "season".
 const pieces = name => name.match(/[^-/]*[-/]?/g).filter(Boolean).reduce((a, p, i) => i && a.at(-1) === '/' ? (a[a.length - 1] += p, a) : [...a, p], []);
@@ -968,7 +968,7 @@ function fillLines(text, caps, len, fromEnd = false) {
 
 // The name in lines of the given widths; when it doesn't fit, the start fills every line but the last, the end fills
 // the last, and "…" marks what's left out between. On one line the cut falls between joints when it can.
-function labelLines(name, caps, len) {
+export function labelLines(name, caps, len) {
   const all = fillLines(name, caps, len);
   if (!all.rest) return all.out.filter(Boolean);
   if (caps.length === 1) {
@@ -991,29 +991,16 @@ function labelLines(name, caps, len) {
   return [...head, tail].filter(Boolean);
 }
 
-// A treemap block's label: the name in lines broken at its joints, level from the top-left, or turned to read up from
-// the bottom-left, never bent along a path. Each block tries both ways at 12, 11 and 10px and keeps the one that shows
-// the most of the name, whole at the biggest type when it can, with no word broken but at a syllable and a whole word
-// at the end. measure(text, px) gives a bold label's width. room: a line is left under it for the change. Null when
-// the block can't show three letters.
-export function fitLabel(name, w, h, measure, pad = 8) {
-  let best = null;
-  for (const f of [12, 11, 10]) {
-    const len = t => measure(t, f), lh = f * 1.25;
-    for (const up of [false, true]) {
-      const across = (up ? h : w) - 2 * pad, down = (up ? w : h) - 2 * pad, n = Math.floor(down / lh);
-      if (n < 1 || across < len('/ab')) continue;
-      const lines = labelLines(name, Array(n).fill(across), len);
-      const shown = lines.join('').replace(new RegExp(`[${HYPHEN}…]`, 'g'), '').length;
-      const whole = lines.join('').replaceAll(HYPHEN, '') === name;
-      if (shown < 3 && !whole) continue;
-      const broken = lines.slice(0, -1).filter(t => !/[-/…]$/.test(t) && !t.endsWith(HYPHEN)).length;
-      const end = lines.at(-1).replace(/^.*…/, ''), at = name.lastIndexOf(end), fragment = !whole && end && at > 0 && !/[-/]/.test(name[at - 1]);
-      const score = shown * 100 + (whole ? 50 : 0) + f * 2 - broken * 400 - (fragment ? 300 : 0) - (up ? 5 : 0);
-      if (!best || score > best.score) best = { score, f, up, lines, room: !up && lines.length < n };
-    }
+// How tall each bar that overlaps stands in a box H tall, biggest first: its value's height, never less than its
+// label needs nor so little above the bar in front on its side (two after it) that the label is covered, and level
+// with the next bar or a clear step above. Null when they don't fit, or stand above their values by more than 1.5 H.
+export function stairHeights(values, needs, H) {
+  const real = values.map(v => H * v / values[0]), h = [...real], n = h.length;
+  for (let k = n - 1; k >= 0; k--) {
+    h[k] = Math.max(h[k], needs[k], h[k + 1] || 0, k + 2 < n ? h[k + 2] + needs[k] : 0);
+    if (h[k] > h[k + 1] && h[k] - h[k + 1] < 6) h[k] = h[k + 1] + 6;
   }
-  return best && { f: best.f, up: best.up, lines: best.lines, room: best.room };
+  return h[0] <= H + .5 && sum(h) - sum(real) <= H * 1.5 ? h : null;
 }
 
 /* ---------- countries, devices and browsers ---------- */

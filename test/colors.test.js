@@ -12,7 +12,7 @@ const lum = hex => {
 };
 const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + .05) / (y + .05); };
 
-test('names on a solid page block, the treemap\'s named page, read at AA in both themes', () => {
+test('names on a solid page bar, the one the sentence names, read at AA in both themes', () => {
   for (const [theme, t] of [['light', light], ['dark', dark]]) {
     const r = contrast(t.page, t['on-page']);
     assert.ok(r >= 4.5, `${theme}: ${t['on-page']} on ${t.page} is ${r.toFixed(2)}:1`);

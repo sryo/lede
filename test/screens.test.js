@@ -36,9 +36,10 @@ test('What happened leads with its biggest item', () => {
   assert.match(fn('renderEvents'), /eventsSentence\(events,PER\(\),ser\.start,true\)/);
 });
 
-test('home’s treemap highlights the page its caption names, as well as the sentence’s', () => {
-  assert.match(fn('drawHome'), /drawPages\(.*,found\?\.key\)/);
-  assert.match(fn('drawPages'), /told:true/);
+test('home’s page bars keep the page the caption names solid, as well as the sentence’s, and tell the caption which were drawn', () => {
+  assert.match(fn('drawHome'), /drawPages\(.*,found\?\.key,shown=>.*pagesCaption\(shown\)/);
+  assert.match(fn('drawPages'), /told:told\.has\(r\.key\)/);
+  assert.match(fn('drawPages'), /shown:items=>say\(items\.map\(it=>it\.row\)\)/);
 });
 
 test('the online list gives a country room for its name', () => {
@@ -275,12 +276,15 @@ test('home’s crowd wraps to its block in three rows at most: a figure a person
   assert.match(html, /\.now \.crowd\{width:0;min-width:100%\}/, 'the figures take the block’s width, never set it');
 });
 
-test('treemap labels wrap at joints or turn, sized by fitLabel, with the change under them when there is room', () => {
-  const t = fn('treemap');
-  assert.match(t, /fitLabel\(it\.label,w,h,labelWidth,pad\)/);
-  assert.match(t, /L\.room\?/);
+test('the overlapping bars draw as many as the box holds, each tall enough for its name and clear of the one behind', () => {
+  const t = fn('stairs');
+  assert.match(t, /for\(let n=Math\.min\(items\.length,12\);n>0&&!lay;n--\)for\(const tight of \[false,true\]\)/, 'the count comes from the room, up to twelve');
+  assert.match(t, /topRows\(items,n,told\)/, 'what the sentence names stays among them');
+  assert.match(t, /stairHeights\(top\.map\(it=>it\.value\),bars\.map\(b=>b\.need\),H\)/);
+  assert.match(t, /labelLines\(t,Array\(3\)\.fill\(w\),/, 'names break at their joints, on up to three lines');
+  assert.match(t, /i\+1<n\?W-bw\[i\+1\]-3:W/, 'a name keeps clear of the bar in front');
   assert.doesNotMatch(t, /shorten\(/, 'no cut at a fixed number of letters');
-  assert.doesNotMatch(html, /\.blk\.small b\{|\.blk\.told b\{/, 'the lines come from fitLabel, not from CSS wrapping');
+  assert.doesNotMatch(html, /function treemap|function squarify|\.blk\{/, 'the treemap is gone');
 });
 
 test('list tags line up in a column, and go under the name on phones', () => {

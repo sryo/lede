@@ -13,7 +13,7 @@
    Every tile zooms to fill the window, and items inside zoom again into filtered views.
    Colour says what kind of thing a mark is, on every tile and sub-page: visitors over time are blue, sources amber,
    pages violet, bounce (people leaving) red, and people here now green. Colour is solid. Transparency means empty,
-   before, those who left, or how much; and in crowded charts (a page's crossing, the spike day, the page treemap) the
+   before, those who left, or how much; and in crowded charts (a page's crossing, the spike day, the pages' bars) the
    marks the sentence names stay solid while the rest fade, so the eye finds them. Small marks fade less so they show.
    The ribbons fade nothing: each source and page has its own step of its colour, so a strand can be followed.
    Text stays ink; colour sits in marks, swatches and underlines. */
@@ -460,16 +460,19 @@ p,li,figcaption,.say-sub,.cap{text-wrap:pretty}
 .tip.hint{position:fixed;white-space:pre-line;max-width:340px;width:max-content;z-index:10}
 .tip.below{transform:translate(-50%,8px)}
 
-.blk{all:unset;box-sizing:border-box;position:absolute;padding:8px;border-radius:4px;overflow:hidden;font-size:var(--fs-xs);line-height:1.3}
-button.blk{cursor:pointer;transition:filter .15s;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left}
-button.blk:hover{filter:brightness(1.08)}
-button.blk:focus-visible{outline:2px solid var(--tile);outline-offset:-2px;box-shadow:inset 0 0 0 4px var(--ink)}
-.blk b{display:block;font-weight:700;max-width:100%;white-space:nowrap;overflow:hidden;line-height:1.25}
-.blk span{font-variant-numeric:tabular-nums;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-.blk.ring-blk{box-shadow:inset 0 0 0 2px var(--ink)}
-.blk.tall b{white-space:nowrap}
-.blk .hy{font-style:normal;opacity:.5}
-.blk.tall{writing-mode:vertical-rl;transform:rotate(180deg)}
+.stairs{position:absolute;inset:0 0 auto}
+.stair{all:unset;box-sizing:border-box;position:absolute;bottom:0;cursor:pointer;display:flex;flex-direction:column;overflow:hidden;padding:7px 10px 4px;
+  border-radius:8px 8px 0 0;box-shadow:0 0 0 3px var(--tile);font-size:var(--fs-xs);line-height:14px;text-align:left;transition:filter .15s}
+.stair:hover{filter:brightness(1.08)}
+.stair:focus-visible{outline:2px solid var(--tile);outline-offset:-2px;box-shadow:0 0 0 3px var(--tile),inset 0 0 0 4px var(--ink)}
+.stair .n{display:flex;align-items:baseline;gap:6px;flex:none;overflow:hidden;height:19px;font-size:18px;line-height:19px;font-weight:700;letter-spacing:-.01em;font-variant-numeric:tabular-nums;white-space:nowrap}
+.stair .n small{font-size:11px;line-height:1;font-weight:400;letter-spacing:0}
+.stair .t{font-weight:700;white-space:nowrap}
+.stair.big .n{font-size:24px;line-height:26px;height:26px}
+.stair.c{flex-direction:row;align-items:baseline;gap:6px} .stair.c .n{font-size:14px;line-height:16px;height:16px}
+.stair .hy{font-style:normal;opacity:.5}
+.stairs-more{all:unset;position:absolute;left:0;bottom:0;box-sizing:border-box;height:20px;font-size:var(--fs-xs);line-height:20px;color:var(--muted);cursor:pointer;white-space:nowrap}
+.stairs-more:hover{color:var(--ink)} .stairs-more:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:4px}
 
 .seg{display:inline-flex;background:var(--tile);box-shadow:inset 0 0 0 1px var(--line);border-radius:999px;padding:4px;gap:0}
 .seg button{all:unset;padding:4px 12px;line-height:16px;border-radius:999px;font-size:var(--fs-s);cursor:pointer;color:var(--muted)}
@@ -540,6 +543,7 @@ button.lrow:hover{background:var(--line)}
   .grid{flex:none;grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:minmax(240px,auto)}
   .t-days,.t-flow,.t-stay,.t-pages{grid-column:1;grid-row:auto}
   .t-flow{min-height:680px}
+  .t-pages{min-height:340px}
   /* between a phone and a desk the tile is wide enough for the ribbons to run straight, in a shorter box */
   @media (min-width:560px){.t-flow{min-height:420px}}
   .outcome{height:460px}
@@ -601,7 +605,7 @@ button.lrow:hover{background:var(--line)}
 /* A redraw dims what's on screen and brightens it again once it's back, both ways eased. Cards themselves
    don't fade in: every redraw makes new ones, so each would blink. */
 #home .story,#home .grid,.layer-body,.dim-body{transition:opacity .2s}
-@media (prefers-reduced-motion:reduce){.blk,.shot,.shot img,.now .chev,.card.share-panel,.card.period-panel,.note-edit,.toast,.tip,.mix-more+p,
+@media (prefers-reduced-motion:reduce){.stair,.shot,.shot img,.now .chev,.card.share-panel,.card.period-panel,.note-edit,.toast,.tip,.mix-more+p,
   #home .story,#home .grid,.layer-body,.dim-body{transition:none}}
 </style>
 </head>
@@ -626,7 +630,7 @@ button.lrow:hover{background:var(--line)}
 import { labelOf, fmtN, fmtInt, count, fmtSigned, fmtPct, fmtDur, fmtDay, fmtWeekday, fmtDate, dayDate, esc, maxOf, sum, median,
   findSpike, readStory, tellStory, findings, spikeSegment, waterfallCaption, bounceSplit, bounceCaption,
   flowCaption, crowd, crowdCaption, crowdLine, onlineStory, pagesCaption, pagesFinding, todayPace, sourceStory, audienceStory, audienceNote, readers, pageStory, scrollStory, scrollPicture, scrollNumbers, pictureCaption, eventsSentence, channelShare, pathHTML, pageName, goalStory, suggestGoal, fmtRate, nextStory, nextItems, funnelStory, funnelName, parseSteps, stepHint, funnelBars, funnelOffer, FUNNEL_EMPTY,
-  dayHint, thenLine, usualDay, todayHint, Span, alignedGap, prevStart, fitWindows, windowSteps, resizeWindows, pickEdge, tableUnit, nowOf, beforeOf, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  dayHint, thenLine, usualDay, todayHint, Span, alignedGap, prevStart, fitWindows, windowSteps, resizeWindows, pickEdge, tableUnit, nowOf, beforeOf, ribbonHint, sourceHint, pageHint, dayKey, keywordsCard, unitOf, rowLabel, countNotes, quietRuns, vitalsLine, vitalsFinding, speedStory, VITALS_HINT, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, labelLines, stairHeights,
   ICONS, iconFor, iconSVG, crowdFigures, apportion, laneScale, figureLetter, pageList, figureScale, moreFindings, leftWord, pairStay, outcomeStory, readingMap, lanes, laneX, cutSeries, topRows } from '/story.js';
 import { viewToUrl, urlToView } from '/routes.js';
 import { displayHost } from '/hosts.js';
@@ -828,63 +832,56 @@ function nice(mx){
   const p=10**Math.floor(Math.log10(mx/5));
   for(const c of [1,2,2.5,5,10]){const step=c*p;if(mx/step<=5)return {step,n:Math.ceil(mx/step)}}
 }
-// Fill and text colour for a subject (time, src, page, bnc) solid, for the rest, or pale.
-const fullOf=subj=>({color:`var(--${subj})`,on:`var(--on-${subj})`});
-const tintOf=subj=>({color:`var(--${subj}-t)`,on:'var(--ink)'});
-const paleOf=subj=>({color:`var(--${subj}-p)`,on:'var(--ink)'});
 // A label anchored over position x (0-1) that stays inside the chart near either edge.
 const anchorStyle=x=>`left:${(x*100).toFixed(1)}%;transform:translateX(${x<.3?-6:x>.7?-94:-50}%)`;
 
-function squarify(vals,W,H){
-  const total=vals.reduce((a,b)=>a+b,0);if(!total)return [];
-  const k=W*H/total,areas=vals.map(v=>v*k),out=[];
-  let x=0,y=0,w=W,h=H,row=[],i=0;
-  const worst=(r,len)=>{let s=0,mx=0,mn=Infinity;for(const j of r){const a=areas[j];s+=a;mx=Math.max(mx,a);mn=Math.min(mn,a)}return Math.max(len*len*mx/(s*s),s*s/(len*len*mn))};
-  const lay=r=>{
-    const s=r.reduce((a,j)=>a+areas[j],0);
-    if(w>=h){const cw=s/h;let cy=y;for(const j of r){const jh=areas[j]/cw;out[j]={x,y:cy,w:cw,h:jh};cy+=jh}x+=cw;w-=cw}
-    else{const rh=s/w;let cx=x;for(const j of r){const jw=areas[j]/rh;out[j]={x:cx,y,w:jw,h:rh};cx+=jw}y+=rh;h-=rh}
-  };
-  while(i<areas.length){const len=Math.min(w,h);if(!row.length||worst([...row,i],len)<=worst(row,len)){row.push(i);i++}else{lay(row);row=[]}}
-  if(row.length)lay(row);
-  return out;
-}
-// A label's width in the blocks' bold face, from a canvas, kept per text and size.
+// A label's width in bold, from a canvas, kept per text and size.
 const labelCanvas=document.createElement('canvas').getContext('2d'),labelWidths=new Map();
 function labelWidth(t,f){
   const k=f+'|'+t;let v=labelWidths.get(k);
   if(v==null){labelCanvas.font=`700 ${f}px ${getComputedStyle(document.body).fontFamily}`;v=labelCanvas.measureText(t).width;labelWidths.set(k,v)}
   return v;
 }
-// items: [{label,value,color,on,sub?,onClick?}]
-function treemap(el,items,{gap=4}={}){
-  // The long tail goes last whatever its size, so it fills the far corner instead of leading.
-  items=items.filter(it=>it.value>0).sort((a,b)=>(a.last?1:0)-(b.last?1:0)||b.value-a.value);
+// Bars that overlap, for a few things by size that must each keep a name: on one baseline, biggest first, alternating
+// sides, each in front of the one before; stairHeights says how tall. A name stays clear of the bar in front and
+// breaks at its joints, or stands beside the number when that lets one more bar in. What the sentence names has the
+// colour itself and is always drawn; the rest take the ribbons' steps. more(rest) is the line for those not drawn.
+// items: [{key,label,value,sub,told,hint,aria,open}]
+function stairs(el,items,{tok='page',more,shown}={}){
+  items=items.filter(it=>it.value>0).sort((a,b)=>b.value-a.value);
   if(!items.length)return empty(el,'No visitors yet')
-  sized(el,(W,H)=>{
-    const rects=squarify(items.map(it=>it.value),W,H);
-    el.replaceChildren(...rects.map((r,i)=>{
-      const it=items[i],b=document.createElement(it.onClick?'button':'div');
-      b.className='blk';
-      const w=r.w-gap,h=r.h-gap;
-      Object.assign(b.style,{left:r.x+gap/2+'px',top:r.y+gap/2+'px',width:Math.max(0,w)+'px',height:Math.max(0,h)+'px',background:it.color,color:it.on});
-      if(it.ring)b.classList.add('ring-blk');
-      if(it.told)b.classList.add('told');
-      // The name wraps at its joints, or turns to read up a tall block, at the biggest type that shows the most of it
-      // (fitLabel); the change goes under it when a line is left. A block too small for three letters shows its short
-      // tag or nothing: the title has the name.
-      const pad=w<80?4:8,L=fitLabel(it.label,w,h,labelWidth,pad);
-      b.style.padding=pad+'px';
-      if(L){
-        b.style.fontSize=L.f+'px';
-        if(L.up)b.classList.add('tall');
-        // A hyphen added to break a word is faded, so it isn't read as part of the address.
-        b.innerHTML=`<b>${L.lines.map(esc).join('<br>').replaceAll('\u2010','<i class="hy">\u2010</i>')}</b>${L.room?`<span>${esc(it.sub??fmtN(it.value))}</span>`:''}`;
-      }else if(w>28&&h>18&&it.short)b.innerHTML=`<b>${esc(it.short)}</b>`;
-      b.title=`${it.label}: ${fmtInt(it.value)} visitors`;b.dataset.key=it.label;
-      if(it.onClick){b.setAttribute('aria-label',`${it.label}, ${fmtInt(it.value)} visitors${it.sub?`, ${it.sub}`:''}. Open`);b.onclick=e=>{e.stopPropagation();it.onClick(b)}}
-      return b;
+  sized(el,(W,H0)=>{
+    const pad=10,told=items.filter(it=>it.told).map(it=>it.key);
+    // A name's lines at a width, kept for the next count tried.
+    const fit=new Map(),linesOf=(t,w)=>{const k=t+'|'+w;if(!fit.has(k))fit.set(k,labelLines(t,Array(3).fill(w),x=>labelWidth(x,12)));return fit.get(k)};
+    let lay;
+    for(let n=Math.min(items.length,12);n>0&&!lay;n--)for(const tight of [false,true]){
+      if(lay)break;
+      const {top,rest}=topRows(items,n,told),H=H0-(rest.length&&more?24:0),bw=top.map((_,i)=>n<2?W:Math.round(W*(56-4*(i>>1))/100));
+      const bars=top.map((it,i)=>{
+        const tw=Math.min(bw[i],i+1<n?W-bw[i+1]-3:W)-2*pad,num=fmtN(it.value),f=i?18:24;
+        if(tight&&i&&labelWidth(num,14)+6+labelWidth(it.label,12)<=tw)return {it,num,lines:[it.label],one:true,need:30};
+        const lines=linesOf(it.label,tw);
+        return {it,num,lines,sub:it.sub&&labelWidth(num,f)+6+labelWidth(it.sub,11)<=tw,need:7+(i?19:26)+lines.length*14+7};
+      });
+      const h=stairHeights(top.map(it=>it.value),bars.map(b=>b.need),H);
+      if(h||n===1&&tight)lay={bars,rest,H,bw,h:h||[H]};
+    }
+    const {bars,rest,H,bw,h}=lay,plain=bars.filter(b=>!b.it.told),subs=bars.every(b=>b.sub||!b.it.sub);
+    const box=document.createElement('div');box.className='stairs';box.style.height=H+'px';
+    box.append(...bars.map((b,i)=>{
+      const it=b.it,j=plain.indexOf(b),fill=step(tok,it.told?.4:shadeAt(plain.length>1?j/(plain.length-1):.8)),right=i%2;
+      const name=b.lines.map(esc).join('<br>').replaceAll('‐','<i class="hy">‐</i>');
+      const e=opener('stair'+(b.one?' c':i?'':' big'),`<span class="n">${b.num}${subs&&b.it.sub?`<small>${esc(b.it.sub)}</small>`:''}</span><span class="t">${name}</span>`,it.open,
+        {key:it.key,hint:it.hint,aria:it.aria});
+      Object.assign(e.style,{[right?'right':'left']:0,width:Math.round(bw[i])+'px',height:Math.round(Math.min(H,h[i]))+'px',zIndex:i,background:fill,
+        paddingLeft:(right&&i+1<bars.length?Math.max(0,bw[i]+bw[i+1]+3-W):0)+pad+'px'});
+      el.append(e);e.style.color=onStep(e,fill);
+      return e;
     }));
+    const m=rest.length&&more?.(rest);
+    el.replaceChildren(box,...(m?[opener('stairs-more',m.html,m.open,{key:'more',aria:m.aria})]:[]));
+    shown?.(bars.map(b=>b.it));
   });
 }
 
@@ -1020,7 +1017,7 @@ function lines(el,{cur,prev,fmt,axis,start,peak,span=0,gap=gapNow()}){
 // A waterfall from 0: each step starts where the last ended, then a total bar from 0.
 // steps: [{kind:'named'|'mover'|'mix'|'else'|'total', label, value}]
 // openOf(step): what clicking that step does (given the button), or null when it opens nothing. Each step that
-// opens something gets a button over its bar and labels, as treemap blocks are buttons, so keys reach it too.
+// opens something gets a button over its bar and labels, as the overlapping bars are buttons, so keys reach it too.
 function drawSteps(el,steps,{fmt,aria,colorOf,openOf=()=>null}){
   sized(el,(W,H)=>{
     const slot=W/steps.length,fit=Math.max(6,Math.floor(slot/6.6));
@@ -1960,6 +1957,10 @@ function drawCrossing(el,from,next,page,visitors){
 
 // A step of a subject's colour: towards the ink at 0, the colour itself at .4, towards the tile at 1.
 const step=(tok,t)=>`color-mix(in oklab,var(--${tok}),var(${t<.4?`--ink) ${Math.round((.4-t)*75)}`:`--tile) ${Math.round((t-.4)*92)}`}%)`;
+// Where a row stands among its colour's steps, first (0) to last (1): the darker half, then the lighter, never the
+// colour itself, which is kept for what the sentence names. The ribbons and the overlapping bars share it, so the
+// busiest page is the darkest violet in both.
+const shadeAt=p=>p<.5?p*.5:.55+(p-.5)*.9;
 // A name inside a band is dark or white, whichever reads on the band's step in this theme, so ribbons draw again
 // when the theme changes.
 const PX=document.createElement('canvas').getContext('2d',{willReadFrequently:true});
@@ -1968,7 +1969,7 @@ function onStep(b,fill){
   const [R,G,B]=[...PX.getImageData(0,0,1,1).data].map(c=>(c/=255)<=.03928?c/12.92:((c+.055)/1.055)**2.4);
   return .2126*R+.7152*G+.0722*B>.3?'var(--on-src)':'#fff';
 }
-matchMedia('(prefers-color-scheme:dark)').onchange=()=>document.querySelectorAll('.flow').forEach(b=>b.parentElement._draw?.());
+matchMedia('(prefers-color-scheme:dark)').onchange=()=>document.querySelectorAll('.flow,.stairs').forEach(b=>b.parentElement._draw?.());
 
 // The ribbons. One of what is counted is as wide everywhere. Each source comes in from the left as a band and turns
 // down into its own column; a column splits into one strand per page; strands cross and merge into each page's
@@ -1996,7 +1997,7 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends,straight}){
     return {n,i,v:vals[i],b};
   }).filter(r=>r.v>0).map((r,i,rs)=>{
     // What the sentence names keeps the colour itself; the others take the steps either side of it, in order.
-    const rest=rs.filter(x=>!x.n.told),j=rest.indexOf(r),p=rest.length>1?j/(rest.length-1):.8,at=r.n.told?.4:p<.5?p*.5:.55+(p-.5)*.9;
+    const rest=rs.filter(x=>!x.n.told),j=rest.indexOf(r),p=rest.length>1?j/(rest.length-1):.8,at=r.n.told?.4:shadeAt(p);
     return {...r,fill:step(r.n.tok||(side==='l'?'src':'page'),at),lane:step('bnc',at)}});
   const srcs=rowsOf(left,m.map(r=>sum(r)),'l'),pgs=rowsOf(right,right.map((_,j)=>sum(m.map(r=>r[j]))),'r'),all=[...srcs,...pgs];
   const eb=(ends||[]).map((e,k)=>named('node r','o'+k,e));
@@ -2605,19 +2606,18 @@ function drawStay(el,S,B){
   if(c.duration!=null)el.insertAdjacentHTML('afterend',`<p class="stay-time"><b>${fmtDur(c.duration)}</b>per visit${p.visits&&p.duration?` · ${changeWord(c.duration,p.duration)}`:''}</p>`);
 }
 
-// Returns the rows it shows, for the caption. also: the page the caption names, besides the sentence's.
-function drawPages(el,T,pageRows,also=null){
+// say(rows) hears the pages drawn, for the caption. also: the page the caption names, besides the sentence's.
+function drawPages(el,T,pageRows,also,say){
   const live=pageRows.filter(r=>r.value>0),told=new Set([T.page,also].filter(k=>k!=null));
-  // The pages the sentence and the caption name always get their own block.
-  const {top,rest}=topRows(live,6,[...told]);
   // With no earlier period at all (a new site), every page would read "new", which says nothing.
-  const before=live.some(r=>r.prev);
-  const items=top.map(r=>({label:r.label,value:r.value,sub:r.prev?change(r.value,r.prev):before?'new':'',short:r.prev||!before?null:'new',
-    ...(told.has(r.key)?{...fullOf('page'),told:true}:tintOf('page')),onClick:b=>openFilter({path:r.key},r.label,b)}));
-  if(rest.length)items.push({label:'other',value:sum(rest.map(r=>r.value)),sub:`${rest.length} pages`,...paleOf('page'),last:true,
-    onClick:b=>openView({v:'pages'},b)});
-  treemap(el,items);
-  return top;
+  const before=live.some(r=>r.prev),vis=n=>`${fmtInt(n)} ${n===1?'visitor':'visitors'}`;
+  stairs(el,live.map(r=>{
+    const sub=r.prev?change(r.value,r.prev):before?'new':'';
+    return {row:r,key:r.key,label:r.label,value:r.value,sub,told:told.has(r.key),hint:`${r.label}: ${vis(r.value)}${sub?`, ${sub}`:''}`,
+      aria:`${r.label}, ${vis(r.value)}${sub?`, ${sub}`:''}. Open`,open:b=>openFilter({path:r.key},r.label,b)}}),
+    {more:rest=>{const k=rest.length,v=sum(rest.map(it=>it.value));
+      return {html:`${fmtInt(k)} more ${k===1?'page':'pages'} · ${fmtN(v)}`,aria:`${fmtInt(k)} more pages, ${vis(v)}. Open all pages`,open:b=>openView({v:'pages'},b)}},
+     shown:items=>say(items.map(it=>it.row))});
 }
 
 /* ---------- what happened ---------- */
@@ -3076,8 +3076,8 @@ async function drawHome(message){
   drawMarks(marks,events,ser);
   drawFlow(flow.querySelector('.viz'),S,T,flows.flows,flows.prev||[],pageRows);
   drawStay(stay.querySelector('.viz'),S,B);
-  const found=pagesFinding(pageRows,T.page),shown=drawPages(pg.querySelector('.viz'),T,pageRows,found?.key);
-  pg.querySelector('.cap').innerHTML=(found??pagesCaption(shown)).html;
+  const found=pagesFinding(pageRows,T.page);
+  drawPages(pg.querySelector('.viz'),T,pageRows,found?.key,shown=>pg.querySelector('.cap').innerHTML=(found??pagesCaption(shown)).html);
   if(INSIGHT)drawInsight(gen);
   if(message)announce(message);
   return true;

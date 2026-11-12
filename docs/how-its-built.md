@@ -175,7 +175,7 @@ All of this is in `public/story.js` unless it says otherwise. Every sentence is 
 | Page speed | `speedStory`, `vitalsFinding`, `readingMap` | 30 measures; a busy poor page with 50 visitors and 5% of all; Read or skimmed needs 3 pages with 20 views |
 | Funnels | `funnelStory` | under 30 visits at the first step, too few; "most dropped off" when one step lost more than half |
 | Keywords | `keywordsStory` | under 20, "a few"; a change from 10 before, said at 15% |
-| Page names in blocks | `fitLabel` | the best of 12, 11 and 10 px, across or turned, broken after `/` or `-` or at a syllable; cut in the middle when nothing fits |
+| Page names in bars | `labelLines` | lines of a given width, broken after `/` or `-` or at a syllable; cut in the middle when the lines can't hold it |
 
 ## The dashboard
 
@@ -192,7 +192,8 @@ All of this is in `public/story.js` unless it says otherwise. Every sentence is 
   - `opener(cls, html, open, {key, hint, aria})` is every button that opens something from a chart; `named()` gives a ribbon's row a plain name when it opens nothing; `allButton(n, what, press)` is the "All 12 pages" under a list cut short.
   - A chart of days is `dayBars()` for counts and `lines()` for a rate. Both draw their gridlines with `gridLine()`, the days before with `BEFORE` and the day that stands out with `peakHTML()`.
   - `stripHTML(subj, parts)` is every strip of shares; `mixHTML(title, rows, top)` is a strip with its key and its "All N", for readers' countries, devices, systems and the like.
-  - `numHTML(k, v, sub, {told, tip})` is every number beside the others; `rowsInto()` every list of bars; `treemap()`, `drawSquares()` and `drawSteps()` the blocks, the rows of ten squares and the waterfalls.
+  - `numHTML(k, v, sub, {told, tip})` is every number beside the others; `rowsInto()` every list of bars; `drawSquares()` and `drawSteps()` the rows of ten squares and the waterfalls.
+  - `stairs(el, items, {tok, more, shown})` is the bars that overlap, for a few things by size that must each keep a name (home's pages). It draws as many as fit: each bar as tall as its number and name need and clear of the bar behind it on its side, with the bars together lifted above their values by at most one and a half times the box's height, up to twelve. `shown` hears which were drawn, so a caption can speak of them. Its shades are the ribbons' (`shadeAt`).
   - `topRows(rows, n, keep)` in `public/story.js` is the one rule for "the first n and the rest": a row the sentence names that ranks lower takes one of the last places.
   - `ribbons(el, left, right, m, opts)` draws every "from where to where": home's tile, the Bounce screen, a source's or channel's view and a page's crossing. Rows carry their own name, hint and what they open; `ends` adds a third step, in its own unit when it counts something else. It runs straight across in a wide box or with a third step, and turns in a tall one; in a narrow box the names wrap and the bands narrow, and a band never gives way to a bar with its name beside it. `straight` keeps it from turning, and one source alone never turns.
 - **Names.** Every hostname on screen goes through `public/hosts.js`, which shows accented names as people write them.

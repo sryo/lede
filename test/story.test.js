@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { moreFindings, findSpike, readStory, tellStory, bounceSplit, bounceCaption, waterfallCaption, spikeSegment,
   flowShare, flowCaption, onlineStory, crowd, crowdCaption, crowdLine, findings, pagesFinding, todayPace, pageStory, eventsSentence, channelShare, goalStory, suggestGoal, pagesCaption, sourceStory, scrollStory,
   scrollPicture, scrollNumbers, pictureCaption, audienceStory, audienceNote, labelOf, didWhat, dayKey, dayDate,
-  unitOf, countNotes, quietRuns, Span, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, fitLabel,
+  unitOf, countNotes, quietRuns, Span, vitalRating, vitalsLine, vitalsFinding, speedStory, fmtDur, fmtShare, linksStory, noneYet, hoursStory, bounceStandout, bounceHeld, onlinePace, waterfallMovers, readsMore, DIRECT_MEANS, goalFromPage, pageVerdict, busyWindow, labelLines, stairHeights,
   ICONS, iconFor, iconSVG, figureScale, apportion, crowdFigures, laneScale, figureLetter, pageList, leftWord, pairStay, bounciestPair, outcomeStory, readingMap, lanes, laneX, topRows } from '../public/story.js';
 import { parseQuery } from '../src/api.js';
 import { demoStore, demoNotes } from '../src/demo.js';
@@ -1100,51 +1100,65 @@ test('a count that is a floor can still say a crowd is big, but never that it is
   assert.equal(strip(onlinePace({ recent: 200, atLeast: true, visitors: [] }, quiet, now).html), 'At least 200 came in the last 30 minutes, at least 4 times the usual 50 at this hour.');
 });
 
-/* ---------- treemap labels: wrap or turn, never bend ---------- */
+/* ---------- page names in lines ---------- */
 
 // Bold 12px letters are about 7px wide: a stand-in for the canvas, so the layouts can be worked out by hand.
-const mono = (t, f) => [...t].length * f * .6;
-const shown = L => L.lines.join('').replace(/‐/g, '');
+const mono = t => [...t].length * 7.2;
+const lines = (name, w, n = 3) => labelLines(name, Array(n).fill(w), mono);
 
-test('a name that fits on one line stays one line, at full size', () => {
-  assert.deepEqual(fitLabel('/robin', 100, 60, mono), { f: 12, up: false, lines: ['/robin'], room: true });
+test('a name that fits on one line stays one line', () => {
+  assert.deepEqual(lines('/robin', 84), ['/robin']);
+  assert.deepEqual(lines('/', 84), ['/']);
 });
 
-test('a long name wraps at its joints, level from the top-left', () => {
-  const L = fitLabel('/robin-songs-by-season', 84, 76, mono);
-  assert.deepEqual([L.f, L.up, L.lines], [12, false, ['/robin-', 'songs-by-', 'season']]);
-  assert.equal(L.room, true, 'a line is left for the change');
-});
-
-test('a tall sliver turns its name to read up from the bottom-left, cut in the middle if it must', () => {
-  const L = fitLabel('/robin-songs-by-season', 30, 120, mono, 4);
-  assert.equal(L.up, true);
-  assert.equal(L.lines.length, 1);
-  assert.match(L.lines[0], /^\/robin.*….*season$/);
+test('a long name wraps at its joints', () => {
+  assert.deepEqual(lines('/robin-songs-by-season', 68), ['/robin-', 'songs-by-', 'season']);
 });
 
 test('a word longer than a line breaks at a syllable, with a hyphen, rather than anywhere', () => {
-  const L = fitLabel('/migration-maps-2026', 69, 62, mono, 4);
-  assert.equal(shown(L), '/migration-maps-2026', 'all of it shows');
-  assert.ok(L.lines.includes('/migra‐'), L.lines.join(' | '));
+  const L = lines('/migration-maps-2026', 61, 4);
+  assert.equal(L.join('').replace(/‐/g, ''), '/migration-maps-2026', 'all of it shows');
+  assert.ok(L.includes('/migra‐'), L.join(' | '));
+  assert.deepEqual(lines('/buddhism-in-korea-a-short-history', 46, 6).slice(0, 2), ['/bud\u2010', 'dhism-'], 'broken between the doubled letters');
 });
 
 test('what doesn’t fit is cut in the middle: the start and a whole last word stay', () => {
-  const L = fitLabel('/how-to-hear-owls-at-night', 45, 46, mono, 4);
-  const all = L.lines.join('');
+  const all = lines('/how-to-hear-owls-at-night', 37, 2).join('');
   assert.match(all, /^\/how/);
   assert.match(all, /…/);
   assert.match(all, /night$/, all);
 });
 
-test('a block too small for three letters gets no label', () => {
-  assert.equal(fitLabel('/robin', 14, 14, mono, 4), null);
+/* ---------- bars that overlap ---------- */
+
+test('with room to spare every bar is as tall as its value', () => {
+  assert.deepEqual(stairHeights([100, 80, 50], [20, 20, 20], 200), [200, 160, 100]);
 });
 
-test('a short name shown whole is always labelled, and a word with no syllable to break at keeps three letters a side', () => {
-  assert.deepEqual(fitLabel('/', 84, 161, mono, 4).lines, ['/']);
-  const L = fitLabel('/buddhism-in-korea-a-short-history', 54, 71, mono, 4);
-  assert.deepEqual(L.lines.slice(0, 2), ['/bud\u2010', 'dhism-'], 'broken between the doubled letters, not after "/buddhis"');
+test('a bar is never shorter than its own label needs', () => {
+  assert.deepEqual(stairHeights([100, 2], [40, 30], 200), [200, 30]);
+});
+
+test('a bar stands clear of the label of the bar behind it on its side', () => {
+  // The third bar is in front of the first, the fourth in front of the second.
+  const h = stairHeights([100, 20, 18, 5], [40, 50, 44, 30], 200);
+  assert.deepEqual(h, [200, 80, 44, 30]);
+  assert.ok(h[1] - h[3] >= 50 && h[0] - h[2] >= 40);
+});
+
+test('a bar is level with the one in front of it, or a clear step above', () => {
+  assert.deepEqual(stairHeights([100, 51, 50], [10, 10, 10], 200), [200, 106, 100]);
+  assert.deepEqual(stairHeights([100, 50, 50], [10, 10, 10], 200), [200, 100, 100]);
+});
+
+test('bars that don’t fit the box are refused', () => {
+  assert.equal(stairHeights([100, 1, 1, 1, 1], [60, 60, 60, 60, 60], 150), null);
+});
+
+test('bars lifted far above their values are refused: they would stop showing size', () => {
+  const values = [1000, 9, 8, 7, 6, 5, 4, 3, 2, 1], needs = values.map(() => 30);
+  assert.equal(stairHeights(values, needs, 200), null);
+  assert.ok(stairHeights(values.slice(0, 6), needs.slice(0, 6), 200), 'six of them still do');
 });
 
 /* ---------- the Sankey: who stayed ---------- */
