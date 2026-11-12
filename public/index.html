@@ -868,7 +868,7 @@ function stairs(el,items,{tok='page',more,shown}={}){
     const {bars,rest,H,bw,h}=lay,plain=bars.filter(b=>!b.it.told),subs=bars.every(b=>b.sub||!b.it.sub);
     const box=document.createElement('div');box.className='stairs';box.style.height=H+'px';
     box.append(...bars.map((b,i)=>{
-      const it=b.it,j=plain.indexOf(b),fill=step(tok,it.told?.4:shadeAt(plain.length>1?j/(plain.length-1):.8)),right=i%2;
+      const it=b.it,j=plain.indexOf(b),fill=step(tok,it.told?.4:it.at??shadeAt(plain.length>1?j/(plain.length-1):.8)),right=i%2;
       const name=b.lines.map(esc).join('<br>').replaceAll('‐','<i class="hy">‐</i>');
       const e=opener('stair'+(b.one?' c':i?'':' big'),`<span class="n">${b.num}${subs&&b.it.sub?`<small>${esc(b.it.sub)}</small>`:''}</span><span class="t">${name}</span>`,it.open,
         {key:it.key,hint:it.hint,aria:it.aria});
@@ -1918,7 +1918,7 @@ function drawLanded(el,flows,label,pageRows){
   const row=(name,v,sub,told,hint,open)=>({told,hint,aria:`${hint}. Open`,open,html:`<span>${told?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${sub}</span>`});
   const names=[...S.keys.map(k=>one?label:labelOf('referrer',k)),...(S.rest?[S.rest]:[])],pages=[...P.keys,...(P.rest?[P.rest]:[])];
   ribbons(el,names.map((name,i)=>{const v=sum(m[i]),k=S.keys[i];return row(name,v,fmtInt(v),one,`${name}: ${fmtInt(v)} ${v===1?'visitor':'visitors'}`,!one&&k!=null?b=>openFilter({referrer:k},name,b):null)}),
-    pages.map((name,j)=>{const v=sum(m.map(r=>r[j])),k=P.keys[j];return row(name,v,k!=null&&!pageRows.find(r=>r.key===k)?.prev?'new page':fmtInt(v),false,pageHint(name,v),k!=null?b=>openFilter({path:k},k,b):null)}),m,
+    pages.map((name,j)=>{const v=sum(m.map(r=>r[j])),k=P.keys[j];return {rest:k==null,...row(name,v,k!=null&&!pageRows.find(r=>r.key===k)?.prev?'new page':fmtInt(v),false,pageHint(name,v),k!=null?b=>openFilter({path:k},k,b):null)}}),m,
     {aria:`Visitors from ${label} to the pages they landed on`,straight:true,hint:(i,j,v)=>ribbonHint(names[i],pages[j],v)});
 }
 
@@ -1960,13 +1960,19 @@ const step=(tok,t)=>`color-mix(in oklab,var(--${tok}),${t<.4?`#1A1D2E ${Math.rou
 // colour itself, which is kept for what the sentence names. The ribbons and the overlapping bars share it, so the
 // busiest page is the darkest violet in both.
 const shadeAt=p=>p<.5?p*.5:.55+(p-.5)*.9;
+// Home's pages take their step from their place among the period's pages by visitors, not from their row, so a page
+// is as dark in the ribbons as in the bars however many each draws and whichever one the sentence names. The seventh
+// page and later, and "other pages", share the last step, and only the first two are darker than the colour, far
+// enough apart to tell. A row's `at` is its step; without one it goes by its row.
+const pageSteps=rows=>{const by=new Map(rows.filter(r=>r.value>0).sort((a,b)=>b.value-a.value).map((r,i)=>[r.key,i]));return k=>[0,.2,.55,.66,.78,.89,1][Math.min(by.get(k)??6,6)]};
 // A name inside a band is dark or white, whichever reads on the band's step in this theme, so ribbons draw again
-// when the theme changes.
+// when the theme changes. Above a luminance of .2 the dark name has more contrast than the white one, and both
+// pass AA either side of it.
 const PX=document.createElement('canvas').getContext('2d',{willReadFrequently:true});
 function onStep(b,fill){
   b.style.color=fill;PX.fillStyle=getComputedStyle(b).color;PX.fillRect(0,0,1,1);
   const [R,G,B]=[...PX.getImageData(0,0,1,1).data].map(c=>(c/=255)<=.03928?c/12.92:((c+.055)/1.055)**2.4);
-  return .2126*R+.7152*G+.0722*B>.3?'var(--on-src)':'#fff';
+  return .2126*R+.7152*G+.0722*B>.2?'var(--on-src)':'#fff';
 }
 matchMedia('(prefers-color-scheme:dark)').onchange=()=>document.querySelectorAll('.flow,.stairs').forEach(b=>b.parentElement._draw?.());
 
@@ -1990,15 +1996,27 @@ function named(cls,key,n){
   const b=document.createElement('span');b.className=cls+' still';b.dataset.key=key;b.innerHTML=n.html;b.title=n.hint;
   return b;
 }
+// The order of a ribbon's pages that crosses least: each page at the weighted middle of the sources its visits came
+// from, a row marked rest kept last. A crossing weighs as much as both its strands. The given order, busiest first,
+// reads more easily, so it stays unless the new one crosses at least a fifth less, as it often does on a small site
+// whose sources each send to a page or two; on a busy one every source reaches every page and little changes.
+function untangle(m,rows){
+  const n=m.length,at=[];let y=0;for(const r of m){const v=sum(r);at.push(y+v/2);y+=v}
+  const mid=j=>{let s=0,t=0;for(let i=0;i<n;i++){s+=m[i][j]*at[i];t+=m[i][j]}return t?s/t:y};
+  const given=rows.map((_,j)=>j),moved=[...given].sort((a,b)=>!!rows[a].rest-!!rows[b].rest||mid(a)-mid(b));
+  const cost=o=>{let w=0;o.forEach((j,p)=>o.slice(p+1).forEach(k=>{for(let a=0;a<n;a++)for(let b=a+1;b<n;b++)w+=m[b][j]*m[a][k]}));return w};
+  return cost(moved)<cost(given)*.8?moved:given;
+}
+
 function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends,straight}){
-  const rowsOf=(list,vals,side)=>list.map((n,i)=>{
-    const b=named('node'+(side==='l'?'':' r')+(n.told?' told':''),side+i,n);
+  const rowsOf=(list,vals,side,order=list.map((_,i)=>i))=>order.map(i=>{
+    const n=list[i],b=named('node'+(side==='l'?'':' r')+(n.told?' told':''),side+i,n);
     return {n,i,v:vals[i],b};
   }).filter(r=>r.v>0).map((r,i,rs)=>{
     // What the sentence names keeps the colour itself; the others take the steps either side of it, in order.
-    const rest=rs.filter(x=>!x.n.told),j=rest.indexOf(r),p=rest.length>1?j/(rest.length-1):.8,at=r.n.told?.4:shadeAt(p);
+    const rest=rs.filter(x=>!x.n.told),j=rest.indexOf(r),p=rest.length>1?j/(rest.length-1):.8,at=r.n.told?.4:r.n.at??shadeAt(p);
     return {...r,fill:step(r.n.tok||(side==='l'?'src':'page'),at),lane:step('bnc',at)}});
-  const srcs=rowsOf(left,m.map(r=>sum(r)),'l'),pgs=rowsOf(right,right.map((_,j)=>sum(m.map(r=>r[j]))),'r'),all=[...srcs,...pgs];
+  const srcs=rowsOf(left,m.map(r=>sum(r)),'l'),pgs=rowsOf(right,right.map((_,j)=>sum(m.map(r=>r[j]))),'r',untangle(m,right)),all=[...srcs,...pgs];
   const eb=(ends||[]).map((e,k)=>named('node r','o'+k,e));
   const box=document.createElement('div');box.className='flow';box.append(...all.map(r=>r.b),...eb);
   box.onclick=e=>{const k=e.target.dataset?.n;if(k){e.stopPropagation();box.querySelector(`button[data-key="${k}"]`)?.click()}};
@@ -2146,7 +2164,7 @@ function drawOutcome(el,flows,pair){
   const label=(dim,k)=>k===OTHER?`other ${dim==='referrer'?'sources':'pages'}`:labelOf(dim,k),vis=n=>`${fmtInt(n)} ${n===1?'visit':'visits'}`;
   const row=(dim,k,on,word,hint,gone)=>{
     const name=label(dim,k);
-    return {told:on,to:gone,hint,aria:`${hint}. Open`,html:`<span>${on?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${word}</span>`,
+    return {told:on,rest:k===OTHER,to:gone,hint,aria:`${hint}. Open`,html:`<span>${on?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${word}</span>`,
       open:k===OTHER?b=>openView({v:dim==='referrer'?'sources':'pages'},b):b=>openFilter({[dim]:k},name,b)};
   };
   ribbons(el,srcs.map((k,i)=>row('referrer',k,pair&&k===pair.source,fmtInt(sum(m[i])),`${label('referrer',k)}: ${vis(sum(m[i]))}`)),
@@ -2561,10 +2579,10 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
   for(const f of flows){const i=at(left,f.source),j=at(right,f.page);if(i>=0&&j>=0)m[i][j]+=f.visitors}
   const total=sum(m.flat());if(!total)return empty(el,noneYet('visitors',S.p.visitors>0,PER()))
 
-  const told=(n,side)=>n.key!=null&&(side==='left'?T.told.has(n.key):n.key===T.page);
+  const told=(n,side)=>n.key!=null&&(side==='left'?T.told.has(n.key):n.key===T.page),stepOf=pageSteps(pageRows);
   const row=(n,side)=>{
     const on=told(n,side),name=on?n.label:shorten(n.label);
-    return {told:on,hint:side==='left'?sourceHint(n.label,n.value,n.prev,S.unit):n.leftHint||pageHint(n.label,n.value),
+    return {told:on,rest:n.key==null,hint:side==='left'?sourceHint(n.label,n.value,n.prev,S.unit):n.leftHint||pageHint(n.label,n.value),
       aria:side==='left'?`${n.label}, ${n.change>=0?'up':'down'} ${fmtInt(Math.abs(n.change))}, ${fmtInt(n.value)} ${S.unit}. Open`
         :`${n.label}, ${fmtInt(n.value)} first visits landed here${n.leftHint?`. ${n.leftHint}`:''}. Open`,
       html:side==='left'?`<span>${on?`<b>${esc(name)}</b>`:esc(name)}</span><span class="chg">${n.prev?fmtSigned(n.change):'new'}</span>`
@@ -2572,7 +2590,7 @@ function drawFlow(el,S,T,flows,flowsPrev,pageRows){
         :on?`<span><b>${pathHTML(name)}</b></span>${n.isNew?'<span class="chg">new</span>':''}${n.left?`<span class="left"><i class="sw" style="background:var(--bnc)"></i>${n.left}</span>`:''}`:`<span>${esc(name)}</span>`,
       open:b=>n.key==null?openView({v:side==='left'?'sources':'pages'},b):openFilter({[side==='left'?'referrer':'path']:n.key},n.label,b)};
   };
-  ribbons(el,left.map(n=>row(n,'left')),right.map(n=>row(n,'right')),m,{aria:`First visits from ${left.length} sources, named sources first then by change, to the pages they landed on`,
+  ribbons(el,left.map(n=>row(n,'left')),right.map(n=>({...row(n,'right'),at:stepOf(n.key)})),m,{aria:`First visits from ${left.length} sources, named sources first then by change, to the pages they landed on`,
     hot:(i,j)=>S.lead&&left[i].key===S.lead.key&&told(left[i],'left')&&told(right[j],'right'),hint:(i,j,v)=>ribbonHint(left[i].label,right[j].label,v)});
 }
 
@@ -2609,10 +2627,10 @@ function drawStay(el,S,B){
 function drawPages(el,T,pageRows,also,say){
   const live=pageRows.filter(r=>r.value>0),told=new Set([T.page,also].filter(k=>k!=null));
   // With no earlier period at all (a new site), every page would read "new", which says nothing.
-  const before=live.some(r=>r.prev),vis=n=>`${fmtInt(n)} ${n===1?'visitor':'visitors'}`;
+  const before=live.some(r=>r.prev),vis=n=>`${fmtInt(n)} ${n===1?'visitor':'visitors'}`,stepOf=pageSteps(pageRows);
   stairs(el,live.map(r=>{
     const sub=r.prev?change(r.value,r.prev):before?'new':'';
-    return {row:r,key:r.key,label:r.label,value:r.value,sub,told:told.has(r.key),hint:`${r.label}: ${vis(r.value)}${sub?`, ${sub}`:''}`,
+    return {row:r,key:r.key,label:r.label,value:r.value,sub,told:told.has(r.key),at:stepOf(r.key),hint:`${r.label}: ${vis(r.value)}${sub?`, ${sub}`:''}`,
       aria:`${r.label}, ${vis(r.value)}${sub?`, ${sub}`:''}. Open`,open:b=>openFilter({path:r.key},r.label,b)}}),
     {more:rest=>{const k=rest.length,v=sum(rest.map(it=>it.value));
       return {html:`${fmtInt(k)} more ${k===1?'page':'pages'} · ${fmtN(v)}`,aria:`${fmtInt(k)} more pages, ${vis(v)}. Open all pages`,open:b=>openView({v:'pages'},b)}},

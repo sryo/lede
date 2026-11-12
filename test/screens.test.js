@@ -365,9 +365,25 @@ test('the ribbons fade nothing: each source and page has its own step of its col
 });
 
 test('home and the Bounce screen draw sources to pages with the same ribbons, straight across in a wide box', () => {
-  assert.match(fn('drawFlow'), /ribbons\(el,left\.map\(n=>row\(n,'left'\)\),right\.map\(n=>row\(n,'right'\)\),m,/);
+  assert.match(fn('drawFlow'), /ribbons\(el,left\.map\(n=>row\(n,'left'\)\),right\.map\(n=>\(\{\.\.\.row\(n,'right'\),at:stepOf\(n\.key\)\}\)\),m,/);
   assert.match(fn('drawOutcome'), /ribbons\(el,srcs\.map\(/);
   assert.doesNotMatch(html, /function columns\(/);
+});
+
+test('a page is as dark in home’s ribbons as in its bars: its step is its place among the period’s pages', () => {
+  const pageSteps = new Function(`${html.match(/const shadeAt=.*\n/)[0]}${html.match(/const pageSteps=.*\n/)[0]}return pageSteps`)();
+  const rows = ['/', '/a', '/b', '/c', '/d', '/e', '/f', '/g'].map((key, i) => ({ key, value: 80 - i * 10 }));
+  const at = pageSteps([...rows].reverse().concat({ key: '/none', value: 0 }));
+  const steps = rows.map(r => at(r.key));
+  assert.equal(steps[0], 0);
+  assert.ok(steps.slice(0, 7).every((x, i) => !i || x > steps[i - 1]), 'each of the first seven has its own step, darkest first');
+  assert.ok(steps.every(x => x !== .4), 'none has the colour itself, kept for what the sentence names');
+  assert.deepEqual([steps[7], at(null), at('/none')], [1, 1, 1]);
+  assert.match(fn('drawFlow'), /stepOf=pageSteps\(pageRows\)/);
+  assert.match(fn('drawPages'), /stepOf=pageSteps\(pageRows\)/);
+  assert.match(fn('drawPages'), /at:stepOf\(r\.key\)/);
+  assert.match(fn('stairs'), /it\.told\?\.4:it\.at\?\?shadeAt\(/);
+  assert.match(fn('ribbons'), /at=r\.n\.told\?\.4:r\.n\.at\?\?shadeAt\(p\)/);
 });
 
 test('the Bounce screen keeps its third step at every width: each page goes on to Read on and Left after one page, with totals', () => {
@@ -546,4 +562,18 @@ test('the period strip lives in the header beside 7 and 30 days, on every screen
   assert.match(html, /addEventListener\('keydown',e=>\{if\(e\.key==='Escape'\)closePeriod\(\)\}\)/);
   assert.match(html, /addEventListener\('pointerdown',e=>\{if\(!e\.target\.closest\('\.period'\)\)closePeriod\(\)\}\)/);
   assert.match(fn('zoom'), /closePeriod\(\)/);
+});
+
+test('the ribbons put each page where its strands cross least, the rest kept last, and keep busiest first unless that crosses a fifth more', () => {
+  const untangle = new Function('sum', `${fn('untangle')}\n}\nreturn untangle`)(a => a.reduce((x, y) => x + y, 0));
+  const rows = n => Array.from({ length: n }, () => ({}));
+  // The busiest page is fed by the bottom source, the second by the top one: they swap.
+  assert.deepEqual(untangle([[0, 50], [80, 0]], rows(2)), [1, 0]);
+  // Other pages stay last, whoever sent them.
+  assert.deepEqual(untangle([[0, 50, 5], [80, 0, 0]], [{}, {}, { rest: true }]), [1, 0, 2]);
+  // Every source to every page in the same shares: nothing to gain, the given order stays.
+  assert.deepEqual(untangle([[10, 20], [10, 20]], rows(2)), [0, 1]);
+  // Swapping would cross 14% less: not enough to give up busiest first.
+  assert.deepEqual(untangle([[45, 50], [50, 48]], rows(2)), [0, 1]);
+  assert.match(fn('ribbons'), /'r',untangle\(m,right\)\)/);
 });
