@@ -439,7 +439,7 @@ p,li,figcaption,.say-sub,.cap{text-wrap:pretty}
 .fsteps .lbl{color:var(--muted)}
 .fsteps .v{font-weight:600;text-align:right;font-variant-numeric:tabular-nums;font-size:var(--fs-s)}
 .fsteps .v small{font-weight:400;color:var(--muted);margin-left:6px;font-size:var(--fs-xs)}
-.landed{position:relative;min-height:276px;height:28vh}
+.landed{position:relative;height:clamp(276px,28vh,340px)}
 .cross-say{margin:0 0 12px;font-size:var(--fs-s)}
 .cross-k{display:flex;justify-content:space-between;font-size:var(--fs-xs);color:var(--muted);margin-bottom:4px}
 .cross-say:empty{display:none}
@@ -542,7 +542,6 @@ button.lrow:hover{background:var(--line)}
   .t-days,.t-flow,.t-stay,.t-pages{grid-column:1;grid-row:auto}
   .t-flow{min-height:680px}
   .outcome{height:420px}
-  .landed:not(.cross){height:440px}
   .rmap{height:340px}
   .kw .name{white-space:normal;overflow-wrap:anywhere}
   .sq-num{flex-direction:column;gap:0}
@@ -1923,7 +1922,7 @@ function drawLanded(el,flows,label,pageRows){
   const names=[...S.keys.map(k=>one?label:labelOf('referrer',k)),...(S.rest?[S.rest]:[])],pages=[...P.keys,...(P.rest?[P.rest]:[])];
   ribbons(el,names.map((name,i)=>{const v=sum(m[i]),k=S.keys[i];return row(name,v,fmtInt(v),one,`${name}: ${fmtInt(v)} ${v===1?'visitor':'visitors'}`,!one&&k!=null?b=>openFilter({referrer:k},name,b):null)}),
     pages.map((name,j)=>{const v=sum(m.map(r=>r[j])),k=P.keys[j];return row(name,v,k!=null&&!pageRows.find(r=>r.key===k)?.prev?'new page':fmtInt(v),false,pageHint(name,v),k!=null?b=>openFilter({path:k},k,b):null)}),m,
-    {aria:`Visitors from ${label} to the pages they landed on`,hint:(i,j,v)=>ribbonHint(names[i],pages[j],v)});
+    {aria:`Visitors from ${label} to the pages they landed on`,straight:true,hint:(i,j,v)=>ribbonHint(names[i],pages[j],v)});
 }
 
 // The sources of visits that landed on a page, and visitors who came from another page.
@@ -1982,14 +1981,14 @@ matchMedia('(prefers-color-scheme:dark)').onchange=()=>document.querySelectorAll
 // ends: a third step, the ways on from the pages: {html,hint,aria,open,told,fill,ink,strand(j,v)}, with each page's
 // `to` saying how many of its own took each. Its counts may be in another unit than m's (views after visitors): a
 // page's strands fill its band, and the ends together stand as tall as the pages. ink is a strand's colour, or a
-// function of its page's row; without it a strand has its end's fill.
+// function of its page's row; without it a strand has its end's fill. straight: never turn, whatever the box.
 // A row's or an end's name: a button when it opens something, a plain name when it doesn't.
 function named(cls,key,n){
   if(n.open)return opener(cls,n.html,n.open,{key,hint:n.hint,aria:n.aria});
   const b=document.createElement('span');b.className=cls+' still';b.dataset.key=key;b.innerHTML=n.html;b.title=n.hint;
   return b;
 }
-function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
+function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends,straight}){
   const rowsOf=(list,vals,side)=>list.map((n,i)=>{
     const b=named('node'+(side==='l'?'':' r')+(n.told?' told':''),side+i,n);
     return {n,i,v:vals[i],b};
@@ -2028,16 +2027,17 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
     const put=s=>{box.querySelector('svg')?.remove();box.insertAdjacentHTML('afterbegin',s+'</svg>')};
     // Straight across, in a wide box or whenever there is a third step: sources, then pages, then the ends. In a
     // box too narrow to hold the names inside three bands, the bands are thin bars with their names beside them.
-    if(W>H*1.5||ends){
-      const slim=ends&&(W-2*(run+16)-ow)/2<50,bw=slim?8:run+16,tot=sum(pgs.map(r=>r.v));
+    // One source has nothing to cross, so it runs straight too, as a bar at the edge: its name is the screen's.
+    if(W>H*1.5||ends||straight||srcs.length<2){
+      const solo=!ends&&srcs.length<2,slim=ends?(W-2*(run+16)-ow)/2<50:!solo&&W-2*(run+16)<80,bw=slim?8:run+16,tot=sum(pgs.map(r=>r.v));
       // Slim: two ends' names run down beside their bars, which leaves the pages' names the width of the second
       // crossing; more ends have their names in a gutter like the sources', and a lone page needs no name.
-      const down=slim&&ends.length<3,gut=Math.round(W*.36);
-      const xe=slim?down?W-22:W-gut+bw:W,xa=slim?down?Math.round(W*.38):gut:bw,xb=ends?slim?down?xa+Math.round((xe-2*bw-xa)*.36):Math.round((xa+xe-2*bw)/2):xa+(W-2*bw-ow)/2:W-bw,xc=ends?xb+bw:W,xd=slim?xe-bw:xc+xb-xa;
+      const down=slim&&ends&&ends.length<3,gut=Math.round(W*.36);
+      const xe=slim?down?W-22:W-gut+bw:W,xa=solo?8:slim?down?Math.round(W*.38):gut:bw,xb=ends?slim?down?xa+Math.round((xe-2*bw-xa)*.36):Math.round((xa+xe-2*bw)/2):xa+(W-2*bw-ow)/2:slim?W-gut:W-bw,xc=ends||slim?xb+bw:W,xd=slim?xe-bw:xc+xb-xa;
       if(slim){
         // Sources' names wrap in their gutter; a page's name alone runs over its strands, on a halo of the tile.
         for(const r of srcs){r.b.classList.add('wrap');r.b.style.maxWidth=f(xa-bw-6)+'px';r.lh=r.b.offsetHeight}
-        for(const r of pgs){r.b.classList.add('bare');r.lh=r.b.offsetHeight}
+        for(const r of pgs){r.b.classList.add(ends?'bare':'wrap');if(!ends)r.b.style.maxWidth=f(W-xc-6)+'px';r.lh=r.b.offsetHeight}
         for(const b of eb){b.classList.add(down?'down':'wrap');if(!down)b.style.maxWidth=f(W-xe-6)+'px'}
       }
       // The ends that anyone took, as rows in their own unit: together as tall as the pages.
@@ -2055,14 +2055,14 @@ function ribbons(el,left,right,m,{aria,hint,hot=()=>false,ends}){
         return strand(q,curve(xa,q.y0,w0,xb,q.y1,w1),Math.min(w0,w1),`x="${f(xa)}" y="${f(q.y0)}" width="${slim?4:8}" height="${f(w0)}"`)}).join('');
       const bar=(k,i,x,w,y,h,fill,tip)=>`<rect data-n="${k}${i}" x="${f(x)}" y="${f(y)}" width="${f(w)}" height="${f(h)}" fill="${fill}" data-hint="${esc(tip)}"/>`;
       for(const a of A){
-        const r=a.r,inside=!slim&&a.th>=r.lh+2,x0=slim?xa-bw:inside?0:Math.min(xa-8,r.lw+6),top=`top:${f(a.y+a.th/2)}px;`;
+        const r=a.r,inside=!slim&&!solo&&a.th>=r.lh+2,x0=solo?0:slim?xa-bw:inside?0:Math.min(xa-8,r.lw+6),top=`${solo?'display:none;':''}top:${f(a.y+a.th/2)}px;`;
         s+=bar('l',r.i,x0,xa-x0,a.y,a.th,r.fill,r.n.hint);
         name(r.b,r.fill,inside,top+(slim?`right:${f(W-xa+bw+6)}px;max-width:${f(xa-bw-6)}px;text-align:right`:`left:${inside?8:0}px;max-width:${f(xa-10)}px`));
       }
       for(const l of L){
-        const r=l.r,inside=!slim&&l.th>=r.lh+2,x1=ends||inside?xc:Math.max(xb+8,W-r.lw-6),top=`top:${f(l.y+l.th/2)}px;`;
+        const r=l.r,inside=!slim&&l.th>=r.lh+2,x1=ends||slim||inside?xc:Math.max(xb+8,W-r.lw-6),top=`top:${f(l.y+l.th/2)}px;`;
         s+=bar('r',r.i,xb,x1-xb,l.y,l.th,r.fill,r.n.hint);r.b.classList.toggle('halo',!!ends&&!inside);
-        name(r.b,r.fill,inside,top+(ends?`left:${f(slim?xc+6:xb+8)}px;max-width:${f(slim?xd-xc-10:bw-10)}px;text-align:left${slim&&!down&&L.length<2?';display:none':''}`:`right:${inside?8:0}px;max-width:${f(W-xb-10)}px`));
+        name(r.b,r.fill,inside,top+(ends?`left:${f(slim?xc+6:xb+8)}px;max-width:${f(slim?xd-xc-10:bw-10)}px;text-align:left${slim&&!down&&L.length<2?';display:none':''}`:slim?`left:${f(xc+6)}px;max-width:${f(W-xc-6)}px;text-align:left`:`right:${inside?8:0}px;max-width:${f(W-xb-10)}px`));
       }
       if(ends){
         // Each page's strands go on to the ends. Where a strand lands it has a cap in its page's step, so an end's

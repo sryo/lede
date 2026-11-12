@@ -369,8 +369,11 @@ test('the Bounce screen keeps its third step at every width: each page goes on t
   assert.match(fn('drawOutcome'), /ends:\[\['Read on','read on',sum\(stay\.map\(x=>x\.visits-x\.bounces\)\),'var\(--lost\)','var\(--lost-p\)'\],\['<b>Left after one page<\/b>','left after this page',sum\(stay\.map\(x=>x\.bounces\)\),'var\(--bnc\)',r=>r\.lane\]\]/);
   assert.match(fn('drawOutcome'), /\[stay\[j\]\.visits-stay\[j\]\.bounces,stay\[j\]\.bounces\]\)\}\),m,/);
   const draw = fn('ribbons');
-  assert.match(draw, /if\(W>H\*1\.5\|\|ends\)\{/);
-  assert.match(draw, /slim=ends&&\(W-2\*\(run\+16\)-ow\)\/2<50/);
+  assert.match(draw, /if\(W>H\*1\.5\|\|ends\|\|straight\|\|srcs\.length<2\)\{/);
+  assert.match(draw, /solo=!ends&&srcs\.length<2/);
+  assert.match(fn('drawLanded'), /straight:true/);
+  assert.match(html, /\.landed\{position:relative;height:clamp\(276px,28vh,340px\)\}/);
+  assert.match(draw, /slim=ends\?\(W-2\*\(run\+16\)-ow\)\/2<50:!solo&&W-2\*\(run\+16\)<80/);
   assert.match(draw, /bar\('o',o\.r\.k,xd,x1-xd,o\.y,o\.th,e\.fill,e\.hint\)/);
   assert.doesNotMatch(html, /oc-key/);
 });
